@@ -1,0 +1,41 @@
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.15;
+
+import "@openzeppelin/contracts/proxy/Clones.sol";
+import "./MembershipNftV1.sol";
+
+contract MNFTFactory {
+
+    event FundingCollectionCreate(address instance, address indexed vault);
+
+    MembershipNftV1I public implementation;
+
+    constructor(address _implementation){
+        implementation = MembershipNftV1I(_implementation);
+    }
+
+    function create(address owner, address vault, string memory name, string memory symbol, string memory baseUrlIn) public returns (MembershipNftV1I){
+        MembershipNftV1I instance = MembershipNftV1I(Clones.clone(address(implementation)));
+        emit FundingCollectionCreate(address(instance), vault);
+        instance.initialize(owner, vault, name, symbol, baseUrlIn);
+        return instance;
+    }
+
+    function createDeterministic(bytes32 salt, address owner, address vault, string memory name, string memory symbol, string memory baseUrlIn) public returns (MembershipNftV1I){
+        MembershipNftV1I instance = MembershipNftV1I(Clones.cloneDeterministic(address(implementation), salt));
+        emit FundingCollectionCreate(address(instance), vault);
+        instance.initialize(owner, vault, name, symbol, baseUrlIn);
+        return instance;
+    }
+
+    function predictDeterministicAddress(bytes32 salt) public view returns (address){
+        return Clones.predictDeterministicAddress(address(implementation), salt);
+    }
+
+    function createWithEditions(address owner, address vault, string memory name, string memory symbol, string memory baseUrlIn, MembershipNftV1I.EditionTier[] memory tiers, address _minter) public returns (MembershipNftV1I){
+        MembershipNftV1I instance = MembershipNftV1I(Clones.clone(address(implementation)));
+        emit FundingCollectionCreate(address(instance), vault);
+        instance.initializeEditions(owner, vault, name, symbol, baseUrlIn, tiers, _minter);
+        return instance;
+    }
+}

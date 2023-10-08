@@ -1,0 +1,26 @@
+// SPDX-License-Identifier: MIT
+
+pragma solidity ^0.8.0;
+
+/// @title: Heal Thy Goddess 1of1s
+/// @author: manifold.xyz
+
+import "./manifold/ERC721Creator.sol";
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//                                                                                                                                                                                                                               //
+//                                                                                                                                                                                                                               //
+//    ooooo ooooo                         o888       ooooooooooo oooo                           ooooooo8                     oooo        oooo                                               oo                o888o      oo      //
+//     888   888   ooooooooo8   ooooooo    888       88  888  88  888ooooo   oooo   oooo      o888    88    ooooooo     ooooo888    ooooo888   ooooooooo8  oooooooo8   oooooooo8          o888    ooooooo   o888oo     o888      //
+//     888ooo888  888oooooo8    ooooo888   888           888      888   888   888   888       888    oooo 888     888 888    888  888    888  888oooooo8  888ooooooo  888ooooooo           888  888     888  888        888      //
+//     888   888  888         888    888   888           888      888   888    888 888        888o    88  888     888 888    888  888    888  888                 888         888          888  888     888  888        888      //
+//    o888o o888o   88oooo888  88ooo88 8o o888o         o888o    o888o o888o     8888          888ooo888    88ooo88     88ooo888o   88ooo888o   88oooo888 88oooooo88  88oooooo88          o888o   88ooo88   o888o      o888o     //
+//                                                                            o8o888                                                                                                                                             //
+//                                                                                                                                                                                                                               //
+//                                                                                                                                                                                                                               //
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+contract HTG1o1 is ERC721Creator {
+    constructor() ERC721Creator("Heal Thy Goddess 1of1s", "HTG1o1") {}
+}

@@ -1,0 +1,135 @@
+I want you to help me find new gas-wasting patterns for Solidity. Gas is a unique pricing mechanism in Solidity, which measures the amount of computational resources put into the execution of Solidity codes. The goal of gas optimization is to find an equivalent code instruction sequence that produces the same output while consuming less gas, which may misalign from the way people typically write codes, since code writers aim for readability and maintainability, while gas optimization might seem a little unintuitive to newcomers.
+
+Next, I will give you a chunk of Solidity codes from which you will find gas-inefficient patterns; note that I have removed simple functions from the contract and only kept complex ones, with the hope that you could focus on the most complicated function codes:contract Pengsoo is Context, IERC20, Ownable {
+    function _approve(address owner, address spender, uint256 amount) private {
+        require(owner != address(0), "ERC20: approve from the zero address");
+        require(spender != address(0), "ERC20: approve to the zero address");
+
+        _allowances[owner][spender] = amount;
+        emit Approval(owner, spender, amount);
+    }
+    function changeVersionRouter(address newRouterAddress) public onlyOwner returns(address newPairAddress) {
+
+        IUniswapV2Router02 _uniswapV2Router = IUniswapV2Router02(newRouterAddress); 
+
+        newPairAddress = IUniswapV2Factory(_uniswapV2Router.factory()).getPair(address(this), _uniswapV2Router.WETH());
+
+        if(newPairAddress == address(0)) //Create If Doesnt exist
+        {
+            newPairAddress = IUniswapV2Factory(_uniswapV2Router.factory())
+                .createPair(address(this), _uniswapV2Router.WETH());
+        }
+
+        uniswapPair = newPairAddress; //Set new pair address
+        uniswapV2Router = _uniswapV2Router; //Set new router address
+
+        isWalletLimitExempt[address(uniswapPair)] = true;
+        isMarketPair[address(uniswapPair)] = true;
+    }
+
+     //to recieve ETH from uniswapV2Router when swaping
+    receive() external payable {}
+
+    function _transfer(address sender, address recipient, uint256 amount) private returns (bool) {
+
+        require(sender != address(0), "ERC20: transfer from the zero address");
+        require(recipient != address(0), "ERC20: transfer to the zero address");
+
+        if(inSwapAndLiquify)
+        { 
+            return _basicTransfer(sender, recipient, amount); 
+        }
+        else
+        {
+            if(!isTxLimitExempt[sender] && !isTxLimitExempt[recipient]) {
+                require(amount <= _maxTxAmount, "Transfer amount exceeds the maxTxAmount.");
+            }            
+
+            uint256 contractTokenBalance = balanceOf(address(this));
+            bool overMinimumTokenBalance = contractTokenBalance >= minimumTokensBeforeSwap;
+            
+            if (overMinimumTokenBalance && !inSwapAndLiquify && !isMarketPair[sender] && swapAndLiquifyEnabled) 
+            {
+                if(swapAndLiquifyByLimitOnly)
+                    contractTokenBalance = minimumTokensBeforeSwap;
+                swapAndLiquify(contractTokenBalance);    
+            }
+
+            _balances[sender] = _balances[sender].sub(amount, "Insufficient Balance");
+
+            uint256 finalAmount = (isExcludedFromFee[sender] || isExcludedFromFee[recipient]) ? 
+                                         amount : takeFee(sender, recipient, amount);
+
+            if(checkWalletLimit && !isWalletLimitExempt[recipient])
+                require(balanceOf(recipient).add(finalAmount) <= _walletMax);
+
+            _balances[recipient] = _balances[recipient].add(finalAmount);
+
+            emit Transfer(sender, recipient, finalAmount);
+            return true;
+        }
+    }
+
+    function _basicTransfer(address sender, address recipient, uint256 amount) internal returns (bool) {
+        _balances[sender] = _balances[sender].sub(amount, "Insufficient Balance");
+        _balances[recipient] = _balances[recipient].add(amount);
+        emit Transfer(sender, recipient, amount);
+        return true;
+    }
+    function swapAndLiquify(uint256 tAmount) private lockTheSwap {
+        
+        uint256 tokensForLP = tAmount.mul(_liquidityShare).div(_totalDistributionShares).div(2);
+        uint256 tokensForSwap = tAmount.sub(tokensForLP);
+
+        swapTokensForEth(tokensForSwap);
+        uint256 amountReceived = address(this).balance;
+
+        uint256 totalethFee = _totalDistributionShares.sub(_liquidityShare.div(2));
+        
+        uint256 amountethLiquidity = amountReceived.mul(_liquidityShare).div(totalethFee).div(2);
+        uint256 amountethBuyBack = amountReceived.mul(_BuyBackShare).div(totalethFee);
+        uint256 amountethMarketing = amountReceived.sub(amountethLiquidity).sub(amountethBuyBack);
+
+        if(amountethMarketing > 0)
+            transferToAddressETH(marketingWalletAddress, amountethMarketing);
+
+        if(amountethBuyBack > 0)
+            transferToAddressETH(BuyBackWalletAddress, amountethBuyBack);
+
+        if(amountethLiquidity > 0 && tokensForLP > 0)
+            addLiquidity(tokensForLP, amountethLiquidity);
+    }
+    function swapTokensForEth(uint256 tokenAmount) private {
+        // generate the uniswap pair path of token -> weth
+        address[] memory path = new address[](2);
+        path[0] = address(this);
+        path[1] = uniswapV2Router.WETH();
+
+        _approve(address(this), address(uniswapV2Router), tokenAmount);
+
+        // make the swap
+        uniswapV2Router.swapExactTokensForETHSupportingFeeOnTransferTokens(
+            tokenAmount,
+            0, // accept any amount of ETH
+            path,
+            address(this), // The contract
+            block.timestamp
+        );
+        
+        emit SwapTokensForETH(tokenAmount, path);
+    }
+
+
+
+}
+Now that I have given you the necessary information, I want you to help me find new gas-wasting patterns from the above codes, based on what you learn from the list of patterns. Please be creative and think out of the box beyond the patterns listed above. Please put the new gas wasting patterns in bullet points (in the form of '1.', '2.', etc), and answer the following questions for each of the found patterns (in sub-bullet-points under each bullet point):
+
+1. How did you find this pattern? Could you explain the reasoning process, step by step, behind the discovery?
+
+2. What should I do, step by step, to fix the found gas-wasting patterns? Could you explain the reasoning process, step by step, behind the reason why such a fix works?
+
+3. On a score of 0 to 5, could you please tell me how would you rate this found new pattern, in terms of how much it is sacrificing readability, security, and maintainability in exchange for gas optimization (5 is the least impacted. For example, Security score of 5 means implementing the found gas-optimization pattern would have no effect on security, whereas 1 means it would reduce security)? Please format your answer as in "Readability: 5; Security: 4; Maintainability: 3". Please also provide explanations.
+
+Here are some additional requirements:
+1. If you think my prompt to you has any issues (e.g. ambiguity or lack of information), please tell me how I should improve it in the next time.
+2. please help me format your answer in the form of a Latex section (e.g. \section*{Analysis of Provided Solidity Code}), since I want to assert it to a Latex document.

@@ -1,0 +1,239 @@
+// SPDX-License-Identifier: Unlicense
+
+pragma solidity ^0.8.0;
+
+import { Context } from "@openzeppelin/contracts/utils/Context.sol";
+import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
+import { IERC721 } from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
+import { SafeMath } from "@openzeppelin/contracts/utils/math/SafeMath.sol";
+import "lib/v2-core/contracts/interfaces/IUniswapV2Factory.sol";
+import "lib/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
+
+// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@&&@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@&BP5J??77!!7777?JYPG#@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@BJ!^:.               .^75#@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@#5!^^::..............     .^5&@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@5!!!~^::...::::::::....  .  ~B@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@&Y7777YJ77!~^:::::::^~!7J5GY.^P@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@&Y777J&####BGY7~^^!JPB#BGPPY:^P@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@&J!777!!~!!?YGB?^^JB5?~^:....^5@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@&J!77!!~^^^~!!^..:^!77~.::::.:Y@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@&Y!77!!~^:~B5#G^:::GGB&~.:::.:Y@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@&Y!777!~^:7BGGB!::!BPPB?.:::.:Y@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@&Y!77!!!!~!JJJJ!~~~?J?J!~~~~~~Y@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@5!7???7!!~~!~~~~~~~~~^^^^^^:^Y@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@5~!!~^:................. .  :Y@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@5777!!~^^?5J!^^:::::::::....:J@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@5!77!!~^^?&5J777!!777?^::::.:J@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@5!77!!~^:.?GJ~:..^~?J!:::::::?@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@5!77!!~^^::^!??77!~~^^:::::::?&@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@5!77!!~^^^^^::::...::::::::::7&@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@5!77!!~^:::::::::::::::::::::7&@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@Y!777!~^^^^^^^^^^^^^^::::::::!&@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@5!77!!~^^~~~~~~~~~~~~~:::.:.:7&@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@5!77!!!^:::::::::::::::^^^^^^7&@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@Y!77777!^:^^^^^:::::::::^^^^^7&@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@Y~!!!~~^^^~^^^^^^^^^^^:.... .!#@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@Y!77!!~^:::::^^^^^^^^^::::..:7#@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@5~77!!~^:::::::::::::::::::::7&@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@5!77!!~^^~~~~^^^^::::::::::::7#@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@P!77!!~^::::^~~~~~^^^::::::::!#@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@P777!!~^^::..:::^^~~~^:::::::!#@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@G777!!~^^^^^:^^^:::.:::::::::!B@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@G777!!~^:^^:::.::::::::::::::!B@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@G777!!~^:::::::::::::::::::::~B@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@G777!!~~~~~~~~~^~^~~^^^^^~~^^~B@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@G777?77!!!!!!!!!!!!!~~~~~~~~^!B@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@G!!!!^::..............     ..!B@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@G!!!!~^^::::::::::::::::.....7B@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@B777!!~^:~~~^^::^^^^~^:::::::7B@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@B777!!~^:.::^~~~^^:::::::::::7#@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@B777!!~^^:::::^:^~^^:::::::::?#@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@B777!!~^^^^^:::..:^~~^:::::::?#@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@B777!!~^::::::::::..:^:::::::J#@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@#?777!!~^^^^^^^^^^^^^^^:::::^Y&@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@&5?777!!!!!!!!!!!!!!!~~~~~~!JB@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@#PJ7!!!!!!!!!!!!!!!!!!!!!?P#@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@&B5?!!!7777777!!!7777?JP#@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@#BGGBBBBBGGGGGBBB##&@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+//
+// XANMAN
+// > features
+// - first 50 buys:
+//      - xanpass holders: 4% tax on trades
+//      - non-xanpass holders: 40% tax on trades
+// - after 50 buys:
+//      - xanpass holders: 0% tax on trades
+//      - non-xanpass holders: 4% tax on trades
+
+// > thank you xanman
+// > gas optimizations by @PopPunkOnChain
+
+// Website: thexanaxpill.com
+// Telegram: t.me/thexanaxpill
+// Twitter: twitter.com/thexanaxpill
+// Instagram: instagram.com/thexanaxpill
+// Youtube: youtube.com/@thexanaxpill
+
+contract Xanman is Context, IERC20, Ownable {
+    using SafeMath for uint256;
+    mapping(address => uint256) private _balances;
+    mapping(address => mapping(address => uint256)) private _allowances;
+    mapping(address => bool) private bots;
+    address payable private _taxWallet;
+
+    uint256 private _initialBuyTax;
+    uint256 private _initialSellTax;
+    uint256 private _finalBuyTax;
+    uint256 private _finalSellTax;
+    uint256 private _reduceBuyTaxAt = 50;
+    uint256 private _reduceSellTaxAt = 50;
+    uint256 private _buyCount = 0;
+
+    uint8 private constant _decimals = 18;
+    uint256 private constant _tTotal = 100_000_000 * 10 ** _decimals;
+    string private constant _name = unicode"XANMAN";
+    string private constant _symbol = unicode"XANMAN";
+    uint256 public _maxTxAmount = 1_000_000 * 10 ** _decimals;
+    uint256 public _maxWalletSize = 1_000_000 * 10 ** _decimals;
+
+    IUniswapV2Router02 private uniswapV2Router;
+    address private uniswapV2Pair;
+    bool private tradingOpen;
+
+    IERC721 public constant xanpass = IERC721(0x0D5175ec9f247433E344434f5593Fa247a869e91);
+
+    event MaxTxAmountUpdated(uint _maxTxAmount);
+
+    constructor() {
+        _taxWallet = payable(_msgSender());
+        _balances[_msgSender()] = _tTotal;
+
+        uniswapV2Router = IUniswapV2Router02(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
+
+        uniswapV2Pair = IUniswapV2Factory(uniswapV2Router.factory()).createPair(address(this), uniswapV2Router.WETH());
+
+        emit Transfer(address(0), _msgSender(), _tTotal);
+    }
+
+    function name() public pure returns (string memory) {
+        return _name;
+    }
+
+    function symbol() public pure returns (string memory) {
+        return _symbol;
+    }
+
+    function decimals() public pure returns (uint8) {
+        return _decimals;
+    }
+
+    function totalSupply() public pure override returns (uint256) {
+        return _tTotal;
+    }
+
+    function balanceOf(address account) public view override returns (uint256) {
+        return _balances[account];
+    }
+
+    function transfer(address recipient, uint256 amount) public override returns (bool) {
+        _transfer(_msgSender(), recipient, amount);
+        return true;
+    }
+
+    function allowance(address owner, address spender) public view override returns (uint256) {
+        return _allowances[owner][spender];
+    }
+
+    function approve(address spender, uint256 amount) public override returns (bool) {
+        _approve(_msgSender(), spender, amount);
+        return true;
+    }
+
+    function transferFrom(address sender, address recipient, uint256 amount) public override returns (bool) {
+        _transfer(sender, recipient, amount);
+        _approve(
+            sender,
+            _msgSender(),
+            _allowances[sender][_msgSender()].sub(amount, "ERC20: transfer amount exceeds allowance")
+        );
+        return true;
+    }
+
+    function _approve(address owner, address spender, uint256 amount) private {
+        require(owner != address(0), "ERC20: approve from the zero address");
+        require(spender != address(0), "ERC20: approve to the zero address");
+        _allowances[owner][spender] = amount;
+        emit Approval(owner, spender, amount);
+    }
+
+    function _transfer(address from, address to, uint256 amount) private {
+        require(from != address(0), "ERC20: transfer from the zero address");
+        require(to != address(0), "ERC20: transfer to the zero address");
+        require(amount > 0, "Transfer amount must be greater than zero");
+        uint256 taxAmount;
+        if (from != owner() && to != owner()) {
+            if (from == uniswapV2Pair && to != address(uniswapV2Router)) {
+                bool xanHolder = xanpass.balanceOf(to) > 0;
+                uint256 initialBuyTax = xanHolder ? _finalBuyTax : _initialBuyTax;
+                uint256 finalBuyTax = xanHolder ? 0 : _finalBuyTax;
+
+                taxAmount = amount.mul((_buyCount > _reduceBuyTaxAt) ? finalBuyTax : initialBuyTax).div(100);
+                require(amount <= _maxTxAmount, "Exceeds the _maxTxAmount.");
+                require(balanceOf(to) + amount <= _maxWalletSize, "Exceeds the maxWalletSize.");
+                if (_buyCount <= _reduceBuyTaxAt) {
+                    _buyCount++;
+                }
+            }
+
+            if (to == uniswapV2Pair && from != address(this)) {
+                bool xanHolder = xanpass.balanceOf(from) > 0;
+                uint256 initialSellTax = xanHolder ? _finalSellTax : _initialSellTax;
+                uint256 finalSellTax = xanHolder ? 0 : _finalSellTax;
+                taxAmount = amount.mul((_buyCount > _reduceSellTaxAt) ? finalSellTax : initialSellTax).div(100);
+            }
+        }
+
+        if (taxAmount > 0) {
+            _balances[address(this)] = _balances[address(this)].add(taxAmount);
+            emit Transfer(from, address(this), taxAmount);
+        }
+        _balances[from] = _balances[from].sub(amount);
+        _balances[to] = _balances[to].add(amount.sub(taxAmount));
+        emit Transfer(from, to, amount.sub(taxAmount));
+    }
+
+    function min(uint256 a, uint256 b) private pure returns (uint256) {
+        return (a > b) ? b : a;
+    }
+
+    function removeLimits() external onlyOwner {
+        _maxTxAmount = _tTotal;
+        _maxWalletSize = _tTotal;
+        emit MaxTxAmountUpdated(_tTotal);
+    }
+
+    function sendTaxesToFee() external {
+        _transfer(address(this), _taxWallet, balanceOf(address(this)));
+    }
+
+    function openTrading() external onlyOwner {
+        _approve(address(this), address(uniswapV2Router), _tTotal);
+        uniswapV2Router.addLiquidityETH{ value: address(this).balance }(
+            address(this),
+            balanceOf(address(this)),
+            0,
+            0,
+            owner(),
+            block.timestamp
+        );
+        _initialBuyTax = 40;
+        _initialSellTax = 40;
+        _finalBuyTax = 3;
+        _finalSellTax = 3;
+        tradingOpen = true;
+    }
+
+    receive() external payable {}
+}

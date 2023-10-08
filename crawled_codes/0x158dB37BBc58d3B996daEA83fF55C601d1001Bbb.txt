@@ -1,0 +1,525 @@
+// SPDX-License-Identifier: AGPL-3.0
+pragma solidity ^0.8.0;
+
+import "@openzeppelin/contracts/utils/Base64.sol";
+import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import "@openzeppelin/contracts/interfaces/IERC4906.sol";
+import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Royalty.sol";
+import "../layerzero/NonblockingLzApp.sol";
+import "../../interfaces/tokens/ILootFinityToken.sol";
+import "../../interfaces/collections/ICrossChainCollectible.sol";
+import "../libraries/StringUtils.sol";
+
+contract LootfinityToken is
+    ILootfinityToken,
+    ERC721,
+    ICrossChainCollectible,
+    ERC721Royalty,
+    NonblockingLzApp,
+    IERC4906
+{
+    bytes32 constant TRAIT_PLACEHOLDER =
+        keccak256(abi.encodePacked("<concealed>"));
+
+    mapping(SaleType => SaleRange) public saleRange;
+    mapping(uint256 => string[]) public traits;
+    mapping(uint256 => mapping(uint256 => bool)) public traitWrapped;
+    mapping(uint256 => bool) public canBeBurned;
+
+    address public traitManager;
+    address public mintAuthority;
+    address public revenueReceiver;
+
+    address public trustedForwarder;
+
+    uint256 public salePrice;
+    string public imageURI;
+    string public contractURI;
+
+    modifier onlyTraitManager() {
+        require(_msgSender() == traitManager);
+        _;
+    }
+
+    modifier onlyMintAuthority() {
+        require(_msgSender() == mintAuthority);
+        _;
+    }
+
+    /** ERC721Royalty */
+    function _burn(
+        uint256 _collectibleId
+    ) internal virtual override(ERC721, ERC721Royalty) {
+        ERC721Royalty._burn(_collectibleId);
+    }
+
+    constructor(
+        address _layerZeroEndpoint,
+        address _trustedForwarder,
+        address _mintAuthority,
+        address _traitManager,
+        address _revenueReceiver,
+        uint256 _salePrice,
+        string memory _imageURI,
+        string memory _contractURI
+    ) ERC721("Lootfinity", "LOOTFINITY") NonblockingLzApp(_layerZeroEndpoint) {
+        mintAuthority = _mintAuthority;
+        trustedForwarder = _trustedForwarder;
+        traitManager = _traitManager;
+        salePrice = _salePrice;
+        imageURI = _imageURI;
+        revenueReceiver = _revenueReceiver;
+        contractURI = _contractURI;
+    }
+
+    function setRevenueReceiver(address _revenueReceiver) public onlyOwner {
+        revenueReceiver = _revenueReceiver;
+    }
+
+    function setMintAuthority(address _mintAuthority) public onlyOwner {
+        mintAuthority = _mintAuthority;
+    }
+
+    function setTrustedForwarder(
+        address _trustedForwarder
+    ) external onlyOwner {
+        trustedForwarder = _trustedForwarder;
+    }
+
+    function setTraitManager(address _traitManager) public onlyOwner {
+        traitManager = _traitManager;
+    }
+
+    function setRoyalty(
+        address _reciever,
+        uint96 _royaltySaleFeeNumerator
+    ) external onlyOwner {
+        _setDefaultRoyalty(_reciever, _royaltySaleFeeNumerator);
+    }
+
+    function setSale(
+        SaleType saleType,
+        uint256 start,
+        uint256 end,
+        bool isSaleOpen
+    ) external onlyOwner {
+        require(end > start);
+        require(end > saleRange[saleType].end);
+        saleRange[saleType].isSaleOpen = isSaleOpen;
+        saleRange[saleType].start = start;
+        saleRange[saleType].end = end;
+        saleRange[saleType].tokenIdCounter = Math.max(
+            saleRange[saleType].tokenIdCounter,
+            start
+        );
+    }
+
+    function setSalePrice(
+        uint256 _salePrice
+    ) external onlyOwner {
+        salePrice = _salePrice;
+    }
+
+    function _getTraitIndex(
+        uint256 _collectibleId,
+        string memory _trait
+    ) internal view returns (uint _idx) {
+        bytes32 traitHash = keccak256(abi.encodePacked(_trait));
+
+        _idx = traits[_collectibleId].length;
+        for (uint i = 0; i < traits[_collectibleId].length; i += 2) {
+            if (
+                keccak256(abi.encodePacked(traits[_collectibleId][i])) ==
+                traitHash
+            ) {
+                _idx = i;
+                break;
+            }
+        }
+    }
+
+    function isTraitWrapped(
+        uint256 _collectibleId,
+        string memory _trait
+    ) external view returns (bool isWrapped) {
+        uint idx = _getTraitIndex(_collectibleId, _trait);
+        if (idx < traits[_collectibleId].length) {
+            isWrapped = traitWrapped[_collectibleId][idx];
+        }
+    }
+
+    // Wraps a trait. Any unwrapped trait can be wrapped back,
+    // if token owner owns corresponding trait asset. 
+    function wrapTrait(
+        uint256 _collectibleId,
+        string memory _trait
+    ) external onlyTraitManager {
+        uint idx = _getTraitIndex(_collectibleId, _trait);
+        if (idx < traits[_collectibleId].length) {
+            require(!traitWrapped[_collectibleId][idx], "Already wrapped");
+
+            traitWrapped[_collectibleId][idx] = true;
+            emit MetadataUpdate(_collectibleId);
+        }
+    }
+
+    // Unwraps a trait. Unwrapped traits are considered 'unlinked' from the tokenId
+    // and can be self-custodied independently by the owner.
+    function unwrapTrait(
+        uint256 _collectibleId,
+        string memory _trait
+    ) external onlyTraitManager {
+        uint idx = _getTraitIndex(_collectibleId, _trait);
+        if (idx < traits[_collectibleId].length) {
+            require(traitWrapped[_collectibleId][idx], "Already unwrapped");
+
+            traitWrapped[_collectibleId][idx] = false;
+            emit MetadataUpdate(_collectibleId);
+        }
+    }
+
+    function batchSetTraits(
+        uint256 _from,
+        uint256 _to,
+        string[][] memory _traits
+    ) external onlyTraitManager {
+        for (uint i = _from; i < _to; i++) {
+            uint len = traits[i].length;
+            string[] memory toAdd = _traits[i - _from];
+
+            for (uint j = 0; j < toAdd.length; j++) {
+                traits[i].push(toAdd[j]);
+                traitWrapped[i][len + j] = true;
+            }
+        }
+
+        emit BatchMetadataUpdate(_from, _to);
+    }
+
+    function batchSetIdenticalTraits(
+        uint256 _from,
+        uint256 _to,
+        string[] memory _traits
+    ) external onlyTraitManager {
+        require( _traits.length % 2 == 0, "Traits must be even");
+
+        for (uint i = _from; i < _to; i++) {
+            uint len = traits[i].length;
+
+            for (uint j = 0; j < _traits.length; j++) {
+                traits[i].push(_traits[j]);
+                traitWrapped[i][len + j] = true;
+            }
+        }
+
+        emit BatchMetadataUpdate(_from, _to);
+    }
+
+    // Replaces trait value placeholder with a real one.
+    // Once done, it cannot be reverted or overwritten.
+    function revealTraitValue(
+        uint256 _collectibleId,
+        string memory _trait,
+        string memory _value
+    ) external onlyTraitManager {
+        uint idx = _getTraitIndex(_collectibleId, _trait);
+        if (idx < traits[_collectibleId].length) {
+            bool concealed =
+                keccak256(abi.encodePacked(traits[_collectibleId][idx + 1])) == TRAIT_PLACEHOLDER ||
+                StringUtils.strlen(traits[_collectibleId][idx + 1]) == 0;
+            
+            require(concealed, "Already revealed");
+            traits[_collectibleId][idx + 1] = _value;
+        }
+    }
+
+    function getTraits(
+        uint256 _collectibleId
+    ) external view returns (string[] memory) {
+        return traits[_collectibleId];
+    }
+
+    /* ======== LayerZero ======== */
+    /**
+     * @notice Used to send the collectible to another blockchain
+     * @param _destinationChainId uint16 Chain ID for destination chain
+     * @param _collectibleId uint256 Collectible ID for the Collectible to be transferred
+     */
+    function sendCollectibleToChain(
+        uint16 _destinationChainId,
+        uint256 _collectibleId
+    ) external payable virtual {
+        require(ownerOf(_collectibleId) == _msgSender(), "NOT AN OWNER");
+
+        // Burn the collectible on this chain so
+        // it can be reinstantiated on the destination chain
+        _burn(_collectibleId);
+
+        bool[] memory wrapping = new bool[](traits[_collectibleId].length);
+        for (uint256 i = 0; i < traits[_collectibleId].length; i++) {
+            wrapping[i] = traitWrapped[_collectibleId][i];
+        }
+
+        // Prepare payload to mint collectible
+        // and restore state on destination chain
+        bytes memory payload = abi.encode(
+            _msgSender(),
+            _collectibleId,
+            wrapping,
+            traits[_collectibleId]
+        );
+
+        delete (traits[_collectibleId]);
+        // Encode the adapterParams to require more gas
+        // for the destination function call
+        // (and LayerZero message fees)
+        // You can see an example of this here:
+        // https://layerzero.gitbook.io/docs/guides/advanced/relayer-adapter-parameters
+        uint16 version = 1;
+        uint256 gas = 200000;
+        bytes memory adapterParams = abi.encodePacked(version, gas);
+        (uint256 messageFee, ) = this.estimateFees(
+            _destinationChainId,
+            address(this),
+            payload,
+            false,
+            adapterParams
+        );
+
+        // Send the message to the LayerZero endpoint
+        // to initiate the Collectible transfer
+        require(msg.value >= messageFee, "NOT ENOUGH GAS");
+
+        _lzSend(
+            _destinationChainId,
+            payload,
+            payable(msg.sender),
+            address(0x0),
+            adapterParams,
+            msg.value
+        );
+
+        // Emit an event for transfer of
+        // Collectible to another chain
+        emit CollectibleSent(_msgSender(), _destinationChainId, _collectibleId);
+    }
+
+    /*
+     * @notice Receives the message from the endpoint on the destination chain
+     * to mint/remint the Collectible on this chain
+     * @param _srcChainId uint16 Chain ID for source chain
+     * @param _from uint256 address of the sender
+     * @param _nonce uint64 Nonce
+     * @param _payload bytes Data needed to restore the state of the Collectible on this chain
+     */
+    function _nonblockingLzReceive(
+        uint16 _srcChainId,
+        bytes memory _from,
+        uint64,
+        bytes memory _payload
+    ) internal virtual override {
+        address from;
+        assembly {
+            from := mload(add(_from, 20))
+        }
+
+        (
+            address toAddress,
+            uint256 collectibleId,
+            bool[] memory _wrapping,
+            string[] memory _traits
+        ) = abi.decode(_payload, (address, uint256, bool[], string[]));
+
+        // Mint the Collectible on this chain
+        _safeMint(toAddress, collectibleId);
+        for (uint i = 0; i < _traits.length; i++) {
+            string memory _trait = _traits[i];
+            traits[collectibleId].push(_trait);
+            traitWrapped[collectibleId][i] = _wrapping[i];
+        }
+
+        // Emit an event for reception of Collectible on destination chain
+        emit CollectibleReceived(toAddress, _srcChainId, collectibleId);
+    }
+
+    /**
+     * @notice Returns an estimate of cross chain fees for the message
+     * to the remote endpoint when doing a Collectible transfer
+     * @param _dstChainId uint16 Chain ID for destination chain
+     * @param _userApplication uint256 address of the sender UA
+     * @param _payload uint64 Data needed to restore the state of the Collectible on this chain
+     * @param _payInZRO bytes
+     * @param _adapterParams bytes
+     */
+    function estimateFees(
+        uint16 _dstChainId,
+        address _userApplication,
+        bytes calldata _payload,
+        bool _payInZRO,
+        bytes calldata _adapterParams
+    ) external view virtual returns (uint256 nativeFee, uint256 zroFee) {
+        return
+            ILayerZeroEndpoint(lzEndpoint).estimateFees(
+                _dstChainId,
+                _userApplication,
+                _payload,
+                _payInZRO,
+                _adapterParams
+            );
+    }
+
+    function buy() external payable {
+        require(msg.value >= salePrice);
+        SaleType _s;
+        uint256 _tokenId;
+        SaleRange memory genesisSaleRange = saleRange[SaleType.GenesisSale];
+        SaleRange memory nonGenesisSaleRange = saleRange[
+            SaleType.NonGenesisSale
+        ];
+
+        if (genesisSaleRange.tokenIdCounter < genesisSaleRange.end) {
+            _tokenId = genesisSaleRange.tokenIdCounter;
+            _s = SaleType.GenesisSale;
+        } else {
+            _tokenId = nonGenesisSaleRange.tokenIdCounter;
+            _s = SaleType.NonGenesisSale;
+        }
+
+        saleRange[_s].tokenIdCounter = _tokenId + 1;
+        require(_tokenId < saleRange[_s].end, "Limit reached.");
+        require(saleRange[_s].isSaleOpen == true, "Sale not open.");
+
+        (bool success, ) = payable(revenueReceiver).call{ value: msg.value }("");
+        require(success, "Transfer failed");
+
+        address _user = _msgSender();
+        _safeMint(_user, _tokenId);
+
+        emit TokenBought(_user, _tokenId);
+    }
+
+    // Can mint from any of the three 3 ranges
+    // Advisor, GenesisForSale, Public
+    function mint(SaleType _s, address _to) external onlyMintAuthority {
+        uint256 _nextId = saleRange[_s].tokenIdCounter;
+        require(_nextId + 1 < saleRange[_s].end, "Limit reached.");
+        saleRange[_s].tokenIdCounter = _nextId + 1;
+        _safeMint(_to, _nextId);
+    }
+
+    function burn(uint256 _collectibleId) external onlyMintAuthority {
+        _requireMinted(_collectibleId);
+        require(canBeBurned[_collectibleId] == true, "Burn not allowed");
+        delete (traits[_collectibleId]);
+        _burn(_collectibleId);
+    }
+
+    function setBurningPermission(
+        uint256 _collectibleId,
+        bool _permission
+    ) external {
+        _requireMinted(_collectibleId);
+        require(_msgSender() == ownerOf(_collectibleId));
+        canBeBurned[_collectibleId] = _permission;
+    }
+
+    function supportsInterface(
+        bytes4 interfaceId
+    )
+        public
+        view
+        virtual
+        override(ERC721, ERC721Royalty, IERC165)
+        returns (bool)
+    {
+        return super.supportsInterface(interfaceId);
+    }
+
+    function buildMetadata(
+        uint256 _collectibleId
+    ) internal view returns (string memory) {
+        _requireMinted(_collectibleId);
+
+        string memory b64Prefix = "data:application/json;base64,";
+        bytes memory metadataBytes;
+        string memory attributes;
+
+        if (traits[_collectibleId].length > 0) {
+            for (uint256 i = 0; i < traits[_collectibleId].length; i += 2) {
+                string memory key = traits[_collectibleId][i];
+                string memory value = traits[_collectibleId][i + 1];
+
+                // Only wrapped traits are displayed,
+                // wrapped status is checked on the trait key
+                if (traitWrapped[_collectibleId][i]) {
+                    attributes = string.concat(
+                        attributes,
+                        StringUtils.strlen(attributes) == 0 ? "" : ",",
+                        '{"trait_type":"',
+                        key,
+                        '","value":"',
+                        value,
+                        '"}'
+                    );
+                }
+            }
+        } else {
+            attributes = "";
+        }
+
+        metadataBytes = bytes(
+            abi.encodePacked(
+                '{"name":"Lootfinity Token","description":"Lootfinity,The Ultimate Reward Token","image": "',
+                imageURI,
+                '","attributes":[',
+                attributes,
+                "]}"
+            )
+        );
+
+        return
+            string(abi.encodePacked(b64Prefix, Base64.encode(metadataBytes)));
+    }
+
+    function tokenURI(
+        uint256 _collectibleId
+    ) public view override(ERC721) returns (string memory) {
+        return buildMetadata(_collectibleId);
+    }
+
+    function isTrustedForwarder(address sender) internal view returns (bool) {
+        return sender == trustedForwarder;
+    }
+
+    function _msgSender()
+        internal
+        view
+        virtual
+        override
+        returns (address sender)
+    {
+        if (isTrustedForwarder(msg.sender)) {
+            // The assembly code is more direct than the Solidity version using `abi.decode`.
+            /// @solidity memory-safe-assembly
+            assembly {
+                sender := shr(96, calldataload(sub(calldatasize(), 20)))
+            }
+        } else {
+            return super._msgSender();
+        }
+    }
+
+    function _msgData()
+        internal
+        view
+        virtual
+        override
+        returns (bytes calldata)
+    {
+        if (isTrustedForwarder(msg.sender)) {
+            return msg.data[:msg.data.length - 20];
+        } else {
+            return super._msgData();
+        }
+    }
+}

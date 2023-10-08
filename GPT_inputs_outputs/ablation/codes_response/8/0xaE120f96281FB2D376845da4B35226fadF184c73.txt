@@ -1,0 +1,27 @@
+Sure! I'll do my best to come up with some new gas-wasting patterns in Solidity and their solutions.
+
+9. **Excessive use of the `require` statement**: It's common to use `require` to check conditions in Solidity, but excessive use of this statement can increase gas consumption. This is because `require` statements will throw an exception if the condition is not met, and the Ethereum Virtual Machine (EVM) needs to consume gas to process these exceptions.
+
+   - Discovery Process: I analyzed the EVM's behavior when a `require` statement fails and noticed that the exception handling process consumes gas.
+
+   - Fix: Try to minimize the use of `require` by structuring your code to avoid conditions that would cause the `require` statement to throw an exception. Also, consider using other control flow structures, such as `if` statements, to handle conditions more efficiently.
+
+   - Impact Score: Readability: 4; Security: 3; Maintainability: 5. Using fewer `require` statements might make the code slightly less readable, and if not handled carefully, could potentially affect security. However, it has no impact on maintainability.
+
+10. **Unoptimized use of the `SSTORE` operation**: The `SSTORE` operation, which is used to store data in the contract’s storage, is one of the most expensive operations in terms of gas in Solidity.
+
+   - Discovery Process: By studying the gas costs of various EVM operations, I noted that `SSTORE` is particularly expensive.
+
+   - Fix: Minimize the use of storage as much as possible. Use memory variables for intermediate computations, and only store the final result in storage. If multiple values need to be stored, consider using data structures like structs or arrays to store them in a single `SSTORE` operation.
+
+   - Impact Score: Readability: 5; Security: 5; Maintainability: 4. This optimization should not affect readability or security, but it might make the code slightly more complex to maintain because of the use of data structures.
+
+11. **Calling external contracts unnecessarily**: Calling external contracts can be gas-expensive. Each external call to a contract requires a significant amount of gas, and the cost increases if the called contract further calls other contracts.
+
+   - Discovery Process: While reading about inter-contract communication in Solidity, I understood the costs associated with external contract calls.
+
+   - Fix: Minimize the number of external contract calls. If data from an external contract is needed multiple times, consider making a single call and storing the data in memory for use throughout the contract.
+
+   - Impact Score: Readability: 5; Security: 3; Maintainability: 5. Reducing external calls can actually improve readability and maintainability. However, it can impact security if not handled carefully, as storing contract state in memory can be risky if the external contract's state changes.
+
+Regarding the prompt and reasoning process, I think the prompt was clear and contained all the necessary information for me to complete the task. As for the reasoning process, it involved understanding the EVM's operation, how gas is consumed, and how Solidity contracts are structured. The key to finding gas-optimization opportunities is to understand where gas is consumed and to find ways to minimize these operations.

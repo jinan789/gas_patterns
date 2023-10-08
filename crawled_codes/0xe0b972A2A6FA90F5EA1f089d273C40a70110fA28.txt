@@ -1,0 +1,62 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.9;
+
+import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+
+contract Arcomia is Initializable, ERC20Upgradeable, PausableUpgradeable, AccessControlUpgradeable {
+    bytes32 public constant AUTHORIZED = keccak256("AUTHORIZED");
+    mapping(address => bool) private _list;
+
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    // constructor() {
+    //     _disableInitializers();
+    // }
+
+    function initialize() initializer public {
+        __ERC20_init("Arcomia", "RCM");
+        __Pausable_init();
+        __AccessControl_init();
+
+        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
+        _grantRole(AUTHORIZED, msg.sender);
+        _mint(msg.sender, 4500000000 * 10 ** decimals());
+    }
+
+    function pause() external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _pause();
+    }
+
+    function unpause() external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _unpause();
+    }
+
+    function list(address[] memory _addresses) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        for (uint i = 0; i < _addresses.length; i++) {
+            _list[_addresses[i]] = true;
+        }
+    }
+
+    function unlist(address[] memory _addresses) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        for (uint i = 0; i < _addresses.length; i++) {
+            _list[_addresses[i]] = false;
+        }
+    }
+
+    function _isListed(address _address) internal view returns(bool) {
+        return _list[_address];
+    }
+
+    function _beforeTokenTransfer(address from, address to, uint256 amount)
+        internal
+        override
+    {
+        require(!_isListed(_msgSender()));
+        if (!hasRole(AUTHORIZED, _msgSender())) {
+            _requireNotPaused();
+        }
+        super._beforeTokenTransfer(from, to, amount);
+    }
+}

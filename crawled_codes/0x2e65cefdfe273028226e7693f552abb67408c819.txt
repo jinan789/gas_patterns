@@ -1,0 +1,80 @@
+// SPDX-License-Identifier: MIT
+
+pragma solidity ^0.8.0;
+
+/// @title: DINHAREO OE
+/// @author: manifold.xyz
+
+import "./manifold/ERC1155Creator.sol";
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//                                                                                                                                //
+//                                                                                                                                //
+//                                                         ..,,;;;;,'...                                                          //
+//                                                      .,ldxkkkOOOOOkkdl;.                 ...                                   //
+//                                                     .lxddxkkkkOOOOOOO0Okc.              ....                                   //
+//                                                     'ddoddxkkOOOOOOOOOOkkl.              ....                                  //
+//                                                     .colodxkkkkkkkxdoc;,:lc,.            ....                                  //
+//                                                      .';:cloolcccc:;'...'::;.            .....                                 //
+//                                                        ..........'''.....:;               ....                                 //
+//                                                         ..    ......... .c:               ....                                 //
+//                                      .......            ..     ........ 'o;                ....                                //
+//                                 .';codxxxdoc;'    .,,'';:;.     ......  ;o'                ....                                //
+//                              .;cdkkkkkxxo:'.;ccc::oxxkxkOkol:,,,,..... .cl.                ....                                //
+//                          .,cokOOOOOkxxo:..  .coxxoldxxdxOOOOOkO0Oo,... 'o,                  ....                               //
+//                       ':lxkkkkkkkxdl:,.    ,lllddlloddooxkOkxkOOO0d'...cc.                  ....                               //
+//                     .,cc:;;;;;,,''..      .:l;:ooccloolldxkxdxkOO0x,..:l'                   .....                              //
+//                      ...                  .;:,,clcclodoodxkxxxkkkOx:,co,                     ....                              //
+//                       ....             .. .,ccldxxxkkkkkkkkkkkkkkkkkkkxo:,.                  ....                              //
+//                                        ';:ldxkkkkOOOOOkxxxxkkkkkkOOOOO000Oxl'                 ....                             //
+//                                      .;oxxkkkkkkkOOOO0OxxxxxkkkkkOOOOOkkkkkkkd,               ....                             //
+//                                    .:dxxxxkkkkkkkkO000kddddxxkkkkxxxdooolllloxko.             ....                             //
+//                                  .;loodddxxxxxxxxkOO0Okolooddxdddddxkkkkkkkxolldl.             ...                             //
+//                                 .:l::;;::cclloooddxkkkkolcllllooddoollllollodxdoo,             ..      ......                  //
+//                                 ';,;,,,,,,',,,,;:cloodkxolllclooodxkO0KKKKOxoccdkc.             .          ........            //
+//                                 .',;;,''''''''.'''',:ldxddxdodO0K0doOXXXXXXNN0ocxx.             ..            .......          //
+//                                 ..,'',:lddddol;.';;,;codxkkOO000Od:;oOOOO00KXXKxdk:             ..            .                //
+//                                 ....cxOO00OOOx;.;xxl;;:odook0OkkkkkkxxxkkkkkkO0Ok0o.             .                             //
+//                                 ...:odddoddxkkkkO000OxxxkkO0KKKKKKKKKKKK0000000OOOx'             ....          .               //
+//                                 .,;::::codxkkkkkkOOO00KK0O00K0KKKKKKKKK0000000KK00O:             ,:.   .'.     .               //
+//                                 .,:loodxddddddddddddxkOkdxkOOOOO0000KK0OO0OOOO00000o.        .::.'l, ....      .               //
+//                                 .ckxdolloddocc:;,,:cloxddddxxolllooddxkkOOOkOOOkkkkl.        .,. .cc...                        //
+//                                 .;c:;;:cldxdlollcldkO0000KKKKOxxxkkOkkOkkOOkkxxxddo,          ..  'c'           .              //
+//                                  ..'',;:cloddxxxoodddkkxxOOOO00000000000kkkxxddooo:.        .''.  .:;.          .              //
+//                                   ..',,;:cclloooollllloooddxkO00OOOOOOOOkxddoollc;.      ..''....  ',.                         //
+//                                    ..',;:::cccccllooddxxxkkkkkkkkkxxxxddoolcc::;,.     .,:,.  .... ...                         //
+//                                      ..'',;;:::::cccllllooooooooollllccc:;;,,'..     ..,,.     ..  ...                         //
+//                                          ......'',,,,;;;;;;;;;;;;;;;,,,'.....       .'..       .... ..                         //
+//                                                       ...... ........              ... .'.     ....  ..                        //
+//                                                      .  .....''',,;;;,..               '' .;'. ...    ..                       //
+//                                                   .......',,;;:::ccccccc:,'..            .:xkd:'..     .                       //
+//                                             .........',,;;::ccccllcc::::::cc:,.           .'cdkk:.                             //
+//                                          .....''',,,,;:clllllloooool:::;;;;;;;;,...        ..,lxx,                             //
+//                                          ......',,;;:::llldooddooolc:::;;;,,,,,;:'.,,,,.......,oxd,  ..                        //
+//                                         .......',;;;cc:clddddddxoccc:;,,',,'''',,...',;::cldoccdkko'...                        //
+//                                        'c;'....';;;;cc:cloooddddocc:;'.';,'',,:loc',::loddooxOO00Oo.                           //
+//                                       .cool:;'',;:;;ccc:cllloolllcc:;,..':cccllc:;';ddolldxxkO0OOOc.                           //
+//                                      .:ddddoc:;;::;:cc::::cccllllcc:;;'. .':ccc:;,..cdxxdldkOOOkkk:                            //
+//                                      ,oxxddlc;,;:;;clc::::ccclccccc::;,.   ..,:::;..:;cdkkkkkkkkkx,                            //
+//                                     .:ldddol:,;::::ccc::::cclllccccc:;,'.     .',,.:l',coxxxxxxxko.                            //
+//                                    .okooddl:;;;:::clcccccccclllllccc::;,.       ...,l;;:coddddxxx:.                            //
+//                                    ;O0Okxdol;,;:::llcccccccclllllccc::;,.         ..:;',:cloddddd,                             //
+//                                   .d00000Oko,;c::cllccclddccccclccc::;;,.          .,,..;coodddodc.                            //
+//                                   :O00K00Okdcc:;:llllllloxxoccccccc::;,'.         ...''';clloooo:;.                            //
+//                                  ,k00KK00Oxc,',,;::ccllllldkkdllccc:::;''.        ....'.';ccccoc'.                             //
+//                                 ;k000K00OOx;....';;;;;::cccldxocccc::;,...       ....,;',clc:;,.                               //
+//                               .cO0000Okkkxd;  ....''''',,,;;:::::::;,'.         .'.  .,,;oxx:.                                 //
+//                               .',:looc:::c:. ....';::::clllloooooooc:;'        .'.  .....','.                                  //
+//                                .,:clolc;'..  ....;:ccclodddoooooollc:,.         ..   .'cl:'..                                  //
+//                                .',,;::;'.      ...,,;;;:clllllllllcc:'              .'lkkc...                                  //
+//                                 'coxxo:.        ....',;clooooolc:;'...             .'.........                                 //
+//                                .',;::;;.             .........                      ..                                         //
+//                                                                                                                                //
+//                                                                                                                                //
+//                                                                                                                                //
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+contract DINOE is ERC1155Creator {
+    constructor() ERC1155Creator("DINHAREO OE", "DINOE") {}
+}

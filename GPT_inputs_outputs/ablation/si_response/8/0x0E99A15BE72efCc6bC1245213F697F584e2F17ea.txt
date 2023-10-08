@@ -1,0 +1,38 @@
+Here are a few potential gas-wasting patterns I've identified in the provided Solidity code. These patterns are not covered by your initial list:
+
+1. **Repeated external contract interface calls**: There are multiple instances where the same function of an external contract is called more than once. For example, `IHTokenRewards(hToken).totalSupply()` is called in the `hvCheckpoint` and `hvUpdateLiquidityLimit` functions. Each external call to a contract consumes more gas than a local function call or variable access. To save gas, consider storing the result of the first call in a memory variable and reusing it when needed. This pattern was identified by scanning the code for repeated external function calls.
+
+    ```solidity
+    uint256 hTokenTotalSupply = IHTokenRewards(hToken).totalSupply();
+    if (hTokenTotalSupply != 0) {
+      IHTokenRewards(hToken).checkpoint(_addr, _calRelativeWeightByAllocation(hToken), _st);
+    }
+    ```
+
+2. **Unnecessary storage reads**: The `block.timestamp` is read multiple times in the `hvCheckpoint` function. Each storage read consumes gas, and this cost can be avoided by storing the value in a memory variable. This pattern was identified by scanning the code for repeated reads of blockchain-specific global variables.
+
+    ```solidity
+    uint256 currentTimestamp = block.timestamp;
+    ```
+
+3. **Unnecessary contract creations**: The code creates new contract interfaces multiple times, such as `IHTokenRewards(hToken)`. Each contract creation costs a significant amount of gas. This can be optimized by creating the contract interface once and reusing it whenever necessary. This pattern was identified by scanning the code for repeated contract interface creations.
+
+    ```solidity
+    IHTokenRewards hTokenRewards = IHTokenRewards(hToken);
+    ```
+
+4. **Repeated string concatenation**: The `initialize` function has a string concatenation operation to form the name of the contract, which consumes more gas compared to other operations. If this operation is performed frequently, it could be optimized by pre-computing this value or computing it once and storing it. This pattern was identified by scanning the code for string concatenation operations.
+
+    ```solidity
+    name = string.concat(IERC20Detailed(_underlyingAsset).symbol(), ' LendingGauge');
+    ```
+
+5. **Inefficient loops**: The `addPhases` function deletes the existing phases and iterates over the input array to add new ones. This could be gas-inefficient if the input array is large. Consider using a mapping for constant-time lookup and addition instead of an array. This pattern was identified by scanning the code for loops that iterate over large arrays.
+
+    ```solidity
+    for (uint256 i = 0; i < _phases.length; i++) {
+      _addPhase(_phases[i]);
+    }
+    ```
+
+Remember, gas optimization in Solidity is a trade-off. While it's important to write efficient code, readability and security should not be compromised. For example, while removing redundant operations can save gas, it may make the code harder to understand and maintain. Therefore, always consider the impact on the overall code quality when optimizing for gas usage.

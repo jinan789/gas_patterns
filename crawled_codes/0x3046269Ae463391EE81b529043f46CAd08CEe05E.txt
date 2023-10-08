@@ -1,0 +1,75 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.9;
+
+import "./XERC721.sol";
+import "../interface/IFractonDAO.sol";
+import "../interface/IFractonSwap.sol";
+import "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC1155/IERC1155Receiver.sol";
+import "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+contract X is XERC721, ERC1155Holder, Ownable {
+    IFractonDAO private _fractonDAO;
+    IFractonSwap private _fractonSwap;
+    string private _baseUri;
+    uint256 private _totalSupply;
+
+    constructor(
+        address fractonDAO_,
+        address fractonSwap_
+    ) XERC721("FractonX Genesis", "X") {
+        _fractonDAO = IFractonDAO(fractonDAO_);
+        _fractonSwap = IFractonSwap(fractonSwap_);
+        _totalSupply = 1200;
+        _setApprovalForAll(address(this), fractonSwap_, true);
+        __unsafe_increaseBalance(address(this), totalSupply());
+    }
+
+    function batchFractonSwap(uint256 startTokenId, uint256 continueAmount) external onlyOwner {
+        for (uint256 i = startTokenId; i < startTokenId + continueAmount; i++) {
+            fractonDAO().swapNFTtoMiniNFT(address(this), i);
+        }
+        address miniNFT = fractonSwap().NFTtoMiniNFT(address(this));
+        uint256 miniNFTBalance = IERC1155(miniNFT).balanceOf(address(this), 0);
+        fractonSwap().swapMiniNFTtoFFT(miniNFT, 0, miniNFTBalance);
+        address FFT = fractonSwap().miniNFTtoFFT(miniNFT);
+        uint256 FFTBalance = IERC20(FFT).balanceOf(address(this));
+        IERC20(FFT).transfer(msg.sender, FFTBalance);
+    }
+
+    function approveToSwap1155() external onlyOwner {
+        address miniNFT = fractonSwap().NFTtoMiniNFT(address(this));
+        IERC1155(miniNFT).setApprovalForAll(address(fractonSwap()), true);
+    }
+
+    function setBaseUri(string memory newBaseUri) external onlyOwner {
+        _baseUri = newBaseUri;
+    }
+
+    function _baseURI() internal view override returns (string memory) {
+        return _baseUri;
+    }
+
+    function supportsInterface(bytes4 interfaceId) 
+    public
+    pure
+    override(XERC721, ERC1155Receiver) 
+    returns (bool) {
+        return 
+        interfaceId == type(IERC721).interfaceId || 
+        interfaceId == type(IERC1155Receiver).interfaceId;
+    }
+
+    function fractonDAO() public view returns(IFractonDAO) {
+        return _fractonDAO;
+    }
+
+    function fractonSwap() public view returns(IFractonSwap) {
+        return _fractonSwap;
+    }
+
+    function totalSupply() public view returns(uint256) {
+        return _totalSupply;
+    }
+}

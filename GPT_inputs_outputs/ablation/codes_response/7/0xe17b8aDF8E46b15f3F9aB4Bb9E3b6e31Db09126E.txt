@@ -1,0 +1,35 @@
+Sure, I'd be happy to help. Here are a few additional gas-wasting patterns in Solidity:
+
+9. **Inefficient use of data types**: Using larger data types (like `uint256`) when smaller ones would suffice (like `uint8`) can waste gas because of the additional storage required. This wastage can be significant when dealing with arrays or mappings.
+
+   - **Finding Process**: This pattern was discovered by considering the gas cost associated with variable storage. The larger the data type, the more gas it costs to store and retrieve it.
+   
+   - **Fix Process**: To fix this, you should use the smallest data type that can handle your needs. For example, if a variable will never be larger than 255, you can use `uint8` instead of `uint256`.
+   
+   - **Tradeoff Score**: Readability: 5; Security: 5; Maintainability: 3. There's not significant impact on readability or security, but maintainability could be slightly affected if the data needs surpass the capacity of the smaller data type in the future.
+
+10. **Excessive use of external function calls**: External function calls are more expensive than internal ones. If a function is called multiple times and doesn't interact with other contracts, it could be marked as internal to save gas.
+
+   - **Finding Process**: This pattern was discovered by considering the cost of function calls in Solidity. External function calls are more expensive because they require more gas for message passing.
+   
+   - **Fix Process**: To fix this, you can change the function visibility to `internal` if it doesn't need to interact with other contracts, and it's not part of the contract's public API.
+   
+   - **Tradeoff Score**: Readability: 5; Security: 3; Maintainability: 4. This change should not affect readability, but could potentially impact security and maintainability if the function needs to be accessed externally in the future.
+
+11. **Inefficient storage layout in structs**: If a struct contains mixed data types, Solidity will waste storage space due to data alignment. 
+
+   - **Finding Process**: This pattern was discovered by considering the layout of data in storage. Solidity aligns data to 32 bytes, which can result in wasted storage space when mixed data types are used.
+   
+   - **Fix Process**: To fix this, you should organize struct fields by their size. Place the larger data types (like `uint256`) at the beginning and the smaller ones (like `bool` or `uint8`) at the end.
+   
+   - **Tradeoff Score**: Readability: 4; Security: 5; Maintainability: 4. This change could slightly affect readability since fields are not ordered logically, but it shouldn't affect security or maintainability.
+
+12. **Redundant Ether transfers**: Multiple Ether transfers cost more gas than a single transfer. 
+
+   - **Finding Process**: This pattern was discovered by considering the cost of Ether transfers. Each Ether transfer costs a certain amount of gas, so multiple transfers cost significantly more.
+   
+   - **Fix Process**: If possible, accumulate the total amount to be transferred and make a single transfer at the end instead of multiple small transfers.
+   
+   - **Tradeoff Score**: Readability: 4; Security: 2; Maintainability: 4. This change could slightly affect readability and significantly affect security as accumulating transfers can make contracts more susceptible to reentrancy attacks.
+
+To improve this task, it would be beneficial to provide more specific examples or use-cases, as it can be challenging to come up with new patterns in abstract. Reflecting on the process, understanding the cost of operations in Solidity is crucial for identifying gas-wasting patterns. The more you work with Solidity and understand the Ethereum Virtual Machine (EVM), the more likely you are to identify these patterns.

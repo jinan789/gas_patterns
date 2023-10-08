@@ -1,0 +1,22 @@
+// SPDX-License-Identifier: MIT
+
+pragma solidity ^0.8.0;
+
+/// @title: 0.1 BTC For Hungarians
+/// @author: manifold.xyz
+
+import "./manifold/ERC1155Creator.sol";
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////
+//                                                                                                  //
+//                                                                                                  //
+//    With this collection, I want to spread awareness about the importance of holding Bitcoin.     //
+//    I am aiming to assist Hungarians in acquiring 0.1 BTC.                                        //
+//                                                                                                  //
+//                                                                                                  //
+//////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+contract BTCHU is ERC1155Creator {
+    constructor() ERC1155Creator("0.1 BTC For Hungarians", "BTCHU") {}
+}

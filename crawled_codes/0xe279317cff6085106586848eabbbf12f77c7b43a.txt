@@ -1,0 +1,21 @@
+// SPDX-License-Identifier: MIT
+
+pragma solidity ^0.8.0;
+
+/// @title: Le best nft
+/// @author: manifold.xyz
+
+import "./manifold/ERC721Creator.sol";
+
+//////////////////
+//              //
+//              //
+//    OuiOui    //
+//              //
+//              //
+//////////////////
+
+
+contract LBN is ERC721Creator {
+    constructor() ERC721Creator("Le best nft", "LBN") {}
+}

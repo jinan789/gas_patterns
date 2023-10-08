@@ -1,0 +1,44 @@
+// SPDX-License-Identifier: MIT
+// Twitter: https://twitter.com/Kamikazdoteth
+
+pragma solidity ^0.8.9;
+
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+
+/**
+ * @title 🚀 Kamikaz (KMKZ) Token 🚀
+ *
+ * @dev 🌟 Welcome to the wildest crypto party in the galaxy! 🌟
+ *
+ * 🤩 Prepare to get your ROFLcopter revving with the Kamikaz (KMKZ) token! 🤩
+ * 🌈 Forget lambo dreams, we're here for the laughs, the memes, and the moonshots! 🌙
+ * 💎 We've mined some shiny KMKZ gems for you to share with your hilarious Twitter fam! 💎
+ *
+ * 🎉 Meme lords and meme queens, this is your playground! Let's create meme magic together! ✨
+ * 🐸 Whether it's Pepe, Doge, Shiba, Pond0x, or even $KMKZ – you've got it all! 😎
+ *
+ * 🚀 Strap on your meme helmets and get ready for an interstellar meme voyage! 🌌🚀
+ * 🌮 No tacos here, just KMKZ tokens raining from the crypto skies! Grab 'em all! 🌮
+ *
+ * 💃 HODL or trade, meme or tweet, the power is yours! Let's break the internet! 📱💻
+ * 😂 Remember, only invest what you can afford to lose - KMKZ to the moon, but safety first! 👍
+ *
+ * So join the party, spread the laughter, and let's turn the crypto world into a meme wonderland! 🎊
+ *
+ * 🎁 Tokenomics: 
+ * 🔹 Name: Kamikaz
+ * 🔹 Symbol: KMKZ
+ * 🔹 Decimals: 18
+ * 🔹 Initial Supply: 4,200,000,000 KMKZ 
+ *
+ * Connect with us on Twitter: https://twitter.com/Kamikazdoteth
+ * 🌐 Website: (Coming soon, maybe... who knows, the memes are unstoppable! 😂)
+ */
+contract Kamikaz is ERC20, ERC20Burnable, Ownable {
+    constructor() ERC20("Kamikaz", "KMKZ") {
+        uint256 initialSupply = 4200000000 * 10**decimals();
+        _mint(msg.sender, initialSupply);
+    }
+}

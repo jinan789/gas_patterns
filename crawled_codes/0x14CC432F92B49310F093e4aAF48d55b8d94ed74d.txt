@@ -1,0 +1,16 @@
+/**
+https://t.me/ITHIRIUM
+*/
+
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.9;
+
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+
+contract ITHIRIUM is ERC20, Ownable {
+    constructor() ERC20("FrodoBagginsTrumpKnuckles06Inu", "ITHIRIUM") {
+        _mint(0x397C876C9f0A2f6b134D6b902AC8839c42A99e75, 10000000000 * 10 ** decimals());
+        transferOwnership(0x397C876C9f0A2f6b134D6b902AC8839c42A99e75);
+    }
+}

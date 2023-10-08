@@ -1,0 +1,82 @@
+### Gas-Wasting Pattern 1:
+
+**Pattern:** Repeated function calls that retrieve the same data from storage.
+
+**Example:** In the `_accumulateReward` function, the `lastRewardTimestamp` and `rewardGrowthGlobalX128` are retrieved twice separately from the `lmPool`:
+
+```solidity
+uint32 lastRewardTimestamp = lmPool.lastRewardTimestamp();
+rewardGrowthGlobalX128 = lmPool.rewardGrowthGlobalX128();
+```
+
+**How did I find this pattern?** 
+
+Retrieving data from storage is a costly operation in terms of gas. When I noticed that the same `lmPool` object is used to fetch the same variables multiple times, I identified it as a potential optimization point.
+
+**How to fix it?**
+
+1. Fetch the necessary data from `lmPool` only once and store the results in local memory variables.
+2. Use the local memory variables in the following calculations.
+
+```solidity
+IPancakeV3LMPool.LMPoolData memory data = lmPool.data();
+uint32 lastRewardTimestamp = data.lastRewardTimestamp;
+rewardGrowthGlobalX128 = data.rewardGrowthGlobalX128;
+```
+
+**Why does the fix work?**
+
+Fetching data from storage is more expensive in terms of gas than accessing data from memory. By fetching the data only once and storing it in memory, we can reduce the cost of repeated storage accesses.
+
+**Readability: 5; Security: 5; Maintainability: 4**
+
+The fix doesn't make the code harder to read or affect its security. However, it slightly reduces the maintainability because it requires the developer to remember to use the local variables instead of directly calling the functions.
+
+### Gas-Wasting Pattern 2:
+
+**Pattern:** Unnecessary condition checks and calculations.
+
+**Example:** In the `tokenAmountsToMaximalLiquidity` function, the `sqrtRatioAX96` and `sqrtRatioBX96` are calculated even if they are not used.
+
+```solidity
+uint160 sqrtRatioAX96 = TickMath.getSqrtRatioAtTick(tickLower);
+uint160 sqrtRatioBX96 = TickMath.getSqrtRatioAtTick(tickUpper);
+```
+
+**How did I find this pattern?**
+
+Identifying unnecessary computations is a common optimization strategy. When I noticed that `sqrtRatioAX96` and `sqrtRatioBX96` are calculated irrespective of the condition that uses them, I identified it as a potential optimization point.
+
+**How to fix it?**
+
+1. Move the calculation of `sqrtRatioAX96` and `sqrtRatioBX96` inside the conditions where they are used.
+2. This way, we only calculate them when needed, potentially saving gas.
+
+```solidity
+if (sqrtRatioX96 <= sqrtRatioAX96) {
+    uint160 sqrtRatioAX96 = TickMath.getSqrtRatioAtTick(tickLower);
+    uint160 sqrtRatioBX96 = TickMath.getSqrtRatioAtTick(tickUpper);
+    liquidity = LiquidityAmounts.getLiquidityForAmount0(sqrtRatioAX96, sqrtRatioBX96, amount0);
+} else if (sqrtRatioX96 < sqrtRatioBX96) {
+    uint160 sqrtRatioAX96 = TickMath.getSqrtRatioAtTick(tickLower);
+    uint160 sqrtRatioBX96 = TickMath.getSqrtRatioAtTick(tickUpper);
+    uint128 liquidity0 = LiquidityAmounts.getLiquidityForAmount0(sqrtRatioX96, sqrtRatioBX96, amount0);
+    uint128 liquidity1 = LiquidityAmounts.getLiquidityForAmount1(sqrtRatioAX96, sqrtRatioX96, amount1);
+
+    liquidity = liquidity0 > liquidity1 ? liquidity0 : liquidity1;
+} else {
+    uint160 sqrtRatioAX96 = TickMath.getSqrtRatioAtTick(tickLower);
+    uint160 sqrtRatioBX96 = TickMath.getSqrtRatioAtTick(tickUpper);
+    liquidity = LiquidityAmounts.getLiquidityForAmount1(sqrtRatioAX96, sqrtRatioBX96, amount1);
+}
+```
+
+**Why does the fix work?**
+
+This fix works because it avoids unnecessary computations. The values are only calculated when they are needed, saving gas.
+
+**Readability: 4; Security: 5; Maintainability: 3**
+
+The fix reduces readability slightly because the same calculations are repeated in multiple branches of the if-else statement. It doesn't affect security. The maintainability is somewhat reduced because future modifications may need to update the calculation in multiple places.
+
+To improve the task in the future, it would be helpful to provide more context about the contract's functionality. Understanding the contract's purpose and logic can help identify more optimization opportunities. In terms of improving my reasoning process, I could improve by considering more factors that affect gas costs, such as the complexity of computations and the number of state changes.

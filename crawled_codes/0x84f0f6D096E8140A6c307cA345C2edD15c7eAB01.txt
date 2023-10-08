@@ -1,0 +1,221 @@
+// SPDX-License-Identifier: MIT
+// Staking Pools $EME
+// https://emem.pro
+
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@emem/EMEMcoin.sol";
+
+contract StakingEME is Ownable {
+    uint256 public slot = 4e26; //400,000,000 $EME start
+    uint256 halvingTime;
+    uint256[] public totalPool = new uint256[](4); //max $eme in pool
+    uint256[] public reserve = new uint256[](4); //reserve for pay
+    uint256[] public paid = new uint256[](4); //sum withdraw $eme
+    uint256[] public reward = new uint256[](4); //reward 1 sec
+    uint256[] public points  = new uint256[](4); //score in pools for 1 slot
+    uint256[] public periodDepositeDay  = new uint256[](4); //min perid deposite in pool 
+    uint256 private day = 86400; //1 day = 86400 sec
+    bool public pause;
+
+    uint epoh = 1;
+    address operator;
+    address AddressCoin;
+    EMEMcoin public coin;
+
+    event Received(address, uint);
+
+    receive() external payable {
+        emit Received(msg.sender, msg.value);
+    }
+
+    struct Users {
+        uint256 score;
+        uint256[] onDeposit;
+        uint256[] lastTimePool;
+        uint256[] lastTimeReward;
+        uint256[] reward;
+    }
+
+    mapping(address => Users) private _user;
+    mapping(address => bool) private checkOperator;
+
+    constructor(address _AddressCoin){
+        AddressCoin = _AddressCoin;
+        coin = EMEMcoin(AddressCoin);
+        checkOperator[msg.sender] = true;
+        halvingTime = block.timestamp;
+        periodDepositeDay[0] = 10;
+        periodDepositeDay[1] = 30;
+        periodDepositeDay[2] = 92;
+        periodDepositeDay[3] = 365;
+        points[0] = 6;
+        points[1] = 8;
+        points[2] = 10;
+        points[3] = 12;
+        totalPool[0] = 42528*1e24; //42,528,000,000 $EME
+        totalPool[1] = 6048*1e25; //60,480,000,000 $EME
+        totalPool[2] = 8096*1e25; //80,960,000,000 $EME
+        totalPool[3] = 7884*1e25; //78,840,000,000 $EME
+        reward[0] = 23148148148; //APR 73%
+        reward[1] = 34722222222; //APR 109.5%
+        reward[2] = 46296296296; //APR 146%
+        reward[3] = 69444444444; //APR 219%
+    }
+
+//For only operator
+    modifier onlyOperator() {
+    require(checkOperator[msg.sender]);
+    _;                              
+    } 
+
+//Deposite $EME
+function depositeEME(uint typePool, uint256 amount) external {
+    require(pause, "Error: $EME deposits in staking pools have been suspended!"); 
+    require(typePool < 4, "Error: Non-existent staking pool!"); 
+    uint256 realTime = block.timestamp;
+    verifyHalving(realTime);
+    require(amount >= slot/2, "Error: You can not deposit $EME less than the amount of 1/2 slot!"); 
+    require(coin.balanceOf(msg.sender) >= amount, "Error: You are trying to deposit more $EME than you have!"); 
+    Users storage user = _user[msg.sender];
+    if (user.reward.length < 1) {
+        regUser(msg.sender);
+        }
+    uint256 freeLimitsUser = (user.score / 10) * slot;
+    for (uint i = 0; i < 4; i++) {
+        freeLimitsUser -= user.onDeposit[i];
+    } 
+    require(freeLimitsUser >= amount, "Error: $EME token limit for staking on your account has been exhausted!");
+    require(totalPool[typePool] - reserve[typePool]  > 0, "Error: All $EME tokens are currently reserved in this pool! There are no free slots!");
+    reserve[typePool] += (periodDepositeDay[typePool] * day * reward[typePool] * (amount/1e18));
+    user.score += (amount / slot) * points[typePool];
+    if (user.lastTimePool[typePool] > 0) {
+        uint256 timeIntervalRR = (user.lastTimeReward[typePool] - user.lastTimePool[typePool]);
+        uint256 timeInterval = (realTime - user.lastTimePool[typePool]);
+        if (periodDepositeDay[typePool] * day < timeInterval) {
+            timeInterval = (periodDepositeDay[typePool] * day); 
+        }
+        timeInterval -= timeIntervalRR;
+        user.reward[typePool] += (timeInterval * reward[typePool] * (user.onDeposit[typePool]/1e18));
+        }
+    user.lastTimePool[typePool] = realTime;
+    user.lastTimeReward[typePool] = realTime;
+    coin.transferFrom(msg.sender, address(this), amount);
+    user.onDeposit[typePool] += amount; 
+}
+
+function takeReward(uint typePool, bool longEME, bool fire) external {
+    Users storage user = _user[msg.sender];
+    require(user.reward.length > 0, "Error: Nothing to withdraw, your wallet address was not found in the pools!"); 
+    require(typePool < 4, "Error: Non-existent staking pool!"); 
+    uint256 realTime = block.timestamp;
+    uint256 forPaid = 0;
+    verifyHalving(realTime);
+    if (user.lastTimePool[typePool] > 0) {
+        uint256 timeIntervalRR = (user.lastTimeReward[typePool] - user.lastTimePool[typePool]);
+                user.lastTimeReward[typePool] = realTime;
+        uint256 timeInterval = (realTime - user.lastTimePool[typePool]);
+            if (periodDepositeDay[typePool] * day < timeInterval) {
+                timeInterval = (periodDepositeDay[typePool] * day); 
+                if ((totalPool[typePool] - reserve[typePool] > 0)&&(longEME)) {
+                    user.lastTimePool[typePool] = realTime;
+                    reserve[typePool] += (periodDepositeDay[typePool] * day * reward[typePool] * (user.onDeposit[typePool]/1e18));
+                    user.score += (user.onDeposit[typePool] / slot) * points[typePool];
+                }
+                else {
+                    if (!fire) {
+                        forPaid += user.onDeposit[typePool];
+                        user.lastTimePool[typePool] =  0;
+                        user.lastTimeReward[typePool] = 0;
+                        user.onDeposit[typePool] = 0;
+                    }
+                }
+            }
+        timeInterval -= timeIntervalRR;
+        uint256 rewbuf = (user.reward[typePool] + (timeInterval * reward[typePool] * (user.onDeposit[typePool])/1e18));
+        forPaid += rewbuf;
+        paid[typePool] += rewbuf;
+        user.lastTimeReward[typePool] = realTime;
+    if ((fire)&&(!longEME)) {
+        forPaid += (user.onDeposit[typePool]/2);
+        coin.burn(user.onDeposit[typePool]/2);
+        reserve[typePool] -= ((periodDepositeDay[typePool] * day - (user.lastTimeReward[typePool] - user.lastTimePool[typePool])) * reward[typePool] * (user.onDeposit[typePool]/1e18));
+        user.score -= (user.onDeposit[typePool] / slot) * points[typePool];
+        user.lastTimePool[typePool] =  0;
+        user.lastTimeReward[typePool] = 0;
+        user.onDeposit[typePool] = 0;
+    }
+    }
+    require(forPaid > 0, "Error: Nothing to withdraw!"); 
+    user.reward[typePool] = 0;
+    coin.transfer(msg.sender, forPaid);
+}
+
+function regUser(address _newuser) internal {
+        _user[_newuser].score = 40;
+        for (uint i = 0; i < 4; i++) {
+            _user[_newuser].onDeposit.push(0);
+            _user[_newuser].lastTimePool.push(0);
+            _user[_newuser].reward.push(0);
+            _user[_newuser].lastTimeReward.push(0);
+        } 
+}
+
+function verifyHalving(uint256 _realtime) internal {
+        if ((epoh != 3)&&(_realtime - halvingTime > 180 * day)) {
+            epoh += 1;
+            halvingTime = _realtime;
+            slot = slot/2;
+        }
+}
+
+//Withdraw randomly deposite Ethereum
+function withdrawETH(address _to, uint256 _amount) external payable onlyOperator {
+        require(payable(_to).send(_amount));
+}
+
+//set section
+//on-off deposite
+function onOff() external onlyOwner {
+    pause = !pause;
+}
+
+//Set operator
+function setOperator(address _operator) external onlyOperator {
+    checkOperator[_operator] = true;
+}
+
+//Change user score
+function changeScore(address _to, uint256 _score, bool _type) external onlyOperator {
+    if (_type) {
+        _user[_to].score += _score;
+    }
+    else {
+        if (_user[_to].score - _score > 0) {
+            _user[_to].score -= _score;
+        }
+        else {
+            _user[_to].score = 0;
+        }
+    }
+}
+
+
+//Read section
+//Participant data card
+function getUsers(address _wallet) public view returns (Users memory) {
+        Users storage user = _user[_wallet];
+        return user;
+    }
+
+function getConfig() public view returns (uint256[] memory) {
+        uint256[] memory bufMas = new uint256[](9);
+        for (uint i = 0; i < 4; i++) {
+                bufMas[i] = reserve[i];
+                bufMas[i + 4] = paid[i];
+            }
+        bufMas[8] = epoh;
+        return (bufMas);
+}
+}

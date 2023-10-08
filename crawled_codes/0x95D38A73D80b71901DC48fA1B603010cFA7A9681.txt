@@ -1,0 +1,585 @@
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.18;
+
+import { ERC721PsiUpgradeable as ERC721, StringsUpgradeable } 
+    from "./base/ERC721PsiUpgradeable.sol";
+import { OwnableUpgradeable } 
+    from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import { MerkleProofUpgradeable } 
+    from "@openzeppelin/contracts-upgradeable/utils/cryptography/MerkleProofUpgradeable.sol";
+import { ReentrancyGuardUpgradeable } 
+    from "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
+import { ERC2981Upgradeable } 
+    from "@openzeppelin/contracts-upgradeable/token/common/ERC2981Upgradeable.sol";
+import { DefaultOperatorFiltererUpgradeable } 
+    from "operator-filter-registry/src/upgradeable/DefaultOperatorFiltererUpgradeable.sol";
+import { IROTW } from "./interfaces/IROTW.sol";
+
+contract RascalsOfTheWild is 
+    IROTW,
+    ERC721, 
+    ERC2981Upgradeable, 
+    DefaultOperatorFiltererUpgradeable, 
+    OwnableUpgradeable, 
+    ReentrancyGuardUpgradeable 
+{
+    using StringsUpgradeable for uint256;
+
+    /**
+     * @dev The root of the MerkleTree
+     */
+    bytes32 public merkleRoot;
+    
+    /**
+     * @dev URI that is returned prior to collection reveal
+     */
+    string public hiddenMetadataUri;
+
+    /**
+     * @dev URI that is returned with contract metadata
+     */
+    string public contractMetaURI;
+
+    /**
+     * @dev Cost in ETH of each Rascal minted with {mintPublic}
+     */
+    uint256 public costPub;
+    
+    /**
+     * @dev Cost in ETH of each Rascal minted with {mintWhitelist}
+     */
+    uint256 public costWL;
+    
+    /**
+     * @dev The Max Supply of Rascals
+     */
+    uint256 public constant MAX_SUPPLY = 7777;
+    
+    /**
+     * @dev The total number of Rascals allocated to {mintWhitelist}
+     */
+    uint256 public supplyWL;
+    
+    /**
+     * @dev The total number of Rascals allocated to {mintPublic} and {mintForAddress}
+     */
+    uint256 public supplyPub;
+    
+    /**
+     * @dev The number of Rascals minted with {mintWhitelist}
+     */
+    uint256 public mintedWL;
+
+    /**
+     * @dev The number of Rascals minted with {mintPublic} and {mintForAddress}
+     */
+    uint256 public mintedPub;
+
+    /**
+     * @dev The maximum amount of Rascals that each user can mint with {mintPublic}
+     */
+    uint256 public maxMintAmountPerWallet;
+    
+    /**
+     * @dev The number of seconds that Rascals are locked after minting with {mintWhitelist}
+     */
+    uint256 public wlLockTime;
+
+    /**
+     * @dev The unix timestamp that public minting begins
+     */
+    uint80 public publicMintStart;
+    
+    /**
+     * @dev The unix timestamp that whitelist minting begins
+     */
+    uint80 public whitelistMintStart;
+    
+    /**
+     * @dev Whether the Rascal collection is revealed
+     */
+    bool public revealed;
+    
+    /**
+     * @dev Timestamp for when a Rascal minted on whitelist is unlocked. 
+     *  _tokenId tokenId to retrieve unlock time for.
+     * @return _unlockTime The unix timestamp that the tokenId is unlocked and available to transfer.
+     */
+    mapping(uint256 _tokenId => uint256 _unlockTime) public tokenLock;
+
+	// Mapping from token ID to lock approved address
+	mapping(uint256 => address) private _lockApprovals;
+
+	// Mapping from owner to lock operator approvals
+	mapping(address => mapping(address => bool)) private _lockOperatorApprovals;
+
+    /**
+     * @dev The address that royalties and mint fees are sent to
+     */
+    address public royaltyDest;
+
+    /**
+     * @dev Whether new Rascals that are minted with {mintWhitelist} should be restricted
+     */
+    bool public wlTokensRestricted;
+
+    /**
+     * @dev Whether strict enforcement of `maxMintAmountPerWallet` is enabled
+     */
+    bool private strictLimitEnforced;
+
+    /**
+     * @dev The URI prefix to prepend to the tokenId
+     */
+    string private uriPrefix;
+    
+    /**
+     * @dev The URI suffic to append to the tokenId
+     */
+    string private uriSuffix;
+
+    /**
+     * @dev The array of ``tokenId``'s that are waiting for the `Locked` event to be emitted
+     */
+    uint256[] private tokensToLock;
+
+    /**
+     * @dev Throws if mint can not be completed due to supply or maxMint
+     */
+    modifier mintCompliance(uint256 _mintAmount) {
+        require(totalSupply() + _mintAmount <= MAX_SUPPLY, "Max supply exceeded!");
+        require(mintedPub + _mintAmount <= supplyPub, "Public supply exceeded!");
+        require(
+            _mintAmount > 0 && 
+            (strictLimitEnforced ? balanceOf(msg.sender) : uint256(0)) + _mintAmount <= maxMintAmountPerWallet,
+            "Invalid mint amount!"
+        );
+        _;
+    }
+
+    /**
+     * @dev Throws if mint can not be completed due to supply
+     */
+    modifier wlMintCompliance(uint256 _mintAmount) {
+        require(totalSupply() + _mintAmount <= MAX_SUPPLY, "Max supply exceeded!");
+        require(mintedWL + _mintAmount <= supplyWL, "Whitelist supply exceeded!");
+        _;
+    }
+
+    /**
+     * @dev Throws if msg.value is not adequate
+     */
+    modifier mintPriceCompliance(uint256 _mintAmount, bool _wlMint) {
+        require(
+            msg.value == (_wlMint ? costWL : costPub) * _mintAmount, 
+            "Incorrect payment amount"
+        );
+        _;
+    }
+
+    constructor() {
+        _disableInitializers();
+    }
+
+    /**
+     * @notice Initializes the contract by setting all initial variables.
+     * @dev Only callable once by initializer.
+     */
+    function initialize(
+        bytes32 _merkleRoot,
+        address _multiSig,
+        address _royaltyDest,
+        uint256 _mintCostWL,
+        uint256 _mintCostPub,
+        string memory _hiddenMetadataUri,
+        string memory _contractMetaURI,
+        uint80 _wlStart,
+        uint80 _pubStart
+    ) external initializer {
+        __DefaultOperatorFilterer_init();
+        __ERC721Psi_init("Rascals of the Wild", "ROTW");
+        __ReentrancyGuard_init();
+        __Ownable_init();
+        _transferOwnership(_multiSig);
+        maxMintAmountPerWallet = 100;
+        strictLimitEnforced = false;
+        merkleRoot = _merkleRoot;
+        costWL = _mintCostWL;
+        costPub = _mintCostPub;
+        uriSuffix = ".json";
+        hiddenMetadataUri = _hiddenMetadataUri;
+        contractMetaURI = _contractMetaURI;
+        whitelistMintStart = _wlStart;
+        publicMintStart = _pubStart;
+        royaltyDest = _royaltyDest;
+        supplyWL = 1000;
+        supplyPub = 6777;
+        wlLockTime = 5 days;
+        wlTokensRestricted = true;
+        _setDefaultRoyalty(_royaltyDest, 500);
+    }
+
+    function mintWhitelist(uint256 _mintAmount, bytes32[] calldata _merkleProof, uint256 _wlSpots)
+        external
+        payable
+        override
+        wlMintCompliance(_mintAmount)
+        mintPriceCompliance(_mintAmount, true)
+        nonReentrant
+    {
+        // Verify whitelist requirements
+        require(block.timestamp >= whitelistMintStart, "Whitelist sale not enabled!");
+        bytes32 leaf = keccak256(bytes.concat(keccak256(abi.encode(msg.sender, _wlSpots))));
+        require(
+            MerkleProofUpgradeable.verify(_merkleProof, merkleRoot, leaf),
+            "Invalid proof!"
+        );
+        mintedWL += _mintAmount;
+        uint256 firstToken = _nextTokenId();
+        uint256 stopToken = firstToken + _mintAmount;
+        _safeMint(msg.sender, _mintAmount);
+        if  (wlTokensRestricted) {
+            if (tokensToLock.length > 0) {
+                _processLockEvents();
+            }
+            uint256 unlockTime = block.timestamp + wlLockTime;
+            for (uint i = firstToken; i < stopToken; i++) {
+                tokenLock[i] = unlockTime;
+                tokensToLock.push(i);
+            }
+        }
+
+        emit MintedWhitelist(msg.sender, _mintAmount, _wlSpots);
+    }
+
+    function mintPublic(uint256 _mintAmount)
+        external
+        payable
+        override
+        mintCompliance(_mintAmount)
+        mintPriceCompliance(_mintAmount, false)
+        nonReentrant
+    {
+        require(block.timestamp >= publicMintStart, "Public minting not active.");
+
+        if (wlTokensRestricted && tokensToLock.length > 0) {
+            _processLockEvents();
+        }
+
+        mintedPub += _mintAmount;
+        _safeMint(msg.sender, _mintAmount);
+
+        emit MintedPublic(msg.sender, _mintAmount);
+    }
+
+    function mintForAddress(uint256 _mintAmount, address _receiver)
+        external
+        override
+        mintCompliance(_mintAmount)
+        onlyOwner
+        nonReentrant
+    {
+        if (wlTokensRestricted && tokensToLock.length > 0) {
+            _processLockEvents();
+        }
+
+        mintedPub += _mintAmount;
+        _safeMint(_receiver, _mintAmount);
+        emit MintedFor(_receiver, _mintAmount);
+    }
+
+    function unlockRascals(uint256[] calldata _tokenIds) external override nonReentrant {
+        for (uint i = 0; i < _tokenIds.length; i++) {
+            require(tokenLock[_tokenIds[i]] <= block.timestamp, "Too soon to unlock");
+            delete tokenLock[_tokenIds[i]];
+            emit Unlocked(_tokenIds[i]);
+        }
+    }
+
+    function processLockEvents() external override nonReentrant {
+        require(tokensToLock.length > 0, "Nothing to emit");
+        _processLockEvents();
+    }
+
+    function setWLRestrictions(bool _active, uint256 _lockTime) external override onlyOwner {
+        wlTokensRestricted = _active;
+        wlLockTime = _lockTime;
+    }
+
+    function overrideTokenLock(uint256 _tokenId, uint256 _newUnlockTime) external override onlyOwner {
+        require(_newUnlockTime < tokenLock[_tokenId], "Can not extend lock time");
+        tokenLock[_tokenId] = _newUnlockTime;
+
+        emit TokenLockUpdated(_tokenId, _newUnlockTime);
+    }
+
+    function lockTokens(uint256[] calldata _tokenIds) external onlyOwner {
+        uint256 unlockTime = block.timestamp + wlLockTime;
+        for (uint i = 0; i < _tokenIds.length; i++) {
+            tokenLock[_tokenIds[i]] = unlockTime;
+            emit Locked(_tokenIds[i]);
+        }
+    }
+
+    function clearTokenLocks(uint256[] calldata _tokenIds) external override onlyOwner {
+        for (uint i = 0; i < _tokenIds.length; i++) {
+            delete tokenLock[_tokenIds[i]];
+            emit Unlocked(_tokenIds[i]);
+        }
+    }
+
+    function setDefaultRoyalty(address _receiver, uint96 _feeNumerator) external override onlyOwner {
+        _setDefaultRoyalty(_receiver, _feeNumerator);
+        royaltyDest = _receiver;
+        emit DefaultRoyaltySet(_receiver, _feeNumerator, 10000);
+    }
+
+    function setUriPrefix(string memory _uriPrefix, bool _reveal) external override onlyOwner {
+        uriPrefix = _uriPrefix;
+        if (_reveal) {
+            revealed = _reveal;
+            emit NFTsRevealed(_reveal, block.timestamp);
+        }
+        if (revealed) {
+            emit BatchMetadataUpdate(1, type(uint256).max);
+        }
+    }
+
+    function setUriSuffix(string memory _uriSuffix) external override onlyOwner {
+        uriSuffix = _uriSuffix;
+        if (revealed) {
+            emit BatchMetadataUpdate(1, type(uint256).max);
+        }
+    }
+
+    function setHiddenMetadataUri(string memory _hiddenMetadataUri)
+        external
+        override
+        onlyOwner
+    {
+        hiddenMetadataUri = _hiddenMetadataUri;
+        if (!revealed) {
+            emit BatchMetadataUpdate(1, type(uint256).max);
+        }
+    }
+
+    function setRevealed(bool _flag) external override onlyOwner {
+        revealed = _flag;
+        emit NFTsRevealed(_flag, block.timestamp);
+        if (revealed) {
+            emit BatchMetadataUpdate(1, type(uint256).max);
+        }
+    }
+
+    function setMerkleRoot(bytes32 _merkleRoot) external override onlyOwner {
+        merkleRoot = _merkleRoot;
+    }
+
+    function setMaxMintAmountPerWallet(uint256 _maxMintAmountPerWallet, bool _strictLimitEnforced)
+        external
+        override
+        onlyOwner
+    {
+        maxMintAmountPerWallet = _maxMintAmountPerWallet;
+        strictLimitEnforced = _strictLimitEnforced;
+    }
+
+    function setCostPublic(uint256 _costPub) external override onlyOwner {
+        costPub = _costPub;
+    }
+
+    function setCostWhitelist(uint256 _costWL) external override onlyOwner {
+        costWL = _costWL;
+    }
+
+    function setMintStartTimes(uint80 _wlStartTime, uint80 _pubStartTime) external override onlyOwner {
+        whitelistMintStart = _wlStartTime;
+        publicMintStart = _pubStartTime;
+
+        emit MintStartTimesSet(_wlStartTime, _pubStartTime);
+    }
+
+    function setMintAllocations(uint256 _allocWL, uint256 _allocPub) external override onlyOwner {
+        require(_allocWL + _allocPub == MAX_SUPPLY, "Must allocate full supply");
+        require(_allocWL >= mintedWL && _allocPub >= mintedPub, "Can not set values less than already minted.");
+        supplyWL = _allocWL;
+        supplyPub = _allocPub;
+    }
+
+    function setPaused() external override onlyOwner {
+        publicMintStart = type(uint80).max;
+        whitelistMintStart = type(uint80).max;
+        
+        emit MintingPaused(block.timestamp);
+    }
+
+    function withdrawETH() external override onlyOwner nonReentrant {
+        (bool success, ) = royaltyDest.call{value: address(this).balance}("");
+        require(success, "Transfer failed");
+    }
+
+    function getLockStatus(
+        uint256[] memory _tokenIds
+    ) external view override returns (
+        uint256[] memory _checkedTokens,
+        bool[] memory _isLocked,
+        uint256[] memory _lockExpiration
+    ) {
+        uint length = _tokenIds.length;
+        _isLocked = new bool[](length);
+        _lockExpiration = new uint256[](length);
+        for (uint i = 0; i < length; i++) {
+            _isLocked[i] = tokenLock[_tokenIds[i]] > block.timestamp ? true : false;
+            _lockExpiration[i] = tokenLock[_tokenIds[i]];
+        }
+        return (_tokenIds, _isLocked, _lockExpiration);
+    }
+
+    function getPendingLockLength() external view override returns (uint256 length) {
+        return tokensToLock.length;
+    }
+
+    /**
+     * @inheritdoc ERC721
+     */
+    function setApprovalForAll(address operator, bool approved) public override onlyAllowedOperatorApproval(operator) {
+        super.setApprovalForAll(operator, approved);
+    }
+
+    /**
+     * @inheritdoc ERC721
+     */
+    function approve(address operator, uint256 tokenId) public override onlyAllowedOperatorApproval(operator) {
+        super.approve(operator, tokenId);
+    }
+
+    /**
+     * @inheritdoc ERC721
+     */
+    function transferFrom(address from, address to, uint256 tokenId) public override onlyAllowedOperator(from) {
+        super.transferFrom(from, to, tokenId);
+    }
+
+    /**
+     * @inheritdoc ERC721
+     */
+    function safeTransferFrom(address from, address to, uint256 tokenId) public override onlyAllowedOperator(from) {
+        super.safeTransferFrom(from, to, tokenId);
+    }
+
+    /**
+     * @inheritdoc ERC721
+     */
+    function safeTransferFrom(address from, address to, uint256 tokenId, bytes memory data)
+        public
+        override
+        onlyAllowedOperator(from)
+    {  
+        super.safeTransferFrom(from, to, tokenId, data);
+    }
+
+    /**
+     * @notice Get the URI for a given `tokenId`
+     * @dev Returns the Uniform Resource Identifier (URI) for `tokenId` token. 
+     * @param _tokenId The tokenId to get the URI for
+     * @return The URI with token metadata
+     */
+    function tokenURI(uint256 _tokenId)
+        public
+        view
+        virtual
+        override
+        returns (string memory)
+    {
+        require(
+            _exists(_tokenId),
+            "ERC721: nonexistent token"
+        );
+
+        string memory currentBaseURI = _baseURI();
+        return bytes(currentBaseURI).length > 0 ? 
+            string(abi.encodePacked(
+                currentBaseURI, 
+                _tokenId.toString(), 
+                uriSuffix
+            )) : "";
+    }
+
+    /**
+     * @notice Get the URI for contract metadata.
+     * @dev Returns the Uniform Resource Identifier (URI) for the contract. 
+     * @return The URI with contract metadata
+     */
+    function contractURI() public view returns (string memory) {
+        return contractMetaURI;
+    }
+
+    /**
+     * @inheritdoc ERC721
+     */
+    function supportsInterface(
+        bytes4 interfaceId
+    ) public view virtual override(ERC2981Upgradeable, ERC721) returns (bool) {
+        return
+            ERC2981Upgradeable.supportsInterface(interfaceId) ||
+            ERC721.supportsInterface(interfaceId);
+    }
+
+    /**
+	 * @dev See {ERC721-_beforeTokenTransfers}.
+	 *
+	 * Requirements:
+	 *
+	 * - the `tokenId` must not be locked or lock expired.
+	 */
+	function _beforeTokenTransfers(
+		address from,
+		address to,
+		uint256 startTokenId,
+		uint256 quantity
+	) internal virtual override {
+		super._beforeTokenTransfers(from, to, startTokenId, quantity);
+
+		require(tokenLock[startTokenId] <= block.timestamp, "Token transfer while locked");
+	}
+
+	function _afterTokenTransfers(
+		address from,
+		address to,
+		uint256 startTokenId,
+		uint256 quantity
+	) internal virtual override {
+		super._afterTokenTransfers(from, to, startTokenId, quantity);
+		// Remove the lock from the token if needed.
+		if (tokenLock[startTokenId] > 0) {
+            delete tokenLock[startTokenId];
+            emit Unlocked(startTokenId);
+        }
+	}
+
+    function _processLockEvents() internal {
+        uint length = tokensToLock.length;
+        for (uint i = length; i > 0; i--) {
+            emit Locked(tokensToLock[i - 1]);
+            tokensToLock.pop();
+        }
+    }
+
+    /**
+     * @inheritdoc ERC721
+     */
+    function _baseURI() internal view virtual override returns (string memory) {
+        if (revealed == false) {
+            return hiddenMetadataUri;    
+        }
+        
+        return uriPrefix;
+    }
+
+    /**
+     * @inheritdoc ERC721
+     */
+    function _startTokenId() internal pure override returns (uint256) {
+        return 1;
+    }
+}

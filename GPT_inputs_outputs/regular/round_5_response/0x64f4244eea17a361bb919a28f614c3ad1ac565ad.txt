@@ -1,0 +1,37 @@
+In the provided Solidity code, there seem to be several gas-inefficient patterns that stick out. Here are the new gas-wasting patterns we've found:
+
+\subsection*{Pattern 1: Unnecessary Hash Computations}
+
+1. \textbf{Reasoning Process:} The hash of a public key is computed twice in the \texttt{\_registerOperator} function and \texttt{\_deregisterOperator} function. Each hash computation is a costly operation in terms of gas usage. The hash is computed once, and then, it is computed again after a couple of checks. It would be more efficient to compute the hash once and then use the result in the required places.
+
+1. \textbf{Solution:} Store the hash in a local variable after computing it for the first time and simply use the variable in the subsequent places. This way, you can avoid redundant computation of the hash. The code would look something like this:
+
+```solidity
+bytes32 pubkeyHash = BN254.hashG1Point(pk);
+```
+
+Then, use `pubkeyHash` wherever the hash of the public key is needed.
+
+3. \textbf{Impact:}
+   - \textbf{Readability:} 5; The code becomes easier to read and understand because there are fewer duplicate lines.
+   - \textbf{Security:} 5; The security is not affected because the hash is being stored in a local variable, not a state variable.
+   - \textbf{Maintainability:} 5; The source code becomes easier to maintain because there's less redundancy.
+
+\subsection*{Pattern 2: Redundant Length Fetching}
+
+1. \textbf{Reasoning Process:} In the \texttt{updateStakes} function, the length of the `operators` array is fetched multiple times. As the length of an array does not change during the execution of a function, it's wasteful to fetch the length multiple times.
+
+1. \textbf{Solution:} The length of the `operators` array should be stored in a local variable at the start of the function, and this local variable should be used throughout the function. Here's how to do it:
+
+```solidity
+uint256 operatorsLength = operators.length;
+```
+
+Then, use `operatorsLength` wherever the length of the `operators` array is needed.
+
+3. \textbf{Impact:}
+   - \textbf{Readability:} 5; The code becomes clearer because it shows that the length of the array does not change during the execution of the function.
+   - \textbf{Security:} 5; Security is not affected because the length of the array is not a sensitive piece of information.
+   - \textbf{Maintainability:} 5; The code becomes easier to maintain because there's less redundancy.
+
+Regarding the prompt, the information given is quite clear and does not have any apparent issues. It provides a good amount of context to understand the problem and what is being asked. However, you could add specific examples of gas-inefficient patterns to further improve the understanding of the problem.

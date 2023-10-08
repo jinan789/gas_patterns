@@ -1,0 +1,77 @@
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.18;
+
+import {Ownable} from "./Ownable.sol";
+import {IERC20} from "./IERC20.sol";
+import {SafeERC20} from "./SafeERC20.sol";
+import {ReentrancyGuard} from "./ReentrancyGuard.sol";
+
+contract Dog is Ownable, ReentrancyGuard {
+  using SafeERC20 for IERC20;
+
+  uint256 private constant ONE_MONTH_TIMESTAMP = 30 days;
+
+  string public name;
+  IERC20 public hmx;
+  uint128 public endCliffTimestamp;
+  uint128 public lockedMonth;
+  uint128 public lockedAmount;
+  uint128 public claimedAmount;
+
+  event LogLeggo(address who, uint256 amount);
+
+  constructor(string memory _name, IERC20 _hmx) {
+    name = _name;
+    hmx = _hmx;
+  }
+
+  function bite(
+    uint128 _endCliffTimestamp,
+    uint128 _lockedMonth,
+    uint128 _lockedAmount
+  ) external onlyOwner {
+    // Check
+    require(_endCliffTimestamp > block.timestamp, "bad timestamp");
+
+    // Effect
+    endCliffTimestamp = _endCliffTimestamp;
+    lockedMonth = _lockedMonth;
+    lockedAmount = _lockedAmount;
+
+    // Interaction
+    hmx.safeTransferFrom(msg.sender, address(this), _lockedAmount);
+  }
+
+  function claimable() public view returns (uint128) {
+    return unlocked() - claimedAmount;
+  }
+
+  function unlocked() public view returns (uint128) {
+    if (block.timestamp < endCliffTimestamp) return 0;
+
+    // Calculate the elapsed months since the end of the lock period.
+    uint256 elapsedMonths =
+      (block.timestamp - endCliffTimestamp) / ONE_MONTH_TIMESTAMP;
+
+    // Calculate the unlock amount by dividing the total LHMX amount by 18 and multiplying
+    // it by the elapsed months.
+    return elapsedMonths >= lockedMonth
+      ? lockedAmount
+      : uint128((lockedAmount * elapsedMonths) / lockedMonth);
+  }
+
+  function leggo(uint128 _amount) external onlyOwner {
+    // Check
+    require(_amount <= claimable(), "bad _amount");
+
+    // Effect
+    // Update the claimed amount for the user
+    claimedAmount += _amount;
+
+    // Interaction
+    // Transfer HMX tokens from this contract
+    hmx.safeTransfer(msg.sender, _amount);
+
+    emit LogLeggo(msg.sender, _amount);
+  }
+}

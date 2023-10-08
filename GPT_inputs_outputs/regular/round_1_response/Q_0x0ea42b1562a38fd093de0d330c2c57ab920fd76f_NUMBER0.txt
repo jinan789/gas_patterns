@@ -1,0 +1,52 @@
+The Solidity source code you provided has been well optimized and it adheres to best practices. However, there might be a few areas that could potentially be improved. 
+
+1. Inefficient Storage Reading
+
+    - How did you find this pattern?
+
+    The `allowance` function is being called inside both `increaseAllowance` and `decreaseAllowance` functions. In Ethereum, reading from storage is more expensive compared to reading from memory or a local variable. 
+
+    - What should I do, step by step, to fix the found gas-wasting patterns?
+
+    The `allowance` function could be first called and its result stored in a local variable. This local variable can then be used inside the `increaseAllowance` and `decreaseAllowance` functions. This reduces the number of storage reads and hence, reduces the gas cost.
+
+    ```solidity
+    function increaseAllowance(address spender, uint256 addedValue) public virtual returns (bool) {
+        address owner = _msgSender();
+        uint256 currentAllowance = _allowances[owner][spender];
+        _approve(owner, spender, currentAllowance + addedValue);
+        return true;
+    }
+
+    function decreaseAllowance(address spender, uint256 subtractedValue) public virtual returns (bool) {
+        address owner = _msgSender();
+        uint256 currentAllowance = _allowances[owner][spender];
+        require(currentAllowance >= subtractedValue, "ERC20: decreased allowance below zero");
+        unchecked {
+            _approve(owner, spender, currentAllowance - subtractedValue);
+        }
+        return true;
+    }
+    ```
+    
+    Note: This might look like a trivial change and indeed, the amount of saved gas could be relatively small. However, for contracts that expect high usage, this small saving can accumulate to a significant amount.
+
+2. Redundant Ownership Check
+
+    - How did you find this pattern?
+
+    In the `transferOwnership` function, the `onlyOwner` modifier is used to restrict the function call to the contract owner. But within this function, there's an additional check to verify that the `newOwner` is not the zero address. This check is redundant as the zero address could never be the owner of the contract.
+
+    - What should I do, step by step, to fix the found gas-wasting patterns?
+
+    Simply remove the redundant check for the new owner being the zero address from the `transferOwnership` function. The updated function would look like:
+
+    ```solidity
+    function transferOwnership(address newOwner) public virtual onlyOwner {
+        _transferOwnership(newOwner);
+    }
+    ```
+
+3. Regarding the prompt improvement:
+
+    The prompt is quite clear. However, it would be beneficial if you include some specific requirements or constraints for the task. For example, you could specify that you're interested in gas optimization for high-frequency functions, or you're looking for improvements that would lead to a significant reduction in gas cost. This would help provide a more focused and relevant response.

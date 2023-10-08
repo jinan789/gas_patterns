@@ -1,0 +1,24 @@
+// SPDX-License-Identifier: MIT
+
+pragma solidity ^0.8.0;
+
+/// @title: Simplify
+/// @author: manifold.xyz
+
+import "./manifold/ERC1155Creator.sol";
+
+//////////////////////////////////////////////////////////////////////////////
+//                                                                          //
+//                                                                          //
+//    "The more information your brain has to process in an image,          //
+//    the more energy it expends. Your brain values this energy highly,     //
+//    and does not want to spend extraneous energy. Aesthetic pictures      //
+//    provide the least amount of cognitive load on your brain."            //
+//                                                                          //
+//                                                                          //
+//////////////////////////////////////////////////////////////////////////////
+
+
+contract SIMPL is ERC1155Creator {
+    constructor() ERC1155Creator("Simplify", "SIMPL") {}
+}

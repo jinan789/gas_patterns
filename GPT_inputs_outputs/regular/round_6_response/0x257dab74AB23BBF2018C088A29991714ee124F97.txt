@@ -1,0 +1,141 @@
+After analyzing the provided Solidity code, several potential gas-wasting patterns have been identified. Here are the patterns, potential solutions, and their impact on readability, security, and maintainability.
+
+\subsection*{1. Repetitive Conditional Checks}
+
+The `beforeSafeTransfer` and `beforeTransfer` functions contain a set of repetitive conditional checks, where the `osRegistryEnabled` value is fetched and a call to `openseaOperatorFilterRegistry.isOperatorAllowed` is made.
+
+\subsubsection*{Discovery Process}
+
+This pattern was identified by noticing the same set of operations being performed in two different functions. There is a conditional check being performed in both functions that is identical. This is a waste of gas as the same operation is being performed multiple times when it could be consolidated into a single function.
+
+\subsubsection*{Solution}
+
+Create a private function that performs these common operations and call this function in `beforeSafeTransfer` and `beforeTransfer`. The function could look like this:
+
+```solidity
+function checkRegistryAndOperator(address _from) private view returns (bool) {
+  if (_from != address(0) && _from != msgSender()) {
+    bool osRegistryEnabled;
+    assembly {
+      osRegistryEnabled := sload(_osRegistryEnabledSlot)
+    }
+    if (osRegistryEnabled) {
+      try openseaOperatorFilterRegistry.isOperatorAllowed(address(this), msgSender()) returns (bool allowed) {
+        return allowed;
+      } catch {
+        revert OperatorNotAllowed(msgSender());
+      }
+    }
+  }
+  return true;
+}
+```
+
+Then replace the duplicate code in `beforeSafeTransfer` and `beforeTransfer` with a call to `checkRegistryAndOperator(_from)`. This will not only save gas by reducing redundancy, but also make the code easier to maintain and read.
+
+\subsubsection*{Impact}
+
+Readability: 4.5; Security: 5; Maintainability: 4.5.
+
+This change improves readability by removing duplicate code and making the function purposes clearer. It should not impact security as it's a simple refactoring and does not change the logic. It improves maintainability by reducing the places where updates might be needed if this logic changes.
+
+\subsection*{2. Persistent Storage Access}
+
+The `beforeSafeTransfer` and `beforeTransfer` functions access the `_osRegistryEnabledSlot` storage slot to retrieve `osRegistryEnabled` value. Storage is one of the most expensive operations in Ethereum and accessing it multiple times is wasteful.
+
+\subsubsection*{Discovery Process}
+
+This pattern was identified by noting the use of `sload` to access the stored value of `osRegistryEnabled`. Given that this value does not change often, it is wasteful to constantly fetch it from storage.
+
+\subsubsection*{Solution}
+
+Cache the `osRegistryEnabled` value in memory, and update it only when it changes. This reduces the number of storage reads, thus saving gas. However, it requires changes in the code where `osRegistryEnabled` is set. A `setOsRegistryEnabled` function can be created to handle the update of the cached value.
+
+```solidity
+bool private osRegistryEnabledCached;
+
+function setOsRegistryEnabled(bool value) private {
+  assembly {
+    sstore(_osRegistryEnabledSlot, value)
+  }
+  osRegistryEnabledCached = value;
+}
+```
+
+Then replace `sload(_osRegistryEnabledSlot)` in `beforeSafeTransfer` and `beforeTransfer` functions with `osRegistryEnabledCached`.
+
+\subsubsection*{Impact}
+
+Readability: 4; Security: 5; Maintainability: 4.
+
+This change slightly reduces readability due to the added complexity of caching. However, the security remains the same as the logic doesn't change. It moderately improves maintainability as developers need to remember to use the `setOsRegistryEnabled` function when changing `osRegistryEnabled`.
+
+\subsection*{3. Wasteful Assembly Code}
+
+The contract uses assembly to set the `_holographerSlot` and `_osRegistryEnabledSlot` variables. This is more difficult to read and understand than standard Solidity, and there is no clear reason why assembly is necessary here.
+
+\subsubsection*{Discovery Process}
+
+The use of assembly code was easily identifiable. The reasoning is that assembly is less readable and more prone to errors than high-level Solidity code, and it should only be used when necessary for optimization. In this case, it doesn't seem necessary.
+
+\subsubsection*{Solution}
+
+Replace the assembly code with standard Solidity. For example, replace:
+
+```solidity
+assembly {
+  sstore(_holographerSlot, caller())
+}
+```
+
+With:
+
+```solidity
+_holographerSlot = msg.sender;
+```
+
+This is easier to read and understand, and it should have the same effect and gas cost.
+
+\subsubsection*{Impact}
+
+Readability: 5; Security: 5; Maintainability: 5This change greatly improves readability by replacing low-level assembly with high-level Solidity code. It also improves maintainability by making the code easier to understand and modify. The security remains the same as this change does not affect the logic of the contract.
+
+\subsection*{4. Unnecessary use of `try-catch`}
+
+The `try-catch` construct is used to handle potential errors from the `openseaOperatorFilterRegistry.isOperatorAllowed` function call. However, this is unnecessary because the function can simply return `false` when the operator is not allowed, eliminating the need for the `try-catch` construct which consumes more gas.
+
+\subsubsection*{Discovery Process}
+
+The use of `try-catch` was noted in the `beforeSafeTransfer` and `beforeTransfer` functions. Given that the `isOperatorAllowed` function can simply return a boolean value, the use of `try-catch` seems unnecessary.
+
+\subsubsection*{Solution}
+
+Modify the `isOperatorAllowed` function to return `false` instead of throwing an error when the operator is not allowed. Then, in the `beforeSafeTransfer` and `beforeTransfer` functions, you can directly check the returned value without using `try-catch`.
+
+Here is how the modified `isOperatorAllowed` function would look like:
+
+```solidity
+function isOperatorAllowed(address _token, address _operator) external view returns (bool) {
+  address[] memory allowedOperators = allowedOperators[_token];
+  for (uint256 i = 0; i < allowedOperators.length; i++) {
+    if (allowedOperators[i] == _operator) {
+      return true;
+    }
+  }
+  return false;
+}
+```
+
+In the `beforeSafeTransfer` and `beforeTransfer` functions, remove the `try-catch` construct and directly check the returned value:
+
+```solidity
+if (osRegistryEnabled && !openseaOperatorFilterRegistry.isOperatorAllowed(address(this), msgSender())) {
+  revert OperatorNotAllowed(msgSender());
+}
+```
+
+\subsubsection*{Impact}
+
+Readability: 5; Security: 5; Maintainability: 5.
+
+This change greatly improves readability by simplifying the code and removing the `try-catch` construct. It also improves maintainability by making the code easier to understand and modify. The security remains the same as this change does not change the logic of the contract.

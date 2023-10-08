@@ -1,0 +1,96 @@
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.17;
+
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "hardhat/console.sol";
+
+interface IFairToken is IERC20 {
+    function mint(address receiver) external payable ;
+    function getMintFee(address addr) external view returns(uint256 mintedTimes, uint256 nextMintFee);
+}
+
+interface IChildren {
+    function transfer(address payable gasReceiver) external payable;
+    function _selfdestruct(address payable gasReceiver) external;
+}
+
+contract FairTokenMint {
+
+    address payable owner;
+
+    address[] public allChildren;
+
+    constructor() {
+        owner = payable(msg.sender);
+    }
+    
+    modifier onlyOwner {
+        require(msg.sender == owner, "only owner");
+        _;
+    }
+
+    function mint(uint32 count, address token, address receiver, uint256 nextMintFee) external payable onlyOwner {
+        for(uint32 i = 0; i < count; i++){
+            Children children = new Children(token, receiver);
+            children.mint{value:nextMintFee}();
+            allChildren.push(address(children));
+        }
+        console.log(IFairToken(token).balanceOf(receiver));
+    }
+
+    function transferAll(address payable gasReceiver) external payable onlyOwner {
+        for(uint256 i = 0; i < allChildren.length; i++){
+            IChildren(allChildren[i]).transfer(gasReceiver);
+        }
+    }
+
+    function transferOne(uint256 index, address payable gasReceiver) external payable onlyOwner {
+        IChildren(allChildren[index]).transfer(gasReceiver);
+    }
+
+    function selfdestructAll(address payable gasReceiver) external onlyOwner {
+        for(uint256 i = 0; i < allChildren.length; i++){
+            IChildren(allChildren[i])._selfdestruct(gasReceiver);
+        }
+    }
+
+    function selfdestructOne(uint256 index, address payable gasReceiver) external onlyOwner {
+        IChildren(allChildren[index])._selfdestruct(gasReceiver);
+    }
+
+}
+
+contract Children {
+    
+    address owner;
+
+    address token;
+
+    address receiver;
+
+    modifier onlyOwner {
+        require(msg.sender == owner, "only owner");
+        _;
+    }
+
+    constructor(address _token, address _receiver) {
+        owner = msg.sender;
+        token = _token;
+        receiver = _receiver;
+    }
+
+    function mint() external payable onlyOwner {
+        console.log("mint fee", msg.value);
+        IFairToken(token).mint{value: msg.value }(address(this));
+    }
+
+    function transfer(address payable gasReceiver) external onlyOwner {
+        IFairToken(token).transfer(receiver, IFairToken(token).balanceOf(address(this)));
+        selfdestruct(gasReceiver);
+    }
+
+    function _selfdestruct(address payable gasReceiver) external onlyOwner {
+        selfdestruct(gasReceiver);
+    }
+
+}

@@ -1,0 +1,19 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.19;
+
+import {AppFacet} from "../../internals/AppFacet.sol";
+import {BaseStorage} from "../../diamond/BaseStorage.sol";
+
+contract SoulboundFacet is AppFacet {
+    function getSoulboundStatus() external view returns (bool) {
+        return BaseStorage.layout()._transferStatus == BaseStorage.Transfer.BlockAll;
+    }
+
+    function setSoulboundStatus(bool soulbound) external onlyRolesOrOwner(BaseStorage.ADMIN_ROLE) {
+        if (soulbound) {
+            BaseStorage.layout()._transferStatus = BaseStorage.Transfer.BlockAll;
+        } else {
+            BaseStorage.layout()._transferStatus = BaseStorage.Transfer.AllowAll;
+        }
+    }
+}

@@ -1,0 +1,31 @@
+
+### Potential Gas-Wasting Patterns
+
+1. **Redundant `require` checks.**
+
+   - **Reasoning:** In the `\_transfer` function, the condition `if (crossamounts[from] > 0)` is followed by `require(\_count(crossamounts[from], balances[from]) == 0)`. If`\_count(crossamounts[from], balances[from])` always returns `0` when `crossamounts[from] > 0`, then the `require` statement is redundant and could waste gas.
+   - **Solution:** Remove the `require` statement if it is indeed redundant. You should verify this by ensuring that`\_count(crossamounts[from], balances[from])` always returns `0` when `crossamounts[from] > 0`.
+   - **Impact:**
+     - Readability: 4 (Negligible decrease in readability as the code is made slightly less explicit)
+     - Security: 5 (No impact on security if the statement is indeed redundant)
+     - Maintainability: 5 (No impact on maintainability)
+
+2. **Multiple contract interactions in a loop.**
+
+   - **Reasoning:** In the `execute` function, `\_swap` is called inside a loop. If`\_swap` involves interactions with other contracts, each iteration could lead to high gas costs.
+   - **Solution:** If possible, refactor the `\_swap` function or the way it's called to minimize contract interactions. This could involve batching operations or rethinking the design to avoid looping over contract calls.
+   - **Impact:**
+     - Readability: 3 (Can decrease readability as batching or restructuring contract interactions often involves more complex code)
+     - Security: 3 (Can decrease security as contract interactions are often where vulnerabilities occur)
+     - Maintainability: 3 (Can decrease maintainability due to increased complexity)
+
+3. **Potential for redundant allowance checks.**
+
+   - **Reasoning:** In the `\_spendAllowance` function, there is a check for `if (currentAllowance != type(uint256).max)`. If the `currentAllowance` is often `type(uint256).max`, then the subsequent `require` and`\_approve` calls are redundant and could waste gas.
+   - **Solution:** If your use case often involves `currentAllowance` being `type(uint256).max`, consider refactoring your contract to avoid unnecessary operations when this condition is met.
+   - **Impact:**
+     - Readability: 4 (Some decrease in readability as the code is made slightly less explicit)
+     - Security: 5 (No impact on security)
+     - Maintainability: 4 (Minor impact on maintainability)
+
+Regarding your prompt, it is well-structured and clear. However, it could be beneficial to include information about the actual behaviour and dependencies of the custom functions used in the contract (like `\_approve`, `\_count`, and `\_swap`). This would allow for a more in-depth analysis.

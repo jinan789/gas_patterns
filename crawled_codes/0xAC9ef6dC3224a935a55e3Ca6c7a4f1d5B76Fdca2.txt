@@ -1,0 +1,12 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+pragma experimental ABIEncoderV2;
+
+import './ERC721Tradable.sol';
+
+contract NitroNFT is ERC721Tradable{
+
+       constructor(address eventContract) ERC721Tradable("Nitro League - G2A Genesis Cars", "GGC",0xa5409ec958C83C3f309868babACA7c86DCB077c1,"https://assetsmeta.nitroleague.com/g2a/", 0xDF75409bb7515AB3686199ff1b7046183e00a390, 750, eventContract) {
+    }
+
+}

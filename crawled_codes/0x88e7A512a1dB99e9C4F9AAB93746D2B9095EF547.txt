@@ -1,0 +1,197 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
+
+contract GoldpayToken is Initializable, UUPSUpgradeable, ERC20Upgradeable, OwnableUpgradeable {
+
+    mapping(address => bool) public isBlocked;
+    mapping(address => bool) public inFeeFreeList;
+    mapping(address => bool) public outFeeFreeList;
+
+    // feeRate is measured in 100th of a basis point (parts per 1,000,000)
+    // ex: fee rate of 200 = 0.02% of gold
+    uint256 public constant feeParts = 1000000;
+    uint256 public feeRate;
+    address public supplier;
+    address public burner;
+    address public feeRecipient;
+    uint256 public totalFeeCollected;
+
+    function initialize(
+        string memory name_,
+        string memory symbol_
+    ) public initializer {
+        feeRate = 200;
+        supplier = msg.sender;
+        burner = msg.sender;
+        feeRecipient = msg.sender;
+
+        __Ownable_init();
+        __ERC20_init(name_, symbol_);
+    }
+
+    // required by the OZ UUPS module
+    function _authorizeUpgrade(address) internal override onlyOwner {}
+
+    function transfer(address _recipient, uint256 _amount) public virtual override onlyNotBlocked returns (bool) {
+        require(_recipient != address(this), "ERC20: transfer to the contract address");
+        uint256 _fee = getFee(_msgSender(), _recipient, _amount);
+        uint256 _principle = _amount - _fee;
+        super.transfer(_recipient, _principle);
+        if (_fee > 0) {
+            super.transfer(feeRecipient, _fee);
+            totalFeeCollected += _fee;
+            emit FeeCollected(_msgSender(), feeRecipient, _fee);
+        }
+        return true;
+    }
+
+    function transferFrom(address _sender, address _recipient, uint256 _amount) public virtual override onlyNotBlocked returns (bool) {
+        require(_recipient != address(this), "ERC20: transfer to the contract address");
+        require(!isBlocked[_sender]);
+        uint256 _fee = getFee(_sender, _recipient, _amount);
+        uint256 _principle = _amount - _fee;
+        super.transferFrom(_sender, _recipient, _principle);
+        if (_fee > 0) {
+            super.transferFrom(_sender, feeRecipient, _fee);
+            totalFeeCollected += _fee;
+            emit FeeCollected(_sender, feeRecipient, _fee);
+        }
+        return true;
+    }
+
+    function multiTransfer(address[] memory _recipients, uint256[] memory _values) public onlyNotBlocked {
+        require(_recipients.length == _values.length, "ERC20: multiTransfer mismatch");
+        for (uint256 i = 0; i < _recipients.length; i++) {
+            transfer(_recipients[i], _values[i]);
+        }
+    }
+
+    function increaseSupply(address _destination, uint256 _amount) public onlySupplier {
+        _mint(_destination, _amount);
+        emit IncreaseSupply(_destination, _amount);
+    }
+
+    function decreaseSupply(uint256 _amount) public onlyBurner {
+        _burn(burner, _amount);
+        emit DecreaseSupply(_amount);
+    }
+
+    function destroyBlockedFunds(address _blockedUser) public onlyOwner {
+        require(isBlocked[_blockedUser]);
+        uint blockedFunds = balanceOf(_blockedUser);
+        _burn(_blockedUser, blockedFunds);
+        emit DestroyedBlockedFunds(_blockedUser, blockedFunds);
+    }
+
+    function setSupplier(address _newSupplier) public onlyOwner {
+        require(_newSupplier != address(0), "cannot set supplier to address zero");
+        address _oldSupplier = supplier;
+        supplier = _newSupplier;
+        emit SupplierSet(_oldSupplier, supplier);
+    }
+
+    modifier onlySupplier() {
+        require(msg.sender == supplier, "only Supplier");
+        _;
+    }
+
+    function setBurner(address _newBurner) public onlyOwner {
+        require(_newBurner != address(0), "cannot set burner to address zero");
+        address _oldBurner = burner;
+        burner = _newBurner;
+        emit BurnerSet(_oldBurner, burner);
+    }
+
+    modifier onlyBurner() {
+        require(msg.sender == burner, "only Burner");
+        _;
+    }
+
+    /**
+     * Sets a new fee recipient address.
+     * @param _newFeeRecipient The address allowed to collect transfer fees for transfers.
+     */
+    function setFeeRecipient(address _newFeeRecipient) public onlyOwner {
+        require(_newFeeRecipient != address(0), "cannot set fee recipient to address zero");
+        address _oldFeeRecipient = feeRecipient;
+        feeRecipient = _newFeeRecipient;
+        emit FeeRecipientSet(_oldFeeRecipient, feeRecipient);
+    }
+
+    /**
+     * Sets a new fee rate.
+     * @param _newFeeRate The new fee rate to collect as transfer fees for transfers.
+     */
+    function setFeeRate(uint256 _newFeeRate) public onlyOwner {
+        require(_newFeeRate <= feeParts, "cannot set fee rate above 100%");
+        uint256 _oldFeeRate = feeRate;
+        feeRate = _newFeeRate;
+        emit FeeRateSet(_oldFeeRate, feeRate);
+    }
+
+    function getFee(address _sender, address _recipient, uint256 _value) public view returns (uint256) {
+        if (_sender == owner() || _recipient == owner() ||
+        _sender == supplier ||
+        _recipient == burner ||
+        _sender == feeRecipient || _recipient == feeRecipient
+        ) {
+            return 0;
+        }
+        if (inFeeFreeList[_recipient]) return 0;
+        if (outFeeFreeList[_sender]) return 0;
+        return _value * feeRate / feeParts;
+    }
+
+    modifier onlyNotBlocked() {
+        require(!isBlocked[_msgSender()], "Blocked: transfers are blocked for user");
+        _;
+    }
+
+    function addToBlockedList(address _user) public onlyOwner {
+        isBlocked[_user] = true;
+        emit BlockPlaced(_user);
+    }
+
+    function removeFromBlockedList(address _user) public onlyOwner {
+        isBlocked[_user] = false;
+        emit BlockReleased(_user);
+    }
+
+    function setFeeFree(address addr, bool isIn, bool isFree) public onlyOwner {
+        if (isIn) {
+            inFeeFreeList[addr] = isFree;
+        } else {
+            outFeeFreeList[addr] = isFree;
+        }
+        emit FeeFreeSet(addr, isIn, isFree);
+    }
+
+    event IncreaseSupply(address indexed _destination, uint _amount);
+    event DecreaseSupply(uint _amount);
+    event DestroyedBlockedFunds(address indexed _blockedUser, uint _balance);
+
+    // supplier Events
+    event SupplierSet(address indexed oldSupplier, address indexed newSupplier);
+    event BurnerSet(address indexed oldBurner, address indexed newBurner);
+
+    // FEE CONTROLLER EVENTS
+    event FeeCollected(address indexed from, address indexed to, uint256 value);
+    event FeeRateSet(uint256 indexed oldFeeRate, uint256 indexed newFeeRate);
+    event FeeRecipientSet(address indexed oldFeeRecipient, address indexed newFeeRecipient);
+    event FeeFreeSet(address indexed _user, bool isIn, bool isFree);
+
+    event BlockPlaced(address indexed _user);
+    event BlockReleased(address indexed _user);
+
+    /**
+     * @dev This empty reserved space is put in place to allow future versions to add new
+     * variables without shifting down storage in the inheritance chain.
+     * See https://docs.openzeppelin.com/contracts/4.x/upgradeable#storage_gaps
+     */
+    uint256[50] private __gap;
+}

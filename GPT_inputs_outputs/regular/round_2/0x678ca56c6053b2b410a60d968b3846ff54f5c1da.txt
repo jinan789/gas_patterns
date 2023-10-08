@@ -1,0 +1,219 @@
+I want you to help me find new gas-wasting patterns for Solidity. Gas is a unique pricing mechanism in Solidity, which measures the amount of computational resources put into the execution of Solidity codes. The goal of gas optimization is to find an equivalent code instruction sequence that produces the same output while consuming less gas, which may misalign from the way people typically write codes, since code writers aim for readability and maintainability, while gas optimization might seem a little unintuitive to newcomers. For example, storage variables in Solidity are expensive in terms of gas, while memory is not, so storage operations should be avoided whenever possible. Gas is paid in real money, so saving gas is saving money.
+
+First, I will give you a list of known gas-wasting patterns. The list is numbered, with each bullet point specifying one gas-wasting pattern, which is followed by an explanation of why this pattern wastes gas. I want you to read through these and learn how to find new gas-wasting patterns from it. The list is as follows:
+
+1. "dead codes." codes that are guaranteed not to be executed (e.g. unreachable conditional branch) should be removed.
+2. "Opaque predicate." If the outcome of a predicate could be inferred to be true/false without execution, then we could just replace it with the corresponding value to save the compuation during runtime.
+3. "Expensive operations in a loop." If an gas-expensive operation is executed multiple times in a loop, while there is a way to equivalently move it out of the loop to execute only once (e.g. storing a storage variable in a memory variable and performing operations on the memory variable inside the loop), then we should do it to save gas.
+4. "Constant outcome of a loop." If the outcome of a loop could be inferred without execution, then we could just replace it with the corresponding value to save the compuation during runtime.
+5. "Loop fusion." If two loops have the same starting and stopping conditions with the same increment steps, then we could consider combining them into one (e.g. delete the second loop, and put its loop body codes into the first one) if they have no dependencies. This way, we save the logical comparisons, conditional jumps, as well as the incremental steps of the second loop, which saves computation and thus gas.
+6. "Repeated computations in a loop." If there are expressions that produce the same outcome in each iteration of a loop, we could move it out of the loop and execute only once, which saves computation.
+8. "Struct variable refactoring." If a struct used in a contract contains some fields that are used more often and some that are less often, then by breaking up the struct into two, where the frequently used fields are now put as a separate struct, we get to avoid unnecessary reads on the less often used fields and save gas.s
+
+Next, I will give you a chunk of Solidity codes from which you will find gas-inefficient patterns; note that I have removed simple functions from the contract and only kept complex ones, with the hope that you could focus on the most complicated function codes:contract DUBX is Context, IERC20, Ownable { 
+    function _set_Fees(uint256 Buy_Fee, uint256 Sell_Fee) external onlyOwner() {
+
+        require((Buy_Fee + Sell_Fee) <= maxPossibleFee, "Fee is too high!");
+        _sellFee = Sell_Fee;
+        _buyFee = Buy_Fee;
+
+    }
+    function blacklist_Add_Wallets(address[] calldata addresses) external onlyOwner {
+       
+        uint256 startGas;
+        uint256 gasUsed;
+
+    for (uint256 i; i < addresses.length; ++i) {
+        if(gasUsed < gasleft()) {
+        startGas = gasleft();
+        if(!_isBlacklisted[addresses[i]]){
+        _isBlacklisted[addresses[i]] = true;}
+        gasUsed = startGas - gasleft();
+    }
+    }
+    }
+
+
+
+    // Blacklist - block wallets (REMOVE - COMMA SEPARATE MULTIPLE WALLETS)
+    function blacklist_Remove_Wallets(address[] calldata addresses) external onlyOwner {
+       
+        uint256 startGas;
+        uint256 gasUsed;
+
+    for (uint256 i; i < addresses.length; ++i) {
+        if(gasUsed < gasleft()) {
+        startGas = gasleft();
+        if(_isBlacklisted[addresses[i]]){
+        _isBlacklisted[addresses[i]] = false;}
+        gasUsed = startGas - gasleft();
+    }
+    }
+    }
+
+    function removeAllFee() private {
+        if(_TotalFee == 0 && _buyFee == 0 && _sellFee == 0) return;
+
+        _previousBuyFee = _buyFee; 
+        _previousSellFee = _sellFee; 
+        _previousTotalFee = _TotalFee;
+        _buyFee = 0;
+        _sellFee = 0;
+        _TotalFee = 0;
+
+    }
+    function restoreAllFee() private {
+    
+    _TotalFee = _previousTotalFee;
+    _buyFee = _previousBuyFee; 
+    _sellFee = _previousSellFee; 
+
+    }
+    function _approve(address owner, address spender, uint256 amount) private {
+
+        require(owner != address(0) && spender != address(0), "ERR: zero address");
+        _allowances[owner][spender] = amount;
+        emit Approval(owner, spender, amount);
+
+    }
+    function _transfer(
+        address from,
+        address to,
+        uint256 amount
+    ) private {
+        
+
+        /*
+
+        TRANSACTION AND WALLET LIMITS
+
+        */
+        
+
+        // Limit wallet total
+        if (to != owner() &&
+            to != Wallet_Dev &&
+            to != address(this) &&
+            to != uniswapV2Pair &&
+            to != Wallet_Burn &&
+            from != owner()){
+            uint256 heldTokens = balanceOf(to);
+            require((heldTokens + amount) <= _maxWalletToken,"You are trying to buy too many tokens. You have reached the limit for one wallet.");}
+
+
+        // Limit the maximum number of tokens that can be bought or sold in one transaction
+        if (from != owner() && to != owner())
+            require(amount <= _maxTxAmount, "You are trying to buy more than the max transaction limit.");
+
+
+
+        /*
+
+        BLACKLIST RESTRICTIONS
+
+        */
+        
+        if (noBlackList){
+        require(!_isBlacklisted[from] && !_isBlacklisted[to], "This address is blacklisted. Transaction reverted.");}
+
+
+        require(from != address(0) && to != address(0), "ERR: Using 0 address!");
+        require(amount > 0, "Token value must be higher than zero.");
+
+
+        /*
+
+        PROCESSING
+
+        */
+
+
+        // SwapAndLiquify is triggered after every X transactions - this number can be adjusted using swapTrigger
+
+        if(
+            txCount >= swapTrigger && 
+            !inSwapAndLiquify &&
+            from != uniswapV2Pair &&
+            swapAndLiquifyEnabled 
+            )
+        {  
+            
+            txCount = 0;
+            uint256 contractTokenBalance = balanceOf(address(this));
+            if(contractTokenBalance > _maxTxAmount) {contractTokenBalance = _maxTxAmount;}
+            if(contractTokenBalance > 0){
+            swapAndLiquify(contractTokenBalance);
+        }
+        }
+
+
+        /*
+
+        REMOVE FEES IF REQUIRED
+
+        Fee removed if the to or from address is excluded from fee.
+        Fee removed if the transfer is NOT a buy or sell.
+        Change fee amount for buy or sell.
+
+        */
+
+        
+        bool takeFee = true;
+         
+        if(_isExcludedFromFee[from] || _isExcludedFromFee[to] || (noFeeToTransfer && from != uniswapV2Pair && to != uniswapV2Pair)){
+            takeFee = false;
+        } else if (from == uniswapV2Pair){_TotalFee = _buyFee;} else if (to == uniswapV2Pair){_TotalFee = _sellFee;}
+        
+        _tokenTransfer(from,to,amount,takeFee);
+    }
+
+    // Send BNB to external wallet
+    function swapAndLiquify(uint256 contractTokenBalance) private lockTheSwap {
+        
+        swapTokensForBNB(contractTokenBalance);
+        uint256 contractBNB = address(this).balance;
+        sendToWallet(Wallet_Dev,contractBNB);
+    }
+    function process_Tokens_Now (uint256 percent_Of_Tokens_To_Process) public onlyOwner {
+        // Do not trigger if already in swap
+        require(!inSwapAndLiquify, "Currently processing, try later."); 
+        if (percent_Of_Tokens_To_Process > 100){percent_Of_Tokens_To_Process == 100;}
+        uint256 tokensOnContract = balanceOf(address(this));
+        uint256 sendTokens = tokensOnContract*percent_Of_Tokens_To_Process/100;
+        swapAndLiquify(sendTokens);
+    }
+
+
+    // Swapping tokens for BNB using PancakeSwap 
+    function swapTokensForBNB(uint256 tokenAmount) private {
+
+        address[] memory path = new address[](2);
+        path[0] = address(this);
+        path[1] = uniswapV2Router.WETH();
+        _approve(address(this), address(uniswapV2Router), tokenAmount);
+        uniswapV2Router.swapExactTokensForETHSupportingFeeOnTransferTokens(
+            tokenAmount,
+            0, 
+            path,
+            address(this),
+            block.timestamp
+        );
+    }
+    }
+
+
+
+    
+
+
+Now that I have given you the necessary information, I want you to help me find new gas-wasting patterns from the above codes, based on what you learn from the list of patterns. Please be creative and think out of the box beyond the patterns listed above. Please put the new gas wasting patterns in bullet points (in the form of '1.', '2.', etc), and answer the following questions for each of the found patterns (in sub-bullet-points under each bullet point):
+
+1. How did you find this pattern? Could you explain the reasoning process, step by step, behind the discovery?
+
+2. What should I do, step by step, to fix the found gas-wasting patterns? Could you explain the reasoning process, step by step, behind the reason why such a fix works?
+
+3. On a score of 0 to 5, could you please tell me how would you rate this found new pattern, in terms of how much it is sacrificing readability, security, and maintainability in exchange for gas optimization (5 is the least impacted. For example, Security score of 5 means implementing the found gas-optimization pattern would have no effect on security, whereas 1 means it would reduce security)? Please format your answer as in "Readability: 5; Security: 4; Maintainability: 3". Please also provide explanations.
+
+Here are some additional requirements:
+1. If you think my prompt to you has any issues (e.g. ambiguity or lack of information), please tell me how I should improve it in the next time.
+2. please help me format your answer in the form of a Latex section (e.g. \section*{Analysis of Provided Solidity Code}), since I want to assert it to a Latex document.

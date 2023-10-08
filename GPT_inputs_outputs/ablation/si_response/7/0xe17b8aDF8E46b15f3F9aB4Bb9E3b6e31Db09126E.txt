@@ -1,0 +1,27 @@
+Here are some potential gas-wasting patterns that I've found in your Solidity code:
+
+1. **Redundant checks**: There are multiple instances in the code where the same conditions are checked repeatedly. For example, in the `transferFrom`, `approve`, `increaseApproval`, and `decreaseApproval` functions, the `require(!frozen[_from] && !frozen[msg.sender], "address frozen");` check is done. This means that the state of the `_from` and `msg.sender` addresses are being checked multiple times, which can be gas expensive. A better approach would be to implement a modifier that checks for the `frozen` state and apply it to the necessary functions, reducing the number of redundant checks.
+
+2. **Repeated use of the `msg.sender` global variable**: The `msg.sender` global variable is used repeatedly in the `initialize` function. This could potentially be optimized by storing `msg.sender` in a local variable at the start of the function and then using this local variable, reducing the number of global variable reads.
+
+3. **Use of expensive operations (like sub and add) on storage variables**: The `balances` and `allowed` storage variables are modified using the `.sub` and `.add` functions. These operations are more costly than simple arithmetic operations on memory variables. An optimization could be to first load the storage variables into memory, perform the operations, and then store the result back into storage.
+
+4. **Over-reliance on `require` for input validation**: The `require` function is used extensively for input validation. While this is a good practice for ensuring data integrity, it is also a gas-expensive operation. Consider consolidating multiple `require` statements into a single one where possible, or use cheaper ways of validating inputs when possible.
+
+5. **Unoptimized use of events (emitting `Transfer` and `Approval` events)**: Every time an event is emitted, it uses gas. In the contract, the `Transfer` and `Approval` events are emitted frequently. If these events are not crucial to the functioning of the contract, consider reducing their usage or consolidating multiple events into a single one.
+
+How I found these patterns:
+
+- For the **redundant checks**, I noticed that the same checks were being made in multiple functions.
+- For the **repeated use of `msg.sender`**, I saw that `msg.sender` was accessed multiple times in the `initialize` function.
+- For the **use of expensive operations on storage variables**, I noticed the `.sub` and `.add` functions being used directly on the `balances` and `allowed` storage variables.
+- For the **over-reliance on `require` for input validation**, I observed the frequent use of `require` throughout the code.
+- For the **unoptimized use of events**, I saw that the contract emitted events frequently, which are known to be gas expensive.
+
+To fix these patterns:
+
+- For the **redundant checks**, create a modifier that checks the `frozen` state and apply it to the necessary functions.
+- For the **repeated use of `msg.sender`**, store `msg.sender` in a local variable at the start of the function.
+- For the **use of expensive operations on storage variables**, load the storage variables into memory, perform the operations, and then store the result back into storage.
+- For the **over-reliance on `require` for input validation**, consolidate multiple `require` statements into a single one or use cheaper ways of validating inputs.
+- For the **unoptimized use of events**, reduce their usage or consolidate multiple events into a single one if they are not crucial to the functioning of the contract.

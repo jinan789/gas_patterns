@@ -1,0 +1,24 @@
+Here are a few potential gas-wasting patterns that I identified from the provided Solidity code:
+
+1. **Unnecessary Condition Checks:** The condition `if (token.isVesting && token.customizedVestingContractAddress != address(0x0))` in the `refund` function is checked for every call to the function. If `token.isVesting` and `token.customizedVestingContractAddress` are not frequently changed, this condition could be checked once and stored in a state variable to save gas.
+
+   **Solution:** If these properties are not frequently changed, consider creating a state variable `bool isCustomVestingActive`, which is set to true if the condition is met. Then, replace the condition check with `if (isCustomVestingActive)`. However, it's important to note that this approach is only effective if the properties are not often updated, because updating the state variable would require additional gas.
+
+2. **Multiple Calls to External Contracts/Addresses:** There are multiple calls to external contracts such as `inscriptionFactory`, `IInscription(token.addr)`, `weth`, etc. Each external call consumes more gas than a local operation.
+
+    **Solution:** Minimize external calls whenever possible. For example, if you're calling an external contract multiple times to get different properties, try to create a function in the external contract that returns all required properties in a single call.
+
+3. **Repeated Calls to the Same Function:** The `IInscription(token.addr).balanceOf(address(this))` and `IWETH(weth).balanceOf(address(this))` are both called twice in the `addLiquidity` function.
+
+    **Solution:** Consider storing the result in a local variable and using it instead of calling the function again. This might look like:
+    ```solidity
+    uint256 balanceOfWeth = IWETH(weth).balanceOf(address(this));
+    uint256 totalTokenLiquidity = IInscription(token.addr).balanceOf(address(this));
+    ```
+    Then replace all occurrences of `IWETH(weth).balanceOf(address(this))` and `IInscription(token.addr).balanceOf(address(this))` with `balanceOfWeth` and `totalTokenLiquidity` respectively.
+
+4. **Address Conversions:** The code repeatedly converts `weth` and `token.addr` to address. The `address()` operator is not expensive, but it is unnecessary if the variables are already of type address.
+
+    **Solution:** If `weth` and `token.addr` are already of type address, the `address()` function is unnecessary and can be removed.
+
+Please note that these are potential improvements and their effectiveness depends on the overall use case and frequency of contract interactions. Always test your code thoroughly after making any changes to ensure that it behaves as expected.

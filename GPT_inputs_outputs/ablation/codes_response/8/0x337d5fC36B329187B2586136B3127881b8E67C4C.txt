@@ -1,0 +1,28 @@
+Sure, I can definitely help you identify new gas-wasting patterns in Solidity and recommend ways to optimize them. Here are a few I've thought of:
+
+1. **Unoptimized Data Types and Structures**
+   - How found: Solidity allows for various data types including uint, int, bool, bytes, address, etc. But often, developers may not optimize the use of these types. For instance, using a uint256 when a uint8 would suffice. Similarly, developers may use arrays where a mapping would be more gas-efficient.
+   - Fix: Always choose the smallest data type that can handle the data. Use mappings instead of arrays for direct access to elements. Review the data structures and types used and replace them with more efficient ones where possible. 
+   - Impact: Readability: 3; Security: 5; Maintainability: 4
+
+2. **Unused Code and Dead Code**
+   - How found: Any code that is not used or cannot be reached during execution is wasteful and consumes unnecessary gas. This is a common issue in many programming languages, not just Solidity.
+   - Fix: Regular code reviews should be done to identify and remove any unused or dead code. Automated tools can help with this.
+   - Impact: Readability: 5; Security: 5; Maintainability: 5
+
+3. **Overuse of External Calls**
+   - How found: Making external calls to other contracts is expensive in terms of gas. Sometimes developers may make unnecessary or repeated external calls without realizing the cost.
+   - Fix: Minimize the number of external calls by bundling them together where possible, or by using events and logs. Also, avoid calling unknown contracts as they can have unpredictable gas costs.
+   - Impact: Readability: 3; Security: 3; Maintainability: 4
+
+4. **Inefficient Error Handling**
+   - How found: Solidity allows for error handling using `require`, `assert`, and `revert`. However, misusing these keywords can lead to unnecessary gas consumption.
+   - Fix: Use `require` for input validation as it refunds unused gas. Use `assert` for internal error checking only. Use `revert` with an error message only when necessary as it costs more gas.
+   - Impact: Readability: 4; Security: 4; Maintainability: 4
+
+5. **Unoptimized Function Visibility**
+   - How found: Solidity functions can have different visibilities: `public`, `external`, `internal`, or `private`. However, sometimes developers use `public` for all functions out of habit, even when a more restricted visibility would be more gas-efficient.
+   - Fix: Use the most restricted visibility that still allows the contract to function correctly. `external` functions are more gas-efficient for large arrays as input. `internal` and `private` functions are cheaper because they don't create a new copy of the arguments.
+   - Impact: Readability: 4; Security: 5; Maintainability: 4
+
+To improve the prompt next time, it may be helpful to specify whether you're looking for general programming inefficiencies that also apply to Solidity, or for inefficiencies unique to Solidity. The reasoning process behind these patterns involves understanding the gas costs of various operations in Solidity and then thinking about common programming practices that might not take these costs into account. To do better next time, I could perhaps think more about the specific features and idiosyncrasies of Solidity that could lead to inefficient gas usage.

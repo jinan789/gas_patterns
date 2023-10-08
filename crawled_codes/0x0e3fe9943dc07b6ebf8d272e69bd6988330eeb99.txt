@@ -1,0 +1,168 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/math/SafeMath.sol";
+
+/**
+ * @title DifoToken
+ * @dev Custom ERC20 token contract with vesting functionality.
+ */
+contract DifoToken is ERC20, Ownable {
+    using SafeMath for uint256;
+
+    struct VestingData {
+        uint256 balance;
+        uint256 startTime;
+        uint256 cliffDuration;
+        uint256 duration;
+        uint256 slicePeriod;
+        uint256 released;
+    }
+
+    event VestingScheduled(
+    address indexed beneficiary,
+    uint256 startTime,
+    uint256 cliffDuration,
+    uint256 duration,
+    uint256 slicePeriod,
+    uint256 amount
+    );
+
+    mapping(address => VestingData) private vestingData;
+    address[] private vestingBeneficiaries;
+
+    /**
+     * @dev Contract constructor.
+     * @param totalSupply The total supply of the token (multiplied by 10^18).
+     */
+    constructor(uint256 totalSupply) ERC20("DIFO FINANCE", "DIFO") {
+        _mint(msg.sender, totalSupply.mul(10**18));
+    }
+
+    /**
+     * @dev Sets the vesting schedule for a beneficiary.
+     * @param _beneficiary Address of the beneficiary to whom vested tokens are transferred.
+     * @param _start Start time of the vesting period.
+     * @param _cliff Duration in seconds of the cliff in which tokens will begin to vest.
+     * @param _duration Duration in seconds of the period in which the tokens will vest.
+     * @param _slicePeriod Duration of a slice period for the vesting in seconds.
+     * @param _amount Total amount of tokens to be released at the end of the vesting.
+     */
+    function setVesting(
+        address _beneficiary,
+        uint256 _start,
+        uint256 _cliff,
+        uint256 _duration,
+        uint256 _slicePeriod,
+        uint256 _amount
+    ) external onlyOwner {
+        require(_beneficiary != address(0), "Invalid beneficiary address");
+        require(_amount > 0, "Invalid amount");
+
+        VestingData storage data = vestingData[_beneficiary];
+        data.balance = _amount;
+        data.startTime = _start;
+        data.cliffDuration = _cliff;
+        data.duration = _duration;
+        data.slicePeriod = _slicePeriod;
+        data.released = 0;
+
+        if (data.balance > 0 && data.released == 0) {
+            vestingBeneficiaries.push(_beneficiary);
+        }
+
+         emit VestingScheduled(
+        _beneficiary,
+        _start,
+        _cliff,
+        _duration,
+        _slicePeriod,
+        _amount
+    );
+    }
+
+    /**
+     * @dev Allows a beneficiary to claim their vested tokens.
+     */
+ function claim() external {
+    address beneficiary = msg.sender;
+    VestingData storage data = vestingData[beneficiary];
+    require(data.balance > 0, "No tokens to claim");
+
+    uint256 unreleased = releasableAmount(beneficiary);
+    require(unreleased > 0, "No tokens are due for release");
+
+    data.released = data.released.add(unreleased);
+    _transfer(address(this), beneficiary, unreleased);
+}
+
+    /**
+     * @dev Returns the amount of tokens that are currently available to be claimed by a beneficiary.
+     * @param beneficiary Address of the beneficiary.
+     * @return The amount of tokens that can be claimed.
+     */
+    function releasableAmount(address beneficiary) public view returns (uint256) {
+        VestingData storage data = vestingData[beneficiary];
+        return vestedAmount(beneficiary).sub(data.released);
+    }
+
+    /**
+     * @dev Returns the total amount of tokens vested for a beneficiary.
+     * @param beneficiary Address of the beneficiary.
+     * @return The total amount of tokens vested.
+     */
+    function vestedAmount(address beneficiary) public view returns (uint256) {
+        VestingData storage data = vestingData[beneficiary];
+        uint256 currentTime = block.timestamp;
+        uint256 startTime = data.startTime;
+        uint256 cliffDuration = data.cliffDuration;
+        uint256 duration = data.duration;
+        uint256 slicePeriod = data.slicePeriod;
+        uint256 totalAmount = data.balance;
+
+        if (currentTime < startTime.add(cliffDuration)) {
+            return 0;
+        } else if (currentTime >= startTime.add(duration)) {
+            return totalAmount;
+        } else {
+            uint256 elapsedPeriods = (currentTime.sub(startTime.sub(cliffDuration))).div(slicePeriod);
+            uint256 totalPeriods = duration.div(slicePeriod);
+            return totalAmount.mul(elapsedPeriods).div(totalPeriods);
+        }
+    }
+
+    /**
+     * @dev Returns all the vesting information for all beneficiaries.
+     * @return Arrays containing the addresses, balances, start times, cliff durations, durations, and slice periods of the vesting schedules.
+     */
+    function getAllVestings() public view returns (
+        address[] memory,
+        uint256[] memory,
+        uint256[] memory,
+        uint256[] memory,
+        uint256[] memory,
+        uint256[] memory
+    ) {
+        uint256 length = vestingBeneficiaries.length;
+        address[] memory beneficiaries = new address[](length);
+        uint256[] memory balances = new uint256[](length);
+        uint256[] memory startTimes = new uint256[](length);
+        uint256[] memory cliffDurations = new uint256[](length);
+        uint256[] memory durations = new uint256[](length);
+        uint256[] memory slicePeriods = new uint256[](length);
+
+        for (uint256 i = 0; i < length; i++) {
+            address beneficiary = vestingBeneficiaries[i];
+            beneficiaries[i] = beneficiary;
+            balances[i] = vestingData[beneficiary].balance;
+            startTimes[i] = vestingData[beneficiary].startTime;
+            cliffDurations[i] = vestingData[beneficiary].cliffDuration;
+            durations[i] = vestingData[beneficiary].duration;
+            slicePeriods[i] = vestingData[beneficiary].slicePeriod;
+        }
+
+        return (beneficiaries, balances, startTimes, cliffDurations, durations, slicePeriods);
+    }
+}

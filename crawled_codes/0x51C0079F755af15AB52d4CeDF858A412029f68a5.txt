@@ -1,0 +1,117 @@
+// SPDX-License-Identifier: UNLICENSED
+/**
+* @Author: Monnet
+* THIS IS AN EXPERIMENTAL IMPLEMENTATION OF Monnet: A New NFT Liquidity Mechanism
+* Bugs potentially abound. Please handle carefully.
+* Arweave transaction: EmgzUeolHrjFvmY-Ltk00UUJ1OqKtY_130F9soCgHIQ
+*
+* BUGS are NFTs causing climate change
+* BUGN is the ERC-721 non-fungible art 
+* BUGF is the ERC-20 fungible liquidity provision system
+*/
+pragma solidity ^0.8.19;
+
+import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import {Pausable} from "@openzeppelin/contracts/security/Pausable.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {Counters} from "@openzeppelin/contracts/utils/Counters.sol";
+
+/**
+ * Interface for the BUGN contract
+ */
+interface IBUGN {
+    function mint(address to) external returns (bool, uint256);
+    function totalSupply() external view returns (uint256);
+}
+
+/**
+ * Interface for the Redemption Calculator
+ */
+interface IRedemptionCalculator {
+    function redeemERC20Cost(uint256 nftCount, uint256 erc20Count) external pure returns (uint256);
+}
+
+/**
+ * BUGF Contract
+ */
+contract BUGF is ERC20, ReentrancyGuard, Pausable, Ownable {
+    uint256 private _publicMintCounter = 1;
+    address private _redemptionCalculatorContractAddress;
+    address public bugnContractAddress;
+
+    constructor() ERC20("BUGF", "BUGF") {}
+
+    /**
+    * Redeem your BUGF Tokens For BUGN
+    */
+    function redeem(address to) public nonReentrant {
+        require(_publicMintCounter > 5_000, "Public Mint Not Finished");
+
+        uint256 bugfPerBugn = getRedemptionCostFtoN();
+
+        require(balanceOf(msg.sender) >= bugfPerBugn, "ERC20: burn amount exceeds balance");
+        _burn(msg.sender, bugfPerBugn);
+        _mintBugn(to);
+    }
+  
+    /**
+    * Cost to redeem BUGF tokens For BUGN
+    */
+    function getRedemptionCostFtoN() public view returns (uint256) {
+        require(_redemptionCalculatorContractAddress != address(0), "Address cannot be zero");
+        require(bugnContractAddress != address(0), "Address cannot be zero");
+
+        if (_publicMintCounter <= 5000) {
+            return 1_000_000 * 1e18;
+        }
+
+        IRedemptionCalculator redemptionCalc = IRedemptionCalculator(_redemptionCalculatorContractAddress);
+        IBUGN bugn = IBUGN(bugnContractAddress);
+        uint256 bugnCount = bugn.totalSupply();
+        return (redemptionCalc.redeemERC20Cost(bugnCount, totalSupply()) * 1e18);
+    }
+
+    modifier onlyMinter() {
+        require(msg.sender == bugnContractAddress, "Only Minter");
+        _;
+    }
+    /**
+     * Mints the required amount of BUGF tokens to the specified address.
+     */
+    function mint(address to, uint256 amount) external nonReentrant onlyMinter returns (bool, uint256) {
+        _mint(to, amount * 1e18);
+        _publicMintCounter++;
+        return (true, amount);
+    }
+
+    function setBugnContractAddress(address _bugnContractAddress) public onlyOwner {
+        bugnContractAddress = _bugnContractAddress;
+    }
+
+    function setRedemptionCalculatorContractAddress(address redemptionCalculatorContractAddress) public onlyOwner {
+        _redemptionCalculatorContractAddress = redemptionCalculatorContractAddress;
+    }
+
+    function pause() public onlyOwner {
+        _pause();
+    }
+
+    function unpause() public onlyOwner {
+        _unpause();
+    }
+
+    /**
+     * Mints 1 BUGN to the specified address.
+     */
+    function _mintBugn(address to) internal {
+        require(bugnContractAddress != address(0), "Address cannot be zero");
+        IBUGN bugn = IBUGN(bugnContractAddress);
+        (bool success,) = bugn.mint(to);
+        require(success, "Mint Failed");
+    }
+
+    function _beforeTokenTransfer(address from, address to, uint256 amount) internal override whenNotPaused {
+        super._beforeTokenTransfer(from, to, amount);
+    }
+}

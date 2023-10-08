@@ -1,0 +1,58 @@
+\subsection*{1. Redundant Approvals}
+
+- \textbf{Discovery Process:} In the function `seedLiquidity`, the `_approve` function is called in each iteration of the loop. This pattern is wasteful when the same `pairToken` is repeated in the `params` array, since the approval is overridden in the subsequent iterations.
+
+- \textbf{Solution:} To optimize this, you can create a temporary mapping to track the tokens that have already been approved. Check this mapping before calling `_approve` to avoid unnecessary approvals.
+
+  ```solidity
+  mapping(address => bool) approvedTokens;
+
+  for (uint256 i = 0; i < params.length; i++) {
+      uint256 tokenId = _seedLiquidity(params[i].pairToken, params[i].tickLower, params[i].tickUpper, amount);
+      positions.push(tokenId);
+      if (!approvedTokens[params[i].pairToken]) {
+          _approve(params[i].pairToken, address(router));
+          approvedTokens[params[i].pairToken] = true;
+      }
+  }
+  ```
+
+- \textbf{Impact:}
+
+  - Readability: 4 (The code remains fairly readable. Newcomers might need to understand why the mapping is used.)
+  - Security: 5 (The security is not affected as the approvals are still made correctly.)
+  - Maintainability: 4 (The mapping needs to be reset appropriately if the function can be called multiple times.)
+
+\subsection*{2. Unnecessary Balance Checks}
+
+- \textbf{Discovery Process:} In the `_burn` function, the balance of the contract is checked twice, once to calculate `burnAmount` and once to calculate the amount to be transferred to the `treasury`. This could be optimized to check only once, as the balance does not change in between these operations.
+
+- \textbf{Solution:} Store the balance in a temporary variable and use this variable for subsequent calculations.
+
+  ```solidity
+  uint256 balance = token.balanceOf(address(this));
+  burnAmount = balance * burnRatio / 100;
+  uint256 treasuryAmount = balance - burnAmount;
+  ERC20(token).safeTransfer(address(0), burnAmount);
+  ERC20(token).safeTransfer(treasury, treasuryAmount);
+  ```
+
+- \textbf{Impact:}
+
+  - Readability: 5 (The code remains equally readable.)
+  - Security: 5 (The security is not affected.)
+  - Maintainability: 5 (The code is just as maintainable as before.)
+
+\subsection*{3. Inefficient Token Comparison}
+
+- \textbf{Discovery Process:} In the `_swap` function, there is an equality check `token0 == address(token)` to determine if `token0` or `token1` should be `tokenIn`. This comparison is performed every time `_swap` is called, which could be optimized if the `tokenIn` and `tokenOut` are determined once and stored for future use.
+
+- \textbf{Solution:} This optimization would be more complex and depends on the contract's usage. If the token pair is static, it could be worth determining `tokenIn` and `tokenOut` in the constructor of the contract.
+
+- \textbf{Impact:}
+
+  - Readability: 4 (The code remains fairly readable. It might be slightly more confusing why the tokens are determined in the constructor.)
+  - Security: 5 (The security is not affected.)
+  - Maintainability: 4 (If the token pair can change, this adds complexity to maintain the contract.)
+
+For future prompts, providing more context would be helpful. For example, how the function calls are expected to occur in practice and whether the inputs to these functions (e.g., the `params` array in `seedLiquidity`) can be assumed to have certain properties.

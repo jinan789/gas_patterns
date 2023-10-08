@@ -1,0 +1,42 @@
+pragma solidity ^0.8.17;
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {Swap} from "./Swap.sol";
+
+contract OneInchV5 is Swap {
+    using SafeERC20 for IERC20;
+    address public immutable router;
+
+    constructor(address router_) {
+        router = router_;
+    }
+
+    function use1inch(
+        IERC20 tokenIn,
+        IERC20 tokenOut,
+        uint256 amountIn,
+        uint256 minAmountOut,
+        bytes calldata swapTxData
+    )
+        external
+        checkToken(address(tokenIn))
+        checkToken(address(tokenOut))
+        onlyOwner
+    {
+        uint256 tokenOutBalanceBefore = tokenOut.balanceOf(address(owner));
+        tokenIn.safeIncreaseAllowance(address(router), amountIn);
+
+        (bool success, ) = router.call(swapTxData);
+        require(success, "Swap must be success");
+
+        uint256 tokenOutBalanceAfter = tokenOut.balanceOf(address(owner));
+        uint tokenOutBalanceChanged = tokenOutBalanceAfter -
+            tokenOutBalanceBefore;
+
+        require(
+            tokenOutBalanceChanged >= minAmountOut,
+            "Slippage check wasn't passed"
+        );
+
+    }
+}

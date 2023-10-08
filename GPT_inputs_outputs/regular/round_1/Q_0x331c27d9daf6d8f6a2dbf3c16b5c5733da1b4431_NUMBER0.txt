@@ -1,0 +1,158 @@
+I want you to help me find new gas-wasting patterns for Solidity at the source code level. To help you accomplish this task, I will give you two types of information, namely a list of known gas-wasting patterns as a few-shot example for you, as well as a chunk of source codes from deployed Solidity codes.
+
+Before giving you the information, I want to tell you a high-level idea of gas optimization. Each instruction in the code sequence consumes a certain amount of gas based on their operation types, which costs money. If we could find an equivalent code instruction sequence that produces the same output while consuming less gas, then this would save money for Solidity users.
+
+Now, the list of known gas-wasting patterns are given below. The list is numbered, with each bullet point specifying one gas-wasting pattern, which is followed by an explanation of why this pattern wastes gas. I want you to read through these and learn how to find new gas-wasting patterns from it. The list is as follows:
+
+1. "dead codes." Defined explicitly as codes that are guaranteed not to be executed during runtime. One example would be a conditional branch that would never be reached. 
+
+2. "Opaque predicate." The outcome of an opaque predicate could be obviously inferred to be true or false without execution. As a result, the corresponding predicate check (e.g. if statement) could be removed to save computations during runtime. Note that the main idea of saving gas here is that simplifying the codes before deploying them does not cost gas, while if deployed codes have any inefficiency, then gas would be wasted due to runtime execution.
+
+3. "Expensive operations in a loop." It refers to the pattern where expensive operations (in terms of gas consumption for Solidity smart contracts) are executed multiple times in a loop, but such expensive operations could be moved out of the loop such that they executed less number of times, without affecting the functionality of the codes. 
+
+4. "Constant outcome of a loop." It refers to the pattern where the outcome of a loop may be a constant that can be inferred during compilation. Evaluating to this constant during runtime would cost gas and is therefore a waste of gas, since we could just replace it with the constant before deployment and save the gas used in the loop.
+
+5. "Loop fusion." It refers to the pattern where there are several separate loops which could be combined into one, without changing the functionality. This has the benefit of reducing gas, in the sense that it can reduce the number of operations, such as conditional jumps and comparison, etc., at the entry points of loops. 
+
+6. "Repeated computations in a loop." It refers to the pattern where there are expressions that produce the same outcome in each iteration of a loop. Hence, the gas can be saved by computing
+the outcome once and then reusing the value instead of recomputing it in subsequent iterations, especially for expressions involving expensive operands. To save gas, this repeated computation could be done before the loop, and then the result could be reused within the loop.
+
+7. "Comparison with unilateral outcome in a loop." It refers to the pattern where a comparison is executed in each iteration of a loop, but the result of the comparison is the same even if it cannot
+be determined during compilation (e.g. a repeated comparison in the loop whose result depends on the runtime input). To save gas, this repeated comparison could be moved out of the loop, and then the result could be reused within the loop.
+
+Next, I will give you a chunk of Solidity codes, and I want you to help me find gas-wasting patterns similar to the list given above. Please follow a similar format as the list above when introducing the gas-wasting patterns, and be as detailed as possible in your explanation. Make sure all the found patterns actually exist in the given codes:
+
+
+// SPDX-License-Identifier: BUSL-1.1
+pragma solidity 0.8.17;
+
+import "@openzeppelin/token/ERC20/IERC20.sol";
+import "@openzeppelin/token/ERC20/utils/SafeERC20.sol";
+import "../external/interfaces/strategies/aave/v2/ILendingPool.sol";
+import "../external/interfaces/strategies/aave/v2/ILendingPoolAddessesProvider.sol";
+import "./Strategy.sol";
+
+// only uses one asset
+// no rewards
+// no slippages needed
+contract AaveV2Strategy is Strategy {
+    using SafeERC20 for IERC20;
+
+    ILendingPoolAddressesProvider public immutable provider;
+
+    IERC20 public aToken;
+
+    uint256 private _lastNormalizedIncome;
+
+    constructor(
+        IAssetGroupRegistry assetGroupRegistry_,
+        ISpoolAccessControl accessControl_,
+        ILendingPoolAddressesProvider provider_
+    ) Strategy(assetGroupRegistry_, accessControl_, NULL_ASSET_GROUP_ID) {
+        if (address(provider_) == address(0)) {
+            revert ConfigurationAddressZero();
+        }
+
+        provider = provider_;
+    }
+
+    function initialize(string memory strategyName_, uint256 assetGroupId_) external initializer {
+        __Strategy_init(strategyName_, assetGroupId_);
+
+        address[] memory tokens = _assetGroupRegistry.listAssetGroup(assetGroupId_);
+
+        if (tokens.length != 1) {
+            revert InvalidAssetGroup(assetGroupId_);
+        }
+
+        aToken = IERC20(provider.getLendingPool().getReserveData(tokens[0]).aTokenAddress);
+        _lastNormalizedIncome = provider.getLendingPool().getReserveNormalizedIncome(tokens[0]);
+    }
+
+    function assetRatio() external pure override returns (uint256[] memory) {
+        uint256[] memory _assetRatio = new uint256[](1);
+        _assetRatio[0] = 1;
+        return _assetRatio;
+    }
+
+    function getUnderlyingAssetAmounts() external view returns (uint256[] memory amounts) {
+        amounts = new uint256[](1);
+        amounts[0] = aToken.balanceOf(address(this));
+    }
+
+    function beforeDepositCheck(uint256[] memory, uint256[] calldata) public view override {}
+
+    function beforeRedeemalCheck(uint256, uint256[] calldata) public view override {}
+
+    function _depositToProtocol(address[] calldata tokens, uint256[] memory amounts, uint256[] calldata)
+        internal
+        override
+    {
+        ILendingPool pool = provider.getLendingPool();
+
+        _resetAndApprove(IERC20(tokens[0]), address(pool), amounts[0]);
+
+        pool.deposit(tokens[0], amounts[0], address(this), 0);
+    }
+
+    function _redeemFromProtocol(address[] calldata tokens, uint256 ssts, uint256[] calldata) internal override {
+        if (ssts == 0) {
+            return;
+        }
+
+        uint256 aTokenWithdrawAmount = aToken.balanceOf(address(this)) * ssts / totalSupply();
+
+        provider.getLendingPool().withdraw(tokens[0], aTokenWithdrawAmount, address(this));
+    }
+
+    function _emergencyWithdrawImpl(uint256[] calldata, address recipient) internal override {
+        address[] memory tokens = assets();
+
+        provider.getLendingPool().withdraw(tokens[0], type(uint256).max, recipient);
+    }
+
+    function _compound(address[] calldata, SwapInfo[] calldata, uint256[] calldata)
+        internal
+        override
+        returns (int256 compoundYield)
+    {}
+
+    function _getYieldPercentage(int256) internal override returns (int256 baseYieldPercentage) {
+        address[] memory tokens = _assetGroupRegistry.listAssetGroup(assetGroupId());
+
+        uint256 currentNormalizedIncome = provider.getLendingPool().getReserveNormalizedIncome(tokens[0]);
+
+        baseYieldPercentage = _calculateYieldPercentage(_lastNormalizedIncome, currentNormalizedIncome);
+        _lastNormalizedIncome = currentNormalizedIncome;
+    }
+
+    function _swapAssets(address[] memory, uint256[] memory, SwapInfo[] calldata) internal override {}
+
+    function _getUsdWorth(uint256[] memory exchangeRates, IUsdPriceFeedManager priceFeedManager)
+        internal
+        view
+        override
+        returns (uint256)
+    {
+        uint256 aTokenBalance = aToken.balanceOf(address(this));
+        address[] memory tokens = _assetGroupRegistry.listAssetGroup(assetGroupId());
+
+        return priceFeedManager.assetToUsdCustomPrice(tokens[0], aTokenBalance, exchangeRates[0]);
+    }
+
+    function _getProtocolRewardsInternal()
+        internal
+        virtual
+        override
+        returns (address[] memory tokens, uint256[] memory amounts)
+    {}
+}
+Now that I have given you all of the necessary information, I want you to help me find new gas-wasting patterns in the above codes. Please put the new gas wasting patterns in bullet points (in the form of '1.', '2.', etc). Specifically, for each of the found patterns, I want you to answer each of the following questions, where the answer to each question should be put as a sub-bullet point under each bullet point:
+
+1. how did you find this pattern? Could you explain the reasoning process, step by step, behind the discovery?
+
+2. what should I do, step by step, to fix the found gas-wasting patterns? Could you explain the reasoning process, step by step, behind the reason why such a fix works?
+
+3. if you think my prompt to you has any issues (e.g. ambiguity or lack of information that could be beneficial for you to understand my task), please tell me how I should improve my prompt in the next time I ask you to perform the same task, such that you would be able to better understand my task and better solve it next time. If there are any suggestions, could you also explain the reasoning process, step by step, behind the reason why such a fix is needed?
+
+Also please help me format your answer in the form of a Latexsection (e.g. \section*{Analysis of Provided Solidity Code}), since I want to assert it to a document.

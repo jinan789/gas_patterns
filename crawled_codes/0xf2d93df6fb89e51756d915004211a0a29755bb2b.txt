@@ -1,0 +1,66 @@
+// SPDX-License-Identifier: MIT
+
+pragma solidity ^0.6.0;
+pragma experimental ABIEncoderV2;
+
+import "./Include.sol";
+import "./ERC721.sol";
+
+contract StakeNFT is ReentrancyGuardUpgradeSafe, IERC721Receiver {
+    address public nft;
+    uint public expiry;
+    mapping (uint => address) public ownerOf;
+
+    function __StakeNFT_init(address nft_, uint expiry_) external initializer {
+	    __ReentrancyGuard_init_unchained();
+        __StakeNFT_init_unchained(nft_, expiry_);
+    }
+
+    function __StakeNFT_init_unchained(address nft_, uint expiry_) internal {
+        nft = nft_;
+        expiry = expiry_;
+    }
+    
+    function stake(uint[] calldata ids) external nonReentrant {
+        for(uint i=0; i<ids.length; i++) {
+            IERC721(nft).safeTransferFrom(msg.sender, address(this), ids[i]);
+            ownerOf[ids[i]] = msg.sender;
+            emit Staked(msg.sender, ids[i]);
+        }
+    }
+    event Staked(address indexed user, uint indexed id);
+
+    function withdraw(uint[] calldata ids) external nonReentrant {
+        require(now >= expiry, "not time yet");
+        for(uint i=0; i<ids.length; i++) {
+            require(ownerOf[ids[i]] == msg.sender, "!ownerOf");
+            IERC721(nft).safeTransferFrom(address(this), msg.sender, ids[i]);
+            ownerOf[ids[i]] = address(0);
+            emit Withdrawn(msg.sender, ids[i]);
+        }
+    }
+    event Withdrawn(address indexed user, uint indexed id);
+
+    function onERC721Received(address operator, address from, uint256 tokenId, bytes calldata data) external override returns (bytes4) {
+        operator;
+        from;
+        tokenId;
+        data;
+        
+        if(msg.sender == nft)
+            return this.onERC721Received.selector;
+        else
+            return 0x00000000;
+    }
+}
+
+
+contract TestNFT is ERC721UpgradeSafe {
+    function __TestNFT_init() external initializer {
+        __ERC721_init("TestNFT", "TNFT");
+    }
+
+    function mint() external {
+        _safeMint(msg.sender, totalSupply());
+    }
+}

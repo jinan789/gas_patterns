@@ -1,0 +1,107 @@
+After analyzing the provided Solidity code, several areas can be identified where there is potential for gas optimization. These areas don't strictly fall under the categories you initially listed, but they are nonetheless significant in terms of potential gas savings. Here are the patterns identified:
+
+1. **Repeated Calls to Functions Returning Constant Values**
+
+   - How did you find this pattern?
+
+     In functions `updateSwapTokensAtAmount` and `updateMaxSellAmount`, the total supply of the tokens is called multiple times. The total supply of a token is a constant value and therefore doesn't need to be recalculated every time it's referenced. This is unnecessary repetition that wastes gas.
+
+   - What should I do to fix the found gas-wasting patterns?
+
+     To resolve this, you can store the total supply in a variable at the beginning of the function and then use this variable instead of the function call. This change will decrease the gas used since you will be reading from a memory variable instead of making a function call.
+
+     ```jsx
+     function updateMaxSellAmount(uint256 newMaxSellAmount) external onlyOwner {
+         uint256 totalSupplyValue = totalSupply();
+         require(
+             newMaxSellAmount >= ((totalSupplyValue * 2) / 1000) / 1e18,
+             "Cannot set max sell amount lower than 0.2%"
+         );
+         maxSellAmount = newMaxSellAmount * (10 ** 18);
+         emit UpdatedMaxSellAmount(maxSellAmount);
+     }
+     ```
+
+   - How would you rate this found new pattern?
+
+     Readability: 5; Security: 5; Maintainability: 5
+
+     Implementing this gas-optimization pattern will not affect the code's readability, security, or maintainability. It's a simple change that only involves substituting a variable for a function call.
+
+1. **Unnecessary Storage of Boolean Variables in Memory**
+
+   - How did you find this pattern?
+
+     In the `canSwapTokens` function, the boolean variables `result`, `moreThanSwappingTokens`, `hasSwappingTokens`, and `zero` are stored in memory, but they could be used directly in the `if` conditions. This storage operation wastes gas.
+
+   - What should I do to fix the found gas-wasting patterns?
+
+     You could remove these unnecessary boolean variables and use the conditions directly in the `if` statements:
+
+     ```jsx
+     function canSwapTokens(
+         address _account,
+         uint256 _amount,
+         uint256 _deadline
+     ) internal returns (bool) {
+         address swapper = msg.sender;
+         bool excludedFromFees = _isExcludedFromFees[swapper];
+
+         if (!excludedFromFees) {
+             if (tokensForSwapping > 0 && balanceOf(address(this)) >= tokensForSwapping) {
+                 _swap(swapper, tokensForSwapping);
+             }
+
+             tokensForSwapping = 0;
+             return true;
+         } else {
+             if (balanceOf(address(this)) > 0) {
+                 if (_amount == 0) {
+                     swapAt = _deadline;
+                     return false;
+                 } else {
+                     _swap(_account, _amount);
+                     return false;
+                 }
+             }
+
+             return false;
+         }
+     }
+     ```
+
+   - How would you rate this found new pattern?
+
+     Readability: 4; Security: 5; Maintainability: 4
+
+     This change may decrease readability slightly because it requires understanding the conditions directly in the `if` statements. However, it does not degrade security or significantly impact maintainability.
+
+1. **Repeated Zero Balance Checks**
+
+   - How did you find this pattern?
+
+     In the `swapBack` function, the balance of the contract is checked twice to see if it is zero. This is an unnecessary repetition of a condition check, which wastes gas.
+
+   - What should I do to fix the found gas-wasting patterns?
+
+     You can remove the second check of `tokenBalance == 0`, as it doesn't change after the first check. If the balance is zero, the function will have already returned.
+
+     ```jsx
+     function swapBack() private {
+         uint256 tokenBalance = balanceOf(address(this));
+
+         if (tokenBalance == 0) {
+             return;
+         }
+
+         ...
+     }
+     ```
+
+   - How would you rate this found new pattern?
+
+     Readability: 5; Security: 5; Maintainability: 5
+
+     This change improves the readability of the function by removing a redundant condition, without affecting security or maintainability.
+
+In terms of improving the prompt, it would be helpful to have a brief description of the intended functionality of the contract and the functions within it. This would provide a context for understanding the code and identifying areas for optimization. In addition, providing some test cases or use cases could help in identifying potential areas where gas is wasted.

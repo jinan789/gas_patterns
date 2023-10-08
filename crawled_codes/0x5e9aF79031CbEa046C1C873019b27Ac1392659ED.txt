@@ -1,0 +1,211 @@
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.16;
+
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/access/Ownable2StepUpgradeable.sol";
+
+import "./IUnikuraMothership.sol";
+import "../UnikuraMembership/IUnikuraMembership.sol";
+
+library UnikuraMothershipStorage {
+    struct Layout {
+        /// @notice The percentage of mintPrice required as sales fee
+        uint8 _feePercentage;
+        /// @notice Velvett corporate wallet for recieving sales fees
+        address payable _velvettFeeRecipient;
+    }
+
+    bytes32 internal constant STORAGE_SLOT =
+        keccak256("unikura.contracts.storage.unikuraMothership");
+
+    function layout() internal pure returns (Layout storage l) {
+        bytes32 slot = STORAGE_SLOT;
+        assembly {
+            l.slot := slot
+        }
+    }
+}
+
+library UnikuraMothershipMembershipStorage {
+    struct Layout {
+        /// @notice Unikura membership contract stored separately so it can be safely removed in the future
+        IUnikuraMembership _unikuraMembership;
+    }
+
+    bytes32 internal constant STORAGE_SLOT =
+        keccak256("unikura.contracts.storage.unikuraMothershipMembership");
+
+    function layout() internal pure returns (Layout storage l) {
+        bytes32 slot = STORAGE_SLOT;
+        assembly {
+            l.slot := slot
+        }
+    }
+}
+
+contract UnikuraMothership is
+    IUnikuraMothership,
+    Initializable,
+    Ownable2StepUpgradeable
+{
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
+    /**
+     * @param feePercentage_ The new fee percentage.
+     * @param velvettFeeRecipient_ The new Velvett fee recipient address.
+     */
+    function initialize(
+        uint8 feePercentage_,
+        address payable velvettFeeRecipient_
+    ) external initializer {
+        require(
+            feePercentage_ >= 0 && feePercentage_ <= 100,
+            "Fee percentage must be between 0 and 100"
+        );
+        require(
+            velvettFeeRecipient_ != address(0),
+            "Velvett fee recipient must not be empty"
+        );
+
+        UnikuraMothershipStorage.layout()._feePercentage = feePercentage_;
+        UnikuraMothershipStorage
+            .layout()
+            ._velvettFeeRecipient = velvettFeeRecipient_;
+
+        // Emit an event with the update.
+        emit FeePercentage(feePercentage_);
+        emit VelvettFeeRecipient(velvettFeeRecipient_);
+
+        __Ownable_init();
+    }
+
+    /**
+     * @notice Retrieve the current fee percentage.
+     * @dev A view function that does not modify the state of the contract.
+     * @return An uint8 representing the fee percentage.
+     */
+    function feePercentage() public view returns (uint8) {
+        return UnikuraMothershipStorage.layout()._feePercentage;
+    }
+
+    /**
+     * @notice Update the fee percentage.
+     * @dev This function can only be called by the contract owner.
+     * @param feePercentage_ The new fee percentage.
+     */
+    function setFeePercentage(uint8 feePercentage_) external onlyOwner {
+        require(
+            feePercentage_ >= 0 && feePercentage_ <= 100,
+            "Fee percentage must be between 0 and 100"
+        );
+
+        UnikuraMothershipStorage.layout()._feePercentage = feePercentage_;
+
+        // Emit an event with the update.
+        emit FeePercentage(feePercentage_);
+    }
+
+    /**
+     * @notice Retrieve the current Velvett fee recipient address.
+     * @dev A view function that does not modify the state of the contract.
+     * @return An address payable representing the Velvett fee recipient address.
+     */
+    function velvettFeeRecipient() public view returns (address payable) {
+        return UnikuraMothershipStorage.layout()._velvettFeeRecipient;
+    }
+
+    /**
+     * @notice Update the Velvett fee recipient address.
+     * @dev This function can only be called by the contract owner.
+     * @param velvettFeeRecipient_ The new Velvett fee recipient address.
+     */
+    function setVelvettFeeRecipient(
+        address payable velvettFeeRecipient_
+    ) external onlyOwner {
+        require(
+            velvettFeeRecipient_ != address(0),
+            "Velvett fee recipient must not be empty"
+        );
+        UnikuraMothershipStorage
+            .layout()
+            ._velvettFeeRecipient = velvettFeeRecipient_;
+
+        // Emit an event with the update.
+        emit VelvettFeeRecipient(velvettFeeRecipient_);
+    }
+
+    /**
+     * @notice Retrieve the current Unikura membership contract address.
+     * @dev A view function that does not modify the state of the contract.
+     * @return An address representing the Unikura membership contract address.
+     */
+    function unikuraMembershipContract() public view returns (address) {
+        return
+            address(
+                UnikuraMothershipMembershipStorage.layout()._unikuraMembership
+            );
+    }
+
+    /**
+     * @notice Update the Unikura membership contract address.
+     * @dev This function can only be called by the contract owner.
+     * @param unikuraMembershipContract_ The new Unikura membership contract address.
+     */
+    function setUnikuraMembershipContract(
+        address unikuraMembershipContract_
+    ) external onlyOwner {
+        require(
+            unikuraMembershipContract_ != address(0),
+            "Unikura membership contract must not be empty"
+        );
+        UnikuraMothershipMembershipStorage
+            .layout()
+            ._unikuraMembership = IUnikuraMembership(
+            unikuraMembershipContract_
+        );
+
+        // Emit an event with the update.
+        emit UnikuraMembership(unikuraMembershipContract_);
+    }
+
+    /**
+     * @notice Checks whether a given `wallet` owns a GOLD or SILVER membership token.
+     * @dev This function makes an external call to the UnikuraMembership contract to verify if the `account` holds a membership token. If the call fails, an exception is thrown.
+     * @param wallet The Ethereum address to check for membership token ownership.
+     * @return Returns true if the `wallet` owns a GOLD or SILVER membership token, and false otherwise.
+     */
+    function ownsMembershipNFT(address wallet) private view returns (bool) {
+        return
+            UnikuraMothershipMembershipStorage
+                .layout()
+                ._unikuraMembership
+                .ownsMembership(wallet);
+    }
+
+    /**
+     * @notice Extensible function for checking whether a given `wallet` is allowed to transfer.
+     * @dev This function is extensible for future checks such as unikura ecosystem level address blocking or gating
+     * @param wallet The Ethereum address to check
+     * @return Returns true if the `wallet` is allowed to
+     */
+    function isAllowed(address wallet) public view returns (bool) {
+        return ownsMembershipNFT(wallet);
+    }
+
+    /**
+     * @notice Prevents renouncing ownership of the contract.
+     * @dev Overrides the original renounceOwnership function to ensure that ownership cannot be renounced.
+     *      This ensures that there will always be an owner for the contract.
+     */
+    function renounceOwnership()
+        public
+        view
+        override(OwnableUpgradeable, IUnikuraMothership)
+        onlyOwner
+    {
+        revert("Renouncing ownership is not allowed");
+    }
+}

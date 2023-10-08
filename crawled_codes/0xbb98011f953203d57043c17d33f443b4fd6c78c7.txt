@@ -1,0 +1,232 @@
+// SPDX-License-Identifier: UNLICENSED
+
+pragma solidity ^0.8.0;
+
+interface IERC20 {
+    /**
+     * @dev Emitted when `value` tokens are moved from one account (`from`) to
+     * another (`to`).
+     *
+     * Note that `value` may be zero.
+     */
+    event Transfer(address indexed from, address indexed to, uint256 value);
+
+    /**
+     * @dev Emitted when the allowance of a `spender` for an `owner` is set by
+     * a call to {approve}. `value` is the new allowance.
+     */
+    event Approval(address indexed owner, address indexed spender, uint256 value);
+
+    /**
+     * @dev Returns the value of tokens in existence.
+     */
+    function totalSupply() external view returns (uint256);
+
+    /**
+     * @dev Returns the value of tokens owned by `account`.
+     */
+    function balanceOf(address account) external view returns (uint256);
+
+    /**
+     * @dev Moves a `value` amount of tokens from the caller's account to `to`.
+     *
+     * Returns a boolean value indicating whether the operation succeeded.
+     *
+     * Emits a {Transfer} event.
+     */
+    function transfer(address to, uint256 value) external returns (bool);
+
+    /**
+     * @dev Returns the remaining number of tokens that `spender` will be
+     * allowed to spend on behalf of `owner` through {transferFrom}. This is
+     * zero by default.
+     *
+     * This value changes when {approve} or {transferFrom} are called.
+     */
+    function allowance(address owner, address spender) external view returns (uint256);
+
+    /**
+     * @dev Sets a `value` amount of tokens as the allowance of `spender` over the
+     * caller's tokens.
+     *
+     * Returns a boolean value indicating whether the operation succeeded.
+     *
+     * IMPORTANT: Beware that changing an allowance with this method brings the risk
+     * that someone may use both the old and the new allowance by unfortunate
+     * transaction ordering. One possible solution to mitigate this race
+     * condition is to first reduce the spender's allowance to 0 and set the
+     * desired value afterwards:
+     * https://github.com/ethereum/EIPs/issues/20#issuecomment-263524729
+     *
+     * Emits an {Approval} event.
+     */
+    function approve(address spender, uint256 value) external returns (bool);
+
+    /**
+     * @dev Moves a `value` amount of tokens from `from` to `to` using the
+     * allowance mechanism. `value` is then deducted from the caller's
+     * allowance.
+     *
+     * Returns a boolean value indicating whether the operation succeeded.
+     *
+     * Emits a {Transfer} event.
+     */
+    function transferFrom(address from, address to, uint256 value) external returns (bool);
+}
+
+pragma solidity ^0.8.7;
+
+import "./VRFCoordinatorV2Interface.sol";
+import "./VRFConsumerBaseV2.sol";
+
+contract Bet is VRFConsumerBaseV2 {
+    VRFCoordinatorV2Interface COORDINATOR;
+
+    uint64 s_subscriptionId;
+
+    IERC20 public token;
+
+    address vrfCoordinator = 0x271682DEB8C4E0901D1a1550aD2e64D568E69909;
+
+    bytes32 keyHash = 0xff8dedfbfa60af186cf3c830acbc32c05aae823045ae5ea7da1e45fbfaba4f92;
+
+    uint32 callbackGasLimit = 500000;
+
+    uint16 requestConfirmations = 3;
+    uint256 public vRes ; 
+
+    uint32 numWords =  1;
+
+    uint256[] public s_randomWords;
+    uint256 public s_requestId;
+    uint16 public setterN = 0; 
+    uint256 public maxbet = 250000*10**18;
+
+
+    mapping(uint256 => address) private _wagerInit; 
+    mapping(address => uint256) private _wagerInitAmount;
+    mapping(address => uint16) public LatestRes; 
+    mapping(address => uint16) private CanPlay ; 
+
+    
+    address s_owner;  
+    address public creator =  0x3945A69a6635676B031702f411639c5C41262225;
+
+    constructor(uint64 subscriptionId) VRFConsumerBaseV2(vrfCoordinator) {
+        COORDINATOR = VRFCoordinatorV2Interface(vrfCoordinator);
+        s_owner = msg.sender;
+        s_subscriptionId = subscriptionId;
+        
+    }
+    function SetToken(IERC20 _token)public {
+        require(msg.sender == creator);
+        require(setterN == 0);
+        token = _token;
+        setterN = 1 ; 
+    }
+
+    function ChangeMaxBet(uint256 change_value)public {
+        require(msg.sender== creator);
+        maxbet = change_value;
+    }
+
+    
+    function Changeclimit(uint32 change_value)public {
+        require(msg.sender== creator);
+        callbackGasLimit = change_value;
+    }
+
+    function Changekey(bytes32 change_value)public {
+        require(msg.sender== creator);
+        keyHash = change_value;
+    }
+
+    function retrieveERC20Asset(address assetAddress) external {
+        // Ensure that only the creator can call this function
+        require(msg.sender == creator, "Only the creator can retrieve assets");
+
+        IERC20 asset = IERC20(assetAddress);
+        uint256 balance = asset.balanceOf(address(this));
+        
+        // If there's any asset balance, transfer it to the creator
+        require(asset.transfer(creator, balance), "Transfer failed");
+    }
+
+
+    function requestRandomWords(uint256 _amount) external {
+        require(CanPlay[msg.sender]==0, 'bet already placed');
+        require(_amount <maxbet, 'too big');
+        require((_amount/10000)*10000 == _amount, 'too small');
+        require(token.balanceOf(msg.sender) >= _amount);
+        require(token.balanceOf(address(this)) >= _amount*6);
+        token.transferFrom(msg.sender,address(this) , _amount);
+
+        s_requestId = COORDINATOR.requestRandomWords(
+            keyHash,
+            s_subscriptionId,
+            requestConfirmations,
+            callbackGasLimit,
+            numWords
+        );
+    
+        _wagerInit[s_requestId] = msg.sender;
+        _wagerInitAmount[msg.sender] = _amount;   
+
+        LatestRes[msg.sender] = 0 ; 
+        CanPlay[msg.sender] = 1; 
+    }
+
+    function fulfillRandomWords  (
+       uint256 s_requestId, /* requestId */
+       uint256[] memory randomWords
+    ) internal override {
+    uint256 s_randomRange = (randomWords[0] % 100) + 1;
+    _settleBet(s_requestId,s_randomRange);
+   }
+
+   function _settleBet(uint256 requestId, uint256 randomNumber) private {
+        address _user = _wagerInit[requestId];
+        require(_user != address(0), ' record does not exist');
+
+        uint256 _amountWagered = _wagerInitAmount[_user];
+
+        vRes = randomNumber ; 
+            
+        if (randomNumber > 40 && randomNumber < 70){
+            //10 percent
+            uint WinAmount = (_amountWagered/100) *10 ; 
+            token.transfer( _user, _amountWagered + WinAmount);
+            LatestRes[_user] = 1 ;
+            
+        } else if (randomNumber > 69 && randomNumber < 80 ){
+            //60 percent
+            uint WinAmount = (_amountWagered/100) *60 ; 
+            token.transfer( _user, _amountWagered + WinAmount);
+            LatestRes[_user] = 2 ;
+
+        } else if (randomNumber > 79 && randomNumber < 95){
+            //2x
+            uint WinAmount = _amountWagered*2;
+            token.transfer( _user, WinAmount);
+            LatestRes[_user] = 3 ;
+
+        } else if(randomNumber > 94 && randomNumber < 98){
+            //3x
+            uint WinAmount = _amountWagered*3;
+            token.transfer( _user, WinAmount);
+            LatestRes[_user] = 4 ;
+
+        } else if(randomNumber>97){
+            //5x
+            uint WinAmount = _amountWagered*5;
+            token.transfer( _user, WinAmount);
+            LatestRes[_user] = 5 ;
+        }
+        else {
+            LatestRes[_user] =9 ; 
+        }
+        CanPlay[_user] = 0; 
+        }
+
+        
+}

@@ -1,0 +1,577 @@
+// SPDX-License-Identifier: MIT
+
+pragma solidity ^0.8.18;
+
+import "@openzeppelin/contracts/utils/Base64.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+
+
+interface ColorGenerator {
+    function getRandomColor(uint256 tokenId) view external returns (string memory, uint8[3] memory);
+    }
+
+interface Fillers {
+    function gradient(uint8[3] memory rgb, uint256 tokenId, uint256 randomNumber) pure external returns (string memory);
+    }
+
+contract Libee is Ownable{
+
+    address color_addr;
+
+    ColorGenerator colorGenerator;
+
+    address filler_addr;
+
+    Fillers fillers;
+
+    string private constant GLOW = 
+        '<filter id="feOffset" x="-40" y="-20" width="100" height="200"> <feOffset in="SourceGraphic" dx="60" dy="60" /> <feGaussianBlur in="SourceGraphic" stdDeviation="5" result="blur2" /> <feMerge> <feMergeNode in="blur2" /> <feMergeNode in="SourceGraphic" /> </feMerge> </filter>';
+
+
+
+    function _setAddr(address _color_addr) public onlyOwner  {  
+        color_addr = _color_addr;
+    }
+
+    function _setFillerAddr(address _filler_addr) public onlyOwner  {  
+        filler_addr = _filler_addr;
+    }
+
+
+function getColorAndVariables(uint256, uint256 randomNumber) internal view returns (string memory color, string memory colorName, uint8[3] memory rgb) {
+
+
+            (colorName, rgb) = ColorGenerator(color_addr).getRandomColor(randomNumber);
+
+        
+
+        color = string(abi.encodePacked(
+            "rgb(",
+            uint2str(rgb[0]), ",",
+            uint2str(rgb[1]), ",",
+            uint2str(rgb[2]),
+            ")"
+        ));
+
+        return (color, colorName, rgb);
+    }
+
+function generateURI(uint256 tokenId, uint256 randomNumber) view external returns (string memory) {
+
+
+        (string memory color, string memory colorName, uint8[3] memory rgb) = getColorAndVariables(tokenId, randomNumber);
+
+        string memory baseSvg = generateBaseSvg(tokenId, color, rgb, randomNumber);
+
+        string memory json = generateJson(tokenId, colorName, baseSvg, randomNumber);
+
+        string memory tokenURI1 = string(abi.encodePacked('data:application/json;base64,', json));
+        return tokenURI1;
+    }
+
+
+function gRC(uint8[3] memory rgb, uint256 index) internal pure returns (string memory) {
+        
+        uint256 r;
+        uint256 g;
+        uint256 b;
+        
+
+        if(index >= 500)
+        {
+            uint256 index1 = index - 500 ;
+            uint256 rand = uint256(keccak256(abi.encodePacked(index, index)));
+
+            r = (rand + (5 * index1)) % 256;
+            g = ((rand / 256) + (5 * index1)) % 256 ;
+            b = ((rand / 256 / 256) + (5 * index1)) % 256 ;            
+        }
+        else if(index >= 100) {
+            uint256 index1 = index - 100;
+        
+            uint256 gradientFactor = index1 * 4; 
+
+            r = (rgb[0] + gradientFactor);
+            g = (rgb[1] + gradientFactor);
+            b = (rgb[2] + gradientFactor);        
+        } 
+        else {
+            
+            r = rgb[0];
+            g = rgb[1];
+            b = rgb[2];
+
+        }
+        return string(abi.encodePacked("rgb(", uint2str(r), ",", uint2str(g), ",", uint2str(b), ")"));
+    }
+
+
+
+function generateJson(uint256 tokenId, string memory colorName, string memory baseSvg, uint256 randomNumber) internal pure returns (string memory) {
+        uint256 OcType = randomNumber % 10;
+        uint256 eyeType = tokenId % 4;
+
+        string memory typeName = getTypeName(OcType, eyeType);
+        string memory eye = getEyeType(eyeType);
+        (string memory bgType, string memory bgColor) = getBackground(tokenId, colorName);
+
+        string memory numFilters = getNumFilters(tokenId);
+        string memory stroke = getStroke(tokenId);
+
+        string memory colorName1 = colorName;
+
+            string memory json = string(
+        abi.encodePacked(
+            '{"name": "OcOpepen #',
+            uint2str(tokenId),
+            '", "description": "OnChain Opepens generated, animated and stored on the blockchain via 4 contracts", "image": "data:image/svg+xml;base64,',
+            Base64.encode(bytes(baseSvg)),
+            '", "attributes":['
+            '{"trait_type":"Type", "value":"',
+            typeName,
+            '"},'
+            '{"trait_type":"Eyes", "value":"',
+            eye,
+            '"},'
+            '{"trait_type":"Base color", "value":"',
+            colorName1,
+            '"},'
+            '{"trait_type":"Background Type", "value":"',
+            bgType,
+            '"},'
+            '{"trait_type":"Background Color", "value":"',
+            bgColor,
+            '"},'
+            '{"trait_type":"Number of Filters", "value":"',
+            numFilters,
+            '"},'
+            '{"trait_type":"Stroke", "value":"',
+            stroke,
+            '"}'
+            ']}'
+        )
+    );
+
+    return Base64.encode(bytes(json));
+}
+
+function generateBaseSvg(uint256 tokenId, string memory color, uint8[3] memory rgb, uint256 randomNumber) internal view returns (string memory) {
+
+
+        string memory stroke = gRC(rgb, tokenId);
+        string memory BG1 = background(tokenId);
+        string memory gFILTERS = gFilters(tokenId);
+        string memory EYES1 = eyes(rgb, tokenId);
+
+        string memory baseSvg = string(abi.encodePacked(
+            '<svg xmlns="http://www.w3.org/2000/svg" class="svg" width="1024" height="1024" viewBox="0 0 512 512" preserveAspectRatio="xMinYMin meet">'
+            '<rect width="100%" height="100%" fill="black" stroke="none"/>'
+           
+        ));
+        
+        baseSvg = string(abi.encodePacked(baseSvg, BG1, gFILTERS,  EYES1,  '</g>', '<use href="#check" x="5" y="-1" class="c50" transform="scale(5)"/>', '<style>', '.svg{shape-rendering:geometricPrecision}' ));
+                for (uint i = 0; i <= 19; i++) {
+
+                 if (randomNumber % 10 == 0 && tokenId % 4 == 0) { 
+                    baseSvg = string(abi.encodePacked(baseSvg, '.c', uint2str(i), "{fill:url(#squarePattern)}"));
+                }else if (randomNumber % 10 == 1) { 
+                    baseSvg = string(abi.encodePacked(baseSvg, '.c', uint2str(i), "{fill:url(#eyePattern)}"));
+                }else if (randomNumber % 10 == 2) { 
+                    baseSvg = string(abi.encodePacked(baseSvg, '.c', uint2str(i), "{fill:url(#wiPattern)}"));
+                }else if (randomNumber % 10 == 3) { 
+                    baseSvg = string(abi.encodePacked(baseSvg, '.c', uint2str(i), "{fill:url(#linePattern)}"));
+                }else if (randomNumber % 10 == 4) {
+                    baseSvg = string(abi.encodePacked(baseSvg, '.c', uint2str(i), "{fill:url(#FPattern)}"));
+                } else if (randomNumber % 10 == 5) {
+                    baseSvg = string(abi.encodePacked(baseSvg, '.c', uint2str(i), "{fill:", gRC(rgb, i + 100), "}"));
+                } else if (randomNumber % 10 == 6) { 
+                    baseSvg = string(abi.encodePacked(baseSvg, '.c', uint2str(i), "{fill:url(#glitch-gradient)}"));
+                } else if (randomNumber % 10 == 7 && tokenId % 4 == 3) {
+                    baseSvg = string(abi.encodePacked(baseSvg, '.c', uint2str(i), "{fill:", gRC(rgb, i + 500), "}"));
+                } else if (randomNumber % 10 == 8) {
+                    baseSvg = string(abi.encodePacked(baseSvg, '.c', uint2str(i), "{fill:url(#noisePattern)}"));
+                } else if (randomNumber % 10 == 9) {
+                    baseSvg = string(abi.encodePacked(baseSvg, '.c', uint2str(i), "{fill:url(#circlePattern)}"));
+                } else {
+                    baseSvg = string(abi.encodePacked(baseSvg, '.c', uint2str(i), "{fill:", color, "}"));
+                }
+            }
+
+                    if( tokenId % 5 == 0) //t0, t20, t40
+                    {                       
+                        baseSvg = string(abi.encodePacked(baseSvg, 'g { stroke: ', stroke, '; animation: blink 0.1s infinite; stroke-width: ', getDur(randomNumber, 3), '} @keyframes blink { 0% { stroke-opacity: 1; } 50% { stroke-opacity: 0; } 100% { stroke-opacity: 1; } }</style>'));
+                    }
+                    else {
+                        baseSvg = string(abi.encodePacked(baseSvg, '</style>'));                                               
+                    }
+                string memory NOISY = generateNoise(rgb, tokenId);
+                string memory GRADIENT_DEFINITION  = Fillers(filler_addr).gradient(rgb, tokenId, randomNumber);
+                baseSvg = string(abi.encodePacked(
+                        baseSvg,
+                        '<defs>',
+                        GRADIENT_DEFINITION,
+                        NOISY,
+                        GLOW,
+                        '<rect id="r" width="64" height="64"/>'
+                        '<path id="q1" d="M64 0A64 64 0 000 64H64" />'
+                        '<path id="q2" d="M0 0A64 64 0 0164 64H0" />'
+                        '<path id="q3" d="M0 64A64 64 0 0064 0H0" />'
+                        '<path id="q4" d="M0 0A64 64 0 0064 64V0" />'
+                        '<path id="check" fill="' ,color, '" fill-rule="evenodd" d="M75.494 23.737a.58.58 0 0 0-.988 0 .578.578 0 0 0-.7.699.58.58 0 0 0 0 .988.578.578 0 0 0 .7.7.577.577 0 0 0 .988 0 .576.576 0 0 0 .7-.7.58.58 0 0 0 0-.988.577.577 0 0 0-.7-.7Zm-.582 1.722.67-1.006c.084-.125-.11-.254-.193-.13l-.591.89-.202-.202c-.106-.106-.27.059-.164.165l.319.316a.115.115 0 0 0 .129 0 .116.116 0 0 0 .032-.033Z" clip-rule="evenodd"/>'
+                        '</defs>'
+                        '</svg>'
+                    ));
+
+        return baseSvg;
+    }
+
+    function getTypeName(uint256 OcType, uint256 eyeType) internal pure returns (string memory) {
+    if (OcType == 0 && eyeType == 0) {
+        return "Invis";
+    } else if (OcType == 1) {
+        return "Crocs";
+    } else if (OcType == 2) {
+        return "Wi";
+    } else if (OcType == 3) {
+        return "Threads";
+    } else if (OcType == 4) {
+        return "F-Blocks";
+    } else if (OcType == 5) {
+        return "Sp3ctrum";
+    } else if (OcType == 6) {
+        return "Grad Rad";
+    } else if (OcType == 7 && eyeType == 3) {
+        return "Multi hUe";
+    } else if (OcType == 8) {
+        return eyeType == 0 ? "LineCuts" : "Fiery";
+    } else if (OcType == 9) {
+        return eyeType == 1 ? "Circles" : "Frontals";
+    } else {
+        return "Solid";
+    }
+}
+
+function getEyeType(uint256 eyeType) internal pure returns (string memory) {
+    if (eyeType == 0) {
+        return "Both Blinkers";
+    } else if (eyeType == 1) {
+        return "Left Blinkers";
+    } else if (eyeType == 2) {
+        return "Right Blinkers";
+    } else {
+        return "No Blinkers";
+    }
+}
+
+function getBackground(uint256 tokenId, string memory colorName) internal pure returns (string memory, string memory) {
+    uint256 tokenId1 = tokenId;
+    string memory bgType;
+    string memory bgColor = "Default";
+    if (tokenId1 % 4 == 0 && tokenId1 % 10 == 0) {
+        bgType = "Static";
+    } else if (tokenId1 % 4 == 1 && tokenId1 % 5 == 0) {
+        bgType = "Splash";
+    } else if (tokenId1 % 4 == 2) {
+        (bgType, bgColor) = getGradientBackground(tokenId1, colorName);
+    } else if (tokenId1 % 4 == 3) {
+        bgType = "Grainy";
+            if (tokenId1 % 9 == 4) {
+                bgColor = colorName;
+            } else {
+                bgColor = getColor(tokenId1, colorName);
+            }
+    } else {
+        (bgType, bgColor) = getNoiseBackground(tokenId1, colorName);
+    }  
+    return (bgType, bgColor);
+}
+
+function getGradientBackground(uint256 tokenId1, string memory colorName) internal pure returns (string memory, string memory) {
+    string memory bgType = "Gradients";
+    string memory bgColor;
+
+    if (tokenId1 % 8 == 3) {
+        bgColor = colorName;
+    } else {
+        bgColor = getColor(tokenId1, colorName);
+    }
+    return (bgType, bgColor);
+}
+
+function getNoiseBackground(uint256 tokenId1, string memory colorName) internal pure returns (string memory, string memory) {
+    string memory bgType = "Noisy";
+    string memory bgColor;
+
+    if (tokenId1 % 16 == 0) {
+        bgColor = colorName;
+    } else {
+        bgColor = getColor(tokenId1, colorName);
+    }
+    return (bgType, bgColor);
+}
+
+function getColor(uint256, string memory colorName) internal pure returns (string memory) {
+    return colorName;
+}
+
+function getNumFilters(uint256 tokenId1) internal pure returns (string memory) {
+    if (tokenId1 % 10 == 0) {
+        return "3";
+    } else if (tokenId1 % 4 == 0) {
+        return "1";
+    } else if (tokenId1 % 3 == 0) {
+        return "2";
+    } else {
+        return "0";
+    }
+}
+
+function getStroke(uint256 tokenId) internal pure returns (string memory) {
+    return tokenId % 5 == 0 ? "Yes" : "No";
+}
+
+
+    function generateNoise(uint8[3] memory rgb, uint256 tokenId) internal view returns (string memory) {
+        string memory result;
+        (string memory bg_color,,) = getColorAndVariables(99, tokenId);
+
+        if (tokenId % 4 == 0 && tokenId % 10 == 0) {
+            result = string(abi.encodePacked(
+                '<filter id="staticBG">'
+                '<feTurbulence type="turbulence" baseFrequency="0.5" numOctaves="6" stitchTiles="stitch" x="0%" y="0%" result="turbulence">'
+                '<animate attributeName="baseFrequency" values="0.5;0.6;0.5" dur="0.1s" repeatCount="indefinite"/>'
+                '</feTurbulence>'
+                '<feComposite in2="turbulence" operator="arithmetic" k1="1" k2="1" k3="1" result="brightenedTurbulence"/>'
+                '<feBlend mode="screen" in="brightenedTurbulence" in2="SourceGraphic"/>'
+                '</filter>'
+            ));
+        } else if (tokenId % 4 == 1 && tokenId % 5 == 0) {
+            result = string(abi.encodePacked(
+                '<filter id="splashBG">'
+                '<feTurbulence type="turbulence" baseFrequency="', (tokenId % 3 == 0) ? "0.01" : "0.1", '" numOctaves="1" stitchTiles="stitch" x="0%" y="0%" result="turbulence">'
+                '</feTurbulence>'
+                '<feComposite in2="turbulence" operator="arithmetic" k1="0.5" k2="0.5" k3="0.5" result="brightenedTurbulence">'
+                '<animate attributeName="k3" values="1;10;1" dur="5s" repeatCount="indefinite"/>'
+                '</feComposite>'
+                '<feBlend mode="screen" in="brightenedTurbulence" in2="SourceGraphic"/>'
+                '</filter>'                
+            ));
+        } else if (tokenId % 4 == 2) {
+            result = string(abi.encodePacked(
+                '<filter id="gradBG">'
+                '<feSpecularLighting result="specOut" specularExponent="20" lighting-color="',
+                (tokenId % 8 == 3) ? gRC(rgb, 0) : bg_color,
+                '">'
+                '<fePointLight x="50" y="75" z="200" />'
+                '</feSpecularLighting>'
+                '<feComposite in="SourceGraphic" in2="specOut" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" />'
+                '</filter>'
+            ));
+        } else if (tokenId % 4 == 3) {
+            result = string(abi.encodePacked(
+                '<filter id="grainsBG">'
+                '<feTurbulence type="turbulence" baseFrequency="0.9" numOctaves="6" stitchTiles="stitch" x="0%" y="0%" result="turbulence">'
+                '<animate attributeName="baseFrequency" values="0.9;1;0.9" dur="0.1s" repeatCount="indefinite"/>'
+                '</feTurbulence>'
+                '<feSpecularLighting surfaceScale="15" specularConstant="20" specularExponent="99" lighting-color="',
+                (tokenId % 9 == 4) ? gRC(rgb, 0) : bg_color,
+                '" in="turbulence" result="specularLighting">'
+                '<feDistantLight azimuth="3" elevation="100"/>'
+                '</feSpecularLighting>'
+                '</filter>'
+            ));
+        } else  {
+            result = string(abi.encodePacked(
+                '<filter id="noiseFilter">'
+                '<feTurbulence type="fractalNoise" baseFrequency="', (tokenId % 8 == 0) ? "0.003" : (tokenId % 3 == 0) ? "0.01" : "0.001", '" numOctaves="', (tokenId % 3 == 0) ? "1" : (tokenId % 3 == 1) ? "3" : "6", '" stitchTiles="stitch" result="turbulence"/>'
+                '<feSpecularLighting surfaceScale="50" specularConstant="20" specularExponent="99" lighting-color="',
+                (tokenId % 16 == 0) ? gRC(rgb, 0) : bg_color,
+                '" in="turbulence" result="specularLighting">'
+                '<feDistantLight azimuth="3" elevation="50"/>'
+                '</feSpecularLighting>'
+                '</filter>'
+            ));
+        }
+
+        return result;
+}
+
+    function background(uint256 tokenId) internal pure returns (string memory) {
+        string memory filterString;
+        filterString = string(abi.encodePacked(
+            '<rect width="512" height="512" class="c20" filter="',
+            (tokenId % 4 == 0 && tokenId % 10 == 0) ? 'url(#staticBG)' :
+            (tokenId % 4 == 1 && tokenId % 5 == 0) ? 'url(#splashBG)' :
+            (tokenId % 4 == 2) ? 'url(#gradBG)' :
+            (tokenId % 4 == 3) ? 'url(#grainsBG)' :
+            'url(#noiseFilter)',
+            '">'
+        ));
+
+        if ((tokenId % 4 == 0 || tokenId % 4 == 3) && tokenId % 5 == 0) {
+            filterString = string(abi.encodePacked(
+                filterString,
+                '<animate attributeName="opacity" values="0.2;1;0.2" dur="5s" repeatCount="indefinite" />'
+                '</rect>'
+            ));
+        } 
+        else if (tokenId % 4 == 2) {
+            filterString = string(abi.encodePacked(
+                filterString,
+                '<animate attributeName="opacity" values="0;1;0" dur="8s" repeatCount="indefinite" />'
+                '</rect>'
+            ));
+        } 
+        else {
+            filterString = string(abi.encodePacked(
+                filterString,
+                '</rect>'
+            ));        
+        }
+    return filterString;
+    }
+function eyes(uint8[3] memory rgb, uint256 tokenId) internal pure returns (string memory) {
+        return string(abi.encodePacked(
+            '<use href="#r" x="128" y="128" class="c0">'
+            '<animate attributeName="opacity" values="0;1;0" dur="0.1s" repeatCount="indefinite" />'
+            '</use>'
+            '<use href="#q3" x="192" y="192" class="c5">'
+            '<animate attributeName="fill" values="', getTokenFillValues(rgb, tokenId, 5), '" dur="2s" repeatCount="indefinite" />'
+            '</use>'
+            '<use href="#q4" x="128" y="192" class="c4">'
+            '<animate attributeName="fill" values="', getTokenFillValues(rgb, tokenId, 4), '" dur="2s" repeatCount="indefinite" />'
+            '</use>'
+            '<use href="#q3" x="320" y="192" class="c7">'
+            '<animate attributeName="fill" values="', getTokenFillValues(rgb, tokenId, 7), '" dur="2s" repeatCount="indefinite" />'
+            '</use>'
+            '<use href="#q4" x="256" y="192" class="c6">'
+            '<animate attributeName="fill" values="', getTokenFillValues(rgb, tokenId, 6), '" dur="2s" repeatCount="indefinite" />'
+            '</use>'            
+            '<use href="#q2" x="192" y="128" class="c1"/>'
+            '<use href="#q1" x="256" y="128" class="c2"/>'
+            '<use href="#q2" x="320" y="128" class="c3"/>'            
+            '<use href="#q4" x="128" y="320" class="c12"/>'
+            '<use href="#q3" x="320" y="320" class="c15"/>'
+            '<use href="#r" x="128" y="256" class="c8"/>'
+            '<use href="#r" x="192" y="256" class="c9"/>'
+            '<use href="#r" x="256" y="256" class="c10"/>'
+            '<use href="#r" x="320" y="256" class="c11"/>'            
+            '<use href="#r" x="192" y="320" class="c13"/>'
+            '<use href="#r" x="256" y="320" class="c14"/>'            
+            '<use href="#q1" x="128" y="448" class="c16"/>'
+            '<use href="#r" x="192" y="448" class="c17"/>'
+            '<use href="#q2" x="320" y="448" class="c19"/>'
+            '<use href="#r" x="256" y="448" class="c18"/>'
+        ));
+    }
+
+
+function gFilters(uint256 tokenId) internal pure returns (string memory) {
+        string[] memory filterNames = new string[](3);
+        filterNames[0] = "url(#displacementFilter)";
+        filterNames[1] = "url(#bars)";
+        filterNames[2] = "url(#grainsFiller)";
+        uint256 n = filterNames.length;
+        while (n > 1) {
+            n--;
+            uint256 k = uint256(keccak256(abi.encodePacked(tokenId, n))) % (n + 1);
+            string memory temp = filterNames[k];
+            filterNames[k] = filterNames[n];
+            filterNames[n] = temp;
+        }
+
+        string memory filterString = '<g filter="';
+        uint256 numFilters;
+        if (tokenId % 10 == 0) {
+            numFilters = 3;
+        } else if (tokenId % 4 == 0) {
+            numFilters = 1;
+        } else if (tokenId % 3 == 0) {
+            numFilters = 2;
+        } else {
+            numFilters = 0;
+        }
+        for (uint256 i = 0; i < numFilters; i++) {
+            if (i > 0) {
+                filterString = string(abi.encodePacked(filterString, " "));
+            }
+            filterString = string(abi.encodePacked(filterString, filterNames[i]));
+        }
+        filterString = string(abi.encodePacked(filterString,  ' url(#feOffset)">'));  
+        return (filterString) ;
+    }
+
+function getTokenFillValues(uint8[3] memory rgb, uint256 tokenId, uint256 groupIndex) internal pure returns (string memory) {
+    string memory color1 = "#000000";
+    string memory color2 = gRC(rgb, 0);
+    string memory colorA;
+    string memory colorB;
+    string memory colorC;
+    uint256 tokenIdMod4 = tokenId % 4;
+    if (tokenIdMod4 == 0) {
+        if (groupIndex == 4) {
+            colorA = color1;
+            colorB = color2;
+            colorC = color1;
+        } else if (groupIndex == 5) {
+            colorA = color2;
+            colorB = color1;
+            colorC = color2;
+        } else if (groupIndex == 6) {
+            colorA = color1;
+            colorB = color2;
+            colorC = color1;
+        } else if (groupIndex == 7) {
+            colorA = color2;
+            colorB = color1;
+            colorC = color2;
+        }
+    } else if (tokenIdMod4 == 1) {
+        colorA = color2;
+        colorC = color2;
+        if (groupIndex == 5 || groupIndex == 7) {
+            colorB = color1;
+        } else {
+            colorB = color2;
+        }
+    } 
+    else if (tokenIdMod4 == 2) {
+        colorA = color2;
+        colorC = color2;
+        if (groupIndex == 4 || groupIndex == 6) {
+            colorB = color1;
+        } else {
+            colorB = color2;
+        }
+    } else {
+        colorA = color1;
+        colorB = color1;
+        colorC = color1;
+    }
+    return string(abi.encodePacked(colorA, ";", colorB, ";", colorC));
+}
+
+function getDur(uint tokenId, uint i) internal pure returns (string memory) {
+            return uint2str(uint(keccak256(abi.encodePacked(tokenId, i))) % 5 + 1);            
+    }
+    
+function uint2str(uint _i) internal pure returns (string memory str) {
+        if (_i == 0) {
+            return "0";
+        }
+        uint j = _i;
+        uint length;
+        while (j != 0) {
+            length++;
+            j /= 10;
+        }
+        bytes memory bstr = new bytes(length);
+        uint k = length;
+        while (_i != 0) {
+            bstr[--k] = bytes1(uint8(48 + _i % 10));
+            _i /= 10;
+        }
+        return string(bstr);
+    }
+
+}

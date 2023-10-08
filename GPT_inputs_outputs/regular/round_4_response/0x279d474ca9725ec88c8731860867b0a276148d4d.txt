@@ -1,0 +1,102 @@
+After analyzing the given Solidity code, I have identified several gas-wasting patterns. Below, I elaborate on these patterns and provide steps to rectify these inefficiencies.
+
+\subsection*{Pattern 1: Repeated calls to external contracts}
+
+1. **How did you find this pattern?** \
+   The repeated calls to external contracts were noticeable upon inspection of the code. In several functions, the same method from the `IUniswapV2Router02` contract and `IUniswapV2Pair` contract is called multiple times. For example, within the `calcMinToAmountForZapIn` and `calcMinToAmountForZapOut` functions, `pair.getReserves()` and `pair.token0()`, `pair.token1()`, and `router.WETH()` are called more than once. Each of these calls consumes gas, and repeated calls increase the overall gas used.
+
+1. **What should you do to fix this pattern?** \
+   Rather than calling external contract methods multiple times, store the result of each call in a local variable and use this variable in the subsequent code. This technique reduces the number of external calls, thus saving gas. The rationale behind this fix is that calling external contracts is costlier in terms of gas than using a local variable.
+
+1. **Pattern significance** \
+
+- Readability: 5; The changes do not affect readability as the code remains clear and easily understandable.
+- Security: 5; The changes do not introduce any new security vulnerabilities.
+- Maintainability: 5; It maintains the current code structure, so it won't affect maintainability.
+
+Here is the example of how to implement the fixes:
+
+```solidity
+function calcMinToAmountForZapIn(
+    IUniswapV2Router02 router,
+    IUniswapV2Pair pair,
+    address fromToken,
+    uint256 amount,
+    bytes calldata extra
+)
+external view virtual override
+returns (uint256 minToToken) {
+    (uint112 reserve0, uint112 reserve1,) = pair.getReserves();
+    address token0 = pair.token0();
+    address token1 = pair.token1();
+    Asset memory asset0 = Asset(reserve0, token0);
+    Asset memory asset1 = Asset(reserve1, token1);
+
+    require(asset0.token == fromToken || asset1.token == fromToken, "Input token not present in liquidity pair");
+    ...
+}
+```
+
+\subsection*{Pattern 2: Unnecessary condition checks}
+
+1. **How did you find this pattern?** \
+   The code contains some unnecessary condition checks. For instance, in the `_swapAndAddLiquidity` function, the check `require(isInputA || pair.token1() == tokenA, "Input token not present in liquidity pair")` is redundant, as the boolean `isInputA` is already checking if `tokenA` is either `token0` or `token1`.
+
+1. **What should you do to fix this pattern?** \
+   You can remove the redundant condition checks. The removal of these checks will save gas as each condition check consumes gas.
+
+1. **Pattern significance** \
+
+- Readability: 5; It can improve readability as it removes unnecessary checks.
+- Security: 5; It does not have any effect on security.
+- Maintainability: 5; It does not have any effect on maintainability.
+
+An example of how to implement the fix is as follows:
+
+```solidity
+function _swapAndAddLiquidity(
+    IUniswapV2Router02 router,
+    IUniswapV2Pair pair,
+    address tokenA,
+    bytes memory extra
+)
+internal virtual override
+returns (uint256) {
+    _requires(router, pair);
+
+    bool isInputA = pair.token0() == tokenA;
+    ...
+}
+```
+
+\subsection*{Pattern 3: Inefficient use of data types}
+
+1. **How did you find this pattern?** \
+   While the Solidity code does not explicitly demonstrate this, there's a common inefficiency in many contracts related to the use of data types. Solidity default integers are `uint256`, but often smaller integers like `uint8`, `uint16`, or `uint32` could be used, especially for loop counters or similar.
+
+1. **What should you do to fix this pattern?** \
+   Use smaller data types like `uint8`, `uint16`, or `uint32` when possible. This saves storage space and thus gas. However, be careful not to cause integer overflow/underflow issues by using smaller data types where larger ones are needed.
+
+1. **Pattern significance** \
+
+- Readability: 5; It does not have any effect on readability.
+- Security: 3; Care must be taken not to introduce integer overflow/underflow issues.
+- Maintainability: 4; Developersmust be aware of the data sizes and their implications for this to be a maintainable solution.
+
+An example of how to implement the fix is as follows:
+
+```solidity
+// Original
+for (uint256 i = 0; i < myArray.length; i++) {
+    ...
+}
+
+// Improved
+for (uint32 i = 0; i < myArray.length; i++) {
+    ...
+}
+```
+
+Please note that this fix is hypothetical as the provided code does not contain this issue. But it's a common pattern that can lead to unnecessary gas consumption when overlooked.
+
+In conclusion, Solidity code can often be optimized for gas efficiency. By reducing external contract calls, removing unnecessary condition checks, and using appropriate data types, we can substantially reduce the gas cost of contract operations.

@@ -1,0 +1,53 @@
+1. Repeated computation of the same expression
+
+2. Extractable code chunks
+
+3. State Variable Refactoring
+
+4. Redundant operations with same effects
+
+5. Pre-computable operations on constants
+
+6. Deterministic conditional checks
+
+7. Conditional statements with simpler equivalents
+
+8. Replacing item-by-item iterated arrays by a map
+
+9. Repeated security checks across function calls
+
+10. Unnecessarily introducing variables
+
+11. Unnecessary overflow/underflow validation since Solidity 0.8.0
+
+12. Redundant memory array initialization
+
+13. Placement of require statements
+
+14. Avoid no-op writes to state variables
+
+15. Reordering conditional checks for short-circuiting
+
+16. Combinable events
+
+17. Add constant modifier for non-changing variables
+
+18. Function visibility
+
+19. Dead codes
+
+20. Using revert instead of require for error handling
+
+21. Minimization of event message string
+
+22. Replacing MUL/DIV of powers of 2 by SHL/SHR
+
+23. Struct variable reordering
+
+24. Loop invariant codes
+
+25. Avoid expensive operations inside loops
+
+26. Struct refactoring by usage frequency
+
+27. Using bytes32 for string representation

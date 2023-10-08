@@ -1,0 +1,25 @@
+Here are a few potential gas-wasting patterns I found in the given Solidity code. Note that these are drawn from the code as provided and may not be applicable in all contexts.
+
+1. **Duplicate calls to `_msgSender()`:** In the `donateToken`, `setHandleFee`, and `donateERC20` functions, `_msgSender()` is called multiple times. This is a form of repeated computation. It could be more efficient to store the result in a local variable and reuse it.
+    - **Solution:** Replace multiple calls to `_msgSender()` with a single call and store the result in a local variable for reuse.
+    - **Example:** `address from = _msgSender();`
+
+2. **Repetition of constant expressions:** There are multiple instances where the same constant expression `uint256(1000)` is used. This could be an example of pre-computable operations on constants.
+    - **Solution:** Define a constant variable at the contract level and use it wherever needed.
+    - **Example:** `uint256 constant ONE_THOUSAND = 1000;`
+
+3. **Duplicate checks for the zero address:** In several functions, the code checks if an address is not the zero address. This is a form of redundant operations with the same effects.
+    - **Solution:** Consider creating a modifier that performs this check and apply it to functions where necessary. Alternatively, create a reusable internal function that performs this check.
+    - **Example:** `modifier nonZeroAddress(address _address) { require(_address != address(0), "ZERO_ADDRESS"); _; }`
+
+4. **Duplicate computation of `amountOut`:** In the `_getAmount` function, the computation of `amountOut` is performed, and the same computation is done in the `donateToken` and `_transferToken` functions. This is a form of repeated computation of the same expression.
+    - **Solution:** Use the `_getAmount` function in the `donateToken` and `_transferToken` functions to compute `amountOut`.
+    - **Example:** `uint256 amountOut = _getAmount(from, amountIn, _merkleProof);`
+
+5. **Repeated use of `IERC20(token).balanceOf(address(this))`:** The balance of the contract is repeatedly queried in the `_transferToken` and `withDrawERC20List` functions. This is another form of repeated computation of the same expression.
+    - **Solution:** In each function, query the balance once and store it in a local variable for reuse.
+    - **Example:** `uint256 balance = IERC20(token).balanceOf(address(this));`
+
+Finding these patterns involves careful reading of the code, identifying repeated computations or checks, and understanding the gas costs associated with different operations in Solidity. Fixing these issues generally involves finding ways to eliminate redundancies and reduce the number of expensive operations, such as storage reads/writes and external function calls.
+
+Remember, the best way to confirm whether a change results in gas savings is to benchmark the gas usage before and after the change. Always test your changes thoroughly to ensure they don't introduce new bugs or vulnerabilities!

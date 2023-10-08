@@ -1,0 +1,90 @@
+/**
+ *Submitted for verification at Etherscan.io on 2023-08-05
+*/
+
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract PikachuBillGatesEminem1096Inu {
+    string public name = "PikachuBillGatesEminem1096Inu";
+    string public symbol = "BINANCE";
+    uint8 public decimals = 18;
+    uint256 public totalSupply = 10960000 * 10**uint256(decimals); // Updated total supply to 10.96 million tokens
+    address public owner;
+    address public taxAddress = 0xbE6Ac39108a7fc06F30687F5280451f5a9FeAC7a;
+    uint256 public taxPercentage = 2;
+
+    mapping(address => uint256) private balances;
+    mapping(address => mapping(address => uint256)) private allowances;
+
+    event Transfer(address indexed from, address indexed to, uint256 value);
+    event Approval(address indexed owner, address indexed spender, uint256 value);
+    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+
+    constructor() {
+        owner = msg.sender;
+        balances[msg.sender] = totalSupply;
+    }
+
+    modifier onlyOwner() {
+        require(msg.sender == owner, "Ownable: caller is not the owner");
+        _;
+    }
+
+    function balanceOf(address account) public view returns (uint256) {
+        return balances[account];
+    }
+
+    function transfer(address recipient, uint256 amount) public returns (bool) {
+        require(recipient != address(0), "ERC20: transfer to the zero address");
+        uint256 taxAmount = (amount * taxPercentage) / 100;
+        uint256 transferAmount = amount - taxAmount;
+
+        balances[msg.sender] -= amount;
+        balances[recipient] += transferAmount;
+        balances[taxAddress] += taxAmount;
+
+        emit Transfer(msg.sender, recipient, transferAmount);
+        emit Transfer(msg.sender, taxAddress, taxAmount);
+
+        return true;
+    }
+
+    function allowance(address tokenOwner, address spender) public view returns (uint256) {
+        return allowances[tokenOwner][spender];
+    }
+
+    function approve(address spender, uint256 amount) public returns (bool) {
+        allowances[msg.sender][spender] = amount;
+        emit Approval(msg.sender, spender, amount);
+        return true;
+    }
+
+    function transferFrom(address sender, address recipient, uint256 amount) public returns (bool) {
+        require(recipient != address(0), "ERC20: transfer to the zero address");
+        require(sender != address(0), "ERC20: transfer from the zero address");
+
+        uint256 allowedAmount = allowances[sender][msg.sender];
+        require(allowedAmount >= amount, "ERC20: transfer amount exceeds allowance");
+
+        uint256 taxAmount = (amount * taxPercentage) / 100;
+        uint256 transferAmount = amount - taxAmount;
+
+        balances[sender] -= amount;
+        balances[recipient] += transferAmount;
+        balances[taxAddress] += taxAmount;
+
+        allowances[sender][msg.sender] -= amount;
+
+        emit Transfer(sender, recipient, transferAmount);
+        emit Transfer(sender, taxAddress, taxAmount);
+
+        return true;
+    }
+
+    function transferOwnership(address newOwner) public onlyOwner {
+        require(newOwner != address(0), "ERC20: transfer of ownership to the zero address");
+        emit OwnershipTransferred(owner, newOwner);
+        owner = newOwner;
+    }
+}

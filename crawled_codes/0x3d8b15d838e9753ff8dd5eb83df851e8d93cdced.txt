@@ -1,0 +1,209 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.9;
+
+import "@openzeppelin/[email protected]/token/ERC20/ERC20.sol";
+import "@openzeppelin/[email protected]/token/ERC20/extensions/ERC20Burnable.sol";
+import "@openzeppelin/[email protected]/security/Pausable.sol";
+import "@openzeppelin/[email protected]/access/Ownable.sol";
+
+library SafeMath {
+
+    /**
+     * @dev Returns the addition of two unsigned integers, reverting on
+     * overflow.
+     *
+     * Counterpart to Solidity's `+` operator.
+     *
+     * Requirements:
+     *
+     * - Addition cannot overflow.
+     */
+    function add(uint256 a, uint256 b) internal pure returns (uint256) {
+        return a + b;
+    }
+
+    /**
+     * @dev Returns the subtraction of two unsigned integers, reverting on
+     * overflow (when the result is negative).
+     *
+     * Counterpart to Solidity's `-` operator.
+     *
+     * Requirements:
+     *
+     * - Subtraction cannot overflow.
+     */
+    function sub(uint256 a, uint256 b) internal pure returns (uint256) {
+        return a - b;
+    }
+
+    /**
+     * @dev Returns the multiplication of two unsigned integers, reverting on
+     * overflow.
+     *
+     * Counterpart to Solidity's `*` operator.
+     *
+     * Requirements:
+     *
+     * - Multiplication cannot overflow.
+     */
+    function mul(uint256 a, uint256 b) internal pure returns (uint256) {
+        return a * b;
+    }
+
+    /**
+     * @dev Returns the integer division of two unsigned integers, reverting on
+     * division by zero. The result is rounded towards zero.
+     *
+     * Counterpart to Solidity's `/` operator.
+     *
+     * Requirements:
+     *
+     * - The divisor cannot be zero.
+     */
+    function div(uint256 a, uint256 b) internal pure returns (uint256) {
+        return a / b;
+    }
+
+    /**
+     * @dev Returns the remainder of dividing two unsigned integers. (unsigned integer modulo),
+     * reverting when dividing by zero.
+     *
+     * Counterpart to Solidity's `%` operator. This function uses a `revert`
+     * opcode (which leaves remaining gas untouched) while Solidity uses an
+     * invalid opcode to revert (consuming all remaining gas).
+     *
+     * Requirements:
+     *
+     * - The divisor cannot be zero.
+     */
+    function mod(uint256 a, uint256 b) internal pure returns (uint256) {
+        return a % b;
+    }
+
+    /**
+     * @dev Returns the subtraction of two unsigned integers, reverting with custom message on
+     * overflow (when the result is negative).
+     *
+     * CAUTION: This function is deprecated because it requires allocating memory for the error
+     * message unnecessarily. For custom revert reasons use {trySub}.
+     *
+     * Counterpart to Solidity's `-` operator.
+     *
+     * Requirements:
+     *
+     * - Subtraction cannot overflow.
+     */
+    function sub(
+        uint256 a,
+        uint256 b,
+        string memory errorMessage
+    ) internal pure returns (uint256) {
+        unchecked {
+            require(b <= a, errorMessage);
+            return a - b;
+        }
+    }
+
+    /**
+     * @dev Returns the integer division of two unsigned integers, reverting with custom message on
+     * division by zero. The result is rounded towards zero.
+     *
+     * Counterpart to Solidity's `/` operator. Note: this function uses a
+     * `revert` opcode (which leaves remaining gas untouched) while Solidity
+     * uses an invalid opcode to revert (consuming all remaining gas).
+     *
+     * Requirements:
+     *
+     * - The divisor cannot be zero.
+     */
+    function div(
+        uint256 a,
+        uint256 b,
+        string memory errorMessage
+    ) internal pure returns (uint256) {
+        unchecked {
+            require(b > 0, errorMessage);
+            return a / b;
+        }
+    }
+
+    /**
+     * @dev Returns the remainder of dividing two unsigned integers. (unsigned integer modulo),
+     * reverting with custom message when dividing by zero.
+     *
+     * CAUTION: This function is deprecated because it requires allocating memory for the error
+     * message unnecessarily. For custom revert reasons use {tryMod}.
+     *
+     * Counterpart to Solidity's `%` operator. This function uses a `revert`
+     * opcode (which leaves remaining gas untouched) while Solidity uses an
+     * invalid opcode to revert (consuming all remaining gas).
+     *
+     * Requirements:
+     *
+     * - The divisor cannot be zero.
+     */
+    function mod(
+        uint256 a,
+        uint256 b,
+        string memory errorMessage
+    ) internal pure returns (uint256) {
+        unchecked {
+            require(b > 0, errorMessage);
+            return a % b;
+        }
+    }
+}
+
+contract PONZI is ERC20, ERC20Burnable, Pausable, Ownable {
+    using SafeMath for uint256;
+
+    uint256 _totalSupply = 77777777;
+    address public devWallet = 0xa83551179d2d559a015245307d0A12e9Df922EF6;
+
+    // Initially set fees to 0
+    uint256 public swapTreasuryFee    = 0;
+    uint256 public buyFee             = 0;
+    uint256 public sellFee            = 0;
+    uint256 public feeDenominator     = 100;
+
+    mapping (address => uint256) _balances;
+    mapping (address => bool) isFeeExempt;
+
+    constructor() ERC20("PonziTech", "PONZI") {
+        _mint(msg.sender, 77777777 * 10 ** decimals());
+    }
+
+    function takeFee(address sender, uint256 amount, bool isSell) internal returns (uint256) {
+        
+        uint256 feeToTake;
+        
+        // Decide fee based on buy/sell action
+        if (isSell) {
+            feeToTake = sellFee;
+        } else {
+            feeToTake = buyFee;
+        }
+        
+        uint256 feeAmount = amount.mul(feeToTake).div(feeDenominator);
+
+        _balances[address(this)] = _balances[address(this)].add(feeAmount);
+        _balances[sender] = _balances[sender].sub(feeAmount);
+
+        emit Transfer(sender, address(this), feeAmount);
+
+        return amount.sub(feeAmount);
+    }
+
+    function setSwapFees(uint256 _newSwapTreasuryFee, uint256 _newBuyFee, uint256 _newSellFee, uint256 _feeDenominator) external onlyOwner() {
+        require(_newSwapTreasuryFee.add(_newBuyFee).add(_newSellFee) < feeDenominator, "Total fees cannot be more than 100%");
+        
+        swapTreasuryFee = _newSwapTreasuryFee;
+        buyFee = _newBuyFee;
+        sellFee = _newSellFee;
+        feeDenominator = _feeDenominator;
+    }
+
+    function setTreasuryFeeReceiver(address _newWallet) external onlyOwner() {
+        devWallet = _newWallet;
+    }
+}

@@ -1,0 +1,278 @@
+//SPDX-License-Identifier: MIT
+
+pragma solidity 0.8.19;
+
+import "@openzeppelin/contracts/access/Ownable.sol";
+
+struct Account {
+    bool isGlobal;
+    uint256 balance;
+    uint256 globalRewardsPaid;
+}
+
+contract RewardToken is Ownable {
+    string private _name;
+    string private _symbol;
+    uint8 private _decimals;
+    uint256 private _totalSupply;
+    uint8 private immutable _adminTax;
+    uint8 private immutable _globalTax;
+    uint8 private immutable _burnTax;
+    address private immutable _adminTaxReceiver;
+    address private immutable _burnAddress;
+
+    address[] private _globalList;
+
+    event Transfer(address indexed from, address indexed to, uint256 value);
+    event Approval(
+        address indexed owner,
+        address indexed spender,
+        uint256 value
+    );
+    event GlobalRewardPaid(address to, uint256 value);
+    event AdminTaxPaid(address to, uint256 value);
+    event Burn(address _burnAddress, uint256 value);
+    event ExcludeStatus(address, bool);
+
+    mapping(address => Account) private _accounts;
+    mapping(address => mapping(address => uint256)) private _allowances;
+    mapping(address => bool) private _isExcludedFromTax;
+
+    constructor() {
+        _name = "Trump Army";
+        _symbol = "TRUMPX";
+        _decimals = 18;
+        _totalSupply = 100000000 * 10 ** _decimals;
+        _adminTax = 2;
+        _globalTax = 2;
+        _burnTax = 1;
+        _adminTaxReceiver = 0x1f6b32601345A92FB77656699ae157be9270D9B2;
+        _burnAddress = 0x000000000000000000000000000000000000dEaD;
+
+        _isExcludedFromTax[owner()] = true;
+
+        _accounts[msg.sender].balance += _totalSupply;
+        emit Transfer(address(0), msg.sender, _totalSupply);
+    }
+
+    function name() external view returns (string memory) {
+        return _name;
+    }
+
+    function symbol() external view returns (string memory) {
+        return _symbol;
+    }
+
+    function decimals() external view returns (uint8) {
+        return _decimals;
+    }
+
+    function totalSupply() external view returns (uint256) {
+        return _totalSupply;
+    }
+
+    function balanceOf(address _userAddress) external view returns (uint256) {
+        return _accounts[_userAddress].balance;
+    }
+
+    function transfer(address to, uint256 amount) external {
+        _transfer(msg.sender, to, amount);
+    }
+
+    function allowance(
+        address owner,
+        address spender
+    ) external view returns (uint256) {
+        return _allowances[owner][spender];
+    }
+
+    function approve(address spender, uint256 amount) external returns (bool) {
+        address owner = _msgSender();
+        _approve(owner, spender, amount);
+        return true;
+    }
+
+    function _approve(
+        address _owner,
+        address _spender,
+        uint256 _valueInWei
+    ) internal virtual {
+        require(_owner != address(0), "ERC20: approve from the zero address");
+        require(_spender != address(0), "ERC20: approve to the zero address");
+        require(_valueInWei > 0, "ERC20: approve value is zero.");
+
+        _allowances[_owner][_spender] = _valueInWei;
+        emit Approval(_owner, _spender, _valueInWei);
+    }
+
+    function globalList() external view returns (address[] memory) {
+        return _globalList;
+    }
+
+    function increaseAllowance(address _spender, uint256 _valueInWei) external {
+        require(_valueInWei > 0, "ERC20: approve value is zero.");
+        address _msgSender = msg.sender;
+        require(
+            _accounts[_msgSender].balance >=
+                _allowances[_msgSender][_spender] + _valueInWei,
+            "ERC20: Insufficient balance to approve."
+        );
+        _allowances[_msgSender][_spender] += _valueInWei;
+    }
+
+    function decreaseAllowance(address _spender, uint256 _valueInWei) external {
+        require(_valueInWei > 0, "ERC20: approve value is zero.");
+        require(
+            _spender != address(0),
+            "ERC20: spender can't be address zero."
+        );
+
+        address _msgSender = msg.sender;
+        require(
+            _allowances[_msgSender][_spender] - _valueInWei >= 0,
+            "ERC20: Allowance cannot be less than zero."
+        );
+        _allowances[_msgSender][_spender] -= _valueInWei;
+    }
+
+    function transferFrom(address from, address to, uint256 amount) external {
+        address _msgSender = msg.sender;
+        _transferFrom(from, _msgSender, to, amount);
+    }
+
+    function _transfer(
+        address _from,
+        address _to,
+        uint256 _valueInWei
+    ) private {
+        require(
+            _to != address(0),
+            "ERC20: Address zero cannot be the receiver."
+        );
+        require(_valueInWei > 0, "ERC20: Value should be greater than zero.");
+
+        uint256 userBalance = _accounts[_from].balance;
+        require(userBalance >= _valueInWei, "ERC20: Insuffient balance.");
+
+        if (_isExcludedFromTax[_from] || _isExcludedFromTax[_to]) {
+            unchecked {
+                _accounts[_from].balance -= _valueInWei;
+                _accounts[_to].balance += _valueInWei;
+                emit Transfer(_from, _to, _valueInWei);
+            }
+        } else {
+            Account storage toAccount = _accounts[_to];
+            address burnAddress = _burnAddress;
+            address adminTaxReceiver = _adminTaxReceiver;
+
+            if (!toAccount.isGlobal) {
+                _globalList.push(_to);
+                toAccount.isGlobal = true;
+            }
+
+            unchecked {
+                uint256 adminTaxValue = (_valueInWei * _adminTax) / 100;
+                uint256 globalReward = (_valueInWei * _globalTax) / 100;
+                uint256 burnTaxValue = (_valueInWei * _burnTax) / 100;
+
+                uint256 remainingValue = _valueInWei -
+                    (adminTaxValue + globalReward + burnTaxValue);
+
+                _accounts[_from].balance -= _valueInWei;
+
+                _accounts[adminTaxReceiver].balance += adminTaxValue;
+                emit AdminTaxPaid(adminTaxReceiver, adminTaxValue);
+
+                _accounts[burnAddress].balance += burnTaxValue;
+                emit Burn(burnAddress, burnTaxValue);
+
+                toAccount.balance += remainingValue;
+
+                address globalAddress = _getRandomGlobalAddress();
+                _accounts[globalAddress].balance += globalReward;
+                emit GlobalRewardPaid(globalAddress, globalReward);
+
+                emit Transfer(_from, _to, remainingValue);
+                emit Transfer(_from, adminTaxReceiver, adminTaxValue);
+                emit Transfer(_from, burnAddress, burnTaxValue);
+                emit Transfer(_from, globalAddress, globalReward);
+            }
+        }
+    }
+
+    function _transferFrom(
+        address _owner,
+        address _spender,
+        address _to,
+        uint256 _valueInWei
+    ) private {
+        require(_valueInWei > 0, "ERC20: Cannot transfer zero value");
+        require(
+            _spender != address(0),
+            "ERC20: Spender can't be address zero."
+        );
+
+        require(
+            _allowances[_owner][_spender] >= _valueInWei,
+            "ERC20: Insufficient allowance"
+        );
+
+        _transfer(_owner, _to, _valueInWei);
+        _allowances[_owner][_spender] -= _valueInWei;
+    }
+
+    function _getRandomGlobalAddress() private view returns (address) {
+        uint256 randomHash = uint256(
+            keccak256(
+                abi.encodePacked(
+                    block.timestamp,
+                    block.prevrandao,
+                    blockhash(block.number - 1)
+                )
+            )
+        );
+
+        uint256 randomIndex = randomHash % _globalList.length;
+        return _globalList[randomIndex];
+    }
+
+    function getUserAccount(
+        address _userAccount
+    ) external view returns (Account memory) {
+        return _accounts[_userAccount];
+    }
+
+    function adminTax() external view returns (uint8) {
+        return _adminTax;
+    }
+
+    function adminTaxReceiverAddress() external view returns (address) {
+        return _adminTaxReceiver;
+    }
+
+    function burnTax() external view returns (uint8) {
+        return _burnTax;
+    }
+
+    function globalTax() external view returns (uint8) {
+        return _globalTax;
+    }
+
+    function totalTax() external view returns (uint8) {
+        return _adminTax + _globalTax + _burnTax;
+    }
+
+    function isExcludedFromTax(address _address) external view returns (bool) {
+        return _isExcludedFromTax[_address];
+    }
+
+    //exclude wallets from fees, this is needed for launch or other contracts.
+    function excludeFromFee(address _address, bool status) external onlyOwner {
+        require(
+            _isExcludedFromTax[_address] != status,
+            "The wallet ialready have that status."
+        );
+        _isExcludedFromTax[_address] = status;
+        emit ExcludeStatus(_address, status);
+    }
+}

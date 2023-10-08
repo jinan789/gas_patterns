@@ -1,0 +1,47 @@
+Sure, I'll attempt to find some new gas-wasting patterns in Solidity:
+
+**Pattern 9: Overuse of global variables**
+
+- **Finding:** Global variables in Solidity are stored in the blockchain, which is much more expensive than local variables that are stored in memory. If a variable is only used in one function, there's no need to store it as a global variable.
+- **Fix:** Declare variables as local in the function where they are used. This will store them in memory, which is less expensive than storing them on the blockchain. If a variable is used in multiple functions, consider passing it as an argument instead of declaring it globally.
+- **Impact:** 
+   - Readability: 4; it might be slightly less readable if a variable is passed around a lot.
+   - Security: 5; this change does not impact security.
+   - Maintainability: 3; it might be slightly harder to maintain if a variable is used in many places.
+
+**Pattern 10: Inefficient use of data structures**
+
+- **Finding:** Some data structures are more expensive to use than others. For example, arrays and mappings in Solidity can be expensive in terms of gas, especially if they are used incorrectly. Excessive use of these data structures, or not using them in the most efficient way, can lead to higher gas costs.
+- **Fix:** Consider using cheaper data structures where possible. For example, if you're using an array just to check for existence, consider using a mapping instead. If you need to iterate over a mapping, consider keeping track of the keys in a separate array, to avoid the need for an expensive operation to retrieve all the keys.
+- **Impact:** 
+   - Readability: 3; the code may be harder to understand if it's not clear why specific data structures are used.
+   - Security: 5; this change does not impact security.
+   - Maintainability: 4; it might be slightly harder to maintain if the code relies heavily on specific data structures.
+
+**Pattern 11: Frequent contract deployments**
+
+- **Finding:** Each deployment of a contract is a transaction that costs gas. If contracts are frequently deployed, this can lead to high gas costs.
+- **Fix:** Use factory contracts to create instances of other contracts, or use libraries for reusable code. Also, consider whether all code needs to be on-chain, or if some parts can be executed off-chain.
+- **Impact:** 
+   - Readability: 3; using factories and libraries can make the code harder to understand.
+   - Security: 4; there might be potential security issues if not implemented correctly.
+   - Maintainability: 4; it might be harder to maintain the code if it's spread out over multiple contracts.
+
+**Pattern 12: Unoptimized function visibility**
+
+- **Finding:** The default visibility of functions in Solidity is `public`, which means that they can be called from other contracts. This requires more gas than calling internal functions.
+- **Fix:** Change the visibility of functions to `internal` or `private` where possible. This will reduce the gas needed to call these functions. Be sure to understand the implications of changing function visibility.
+- **Impact:** 
+   - Readability: 5; this does not impact readability.
+   - Security: 4; changing function visibility could potentially expose sensitive functions if not done correctly.
+   - Maintainability: 5; this does not impact maintainability.
+
+**Reflections and Improvements:**
+
+The process of identifying these patterns involves understanding how the EVM works, how gas costs are calculated, and common practices in Solidity programming. It's important to constantly update your knowledge, as the Solidity compiler and Ethereum network are always improving and changing.
+
+The reasoning process could be improved by conducting more in-depth research on the EVM and Solidity, and by studying real-world contracts to identify common patterns that lead to high gas costs. 
+
+The prompts were clear and provided a good starting point for this task. In terms of improvements, it would be helpful to provide more context or specific examples of the kind of patterns you're interested in, to narrow down the focus of the task. For example, are you interested in patterns related to specific features of Solidity, or are you interested in more general programming patterns that apply to any language? 
+
+I hope these new patterns and reflections are helpful for your purpose. If there are any other aspects you want to explore or details that need further clarification, please let me know.

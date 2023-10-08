@@ -1,0 +1,224 @@
+// SPDX-License-Identifier: UNLICENSED
+
+pragma solidity 0.8.21;
+
+import "./interfaces/ISettlersPredictable.sol";
+
+
+contract DoomsdaySoothsayer {
+    uint256 constant DISASTER_BLOCK_INTERVAL = 75;
+    uint80 constant FEE       =  10_000;
+    uint80 constant FEE_DENOM = 100_000;
+
+    address public creator;
+    ISettlersPredictable settlers;
+    constructor(
+        address _settlers,
+        address _creator){
+
+        creator = _creator;
+        settlers = ISettlersPredictable(_settlers);
+    }
+
+
+    struct Bet{
+        uint80 wager;
+        uint80 inverse;
+        uint8 disasterType;
+        address better;
+        address matcher;
+        uint32 targetBlock;
+        uint24 index;
+    }
+
+    uint80 public creatorEarnings;
+    Bet[] public bets;
+    uint24[] public activeBets;
+
+
+    function getBets(uint startIndex, uint limit) public view returns(Bet[] memory _bets, uint[] memory _betIds, uint _blockNumber){
+
+        uint _maxIndex = activeBets.length;
+        if(_maxIndex == 0 || startIndex > _maxIndex || limit == 0){
+            return (_bets, _betIds, block.number);
+        }
+
+        uint sampleSize = _maxIndex - startIndex ;
+        if(sampleSize > limit){
+            sampleSize = limit;
+        }
+        if(limit > sampleSize){
+            limit = sampleSize;
+        }
+
+        _bets = new Bet[]( sampleSize );
+        _betIds = new uint[]( sampleSize );
+
+        for(uint i = 0; i < limit; i++){
+            activeBets[uint24(startIndex + i)];
+            _betIds[i] = activeBets[uint24(startIndex + i)];
+            _bets[i] = bets[activeBets[uint24(startIndex + i)]];
+        }
+
+        return (_bets, _betIds, block.number);
+    }
+
+
+    event PlaceBet(uint _wager, uint _inverse, uint8 _disasterType, address indexed _better, uint24 indexed _betId);
+    event RevokeBet(uint24 indexed _betId);
+    event AcceptBet(uint24 indexed _betId,address indexed _matcher, uint32 _targetBlock);
+    event ClaimWinnings(uint24 indexed _betId);
+    event VoidBet(uint24 indexed _betId);
+
+    function _deactivate(uint24 _betId) internal{
+        uint24 index = bets[_betId].index;
+        if(index == activeBets.length - 1){
+            activeBets.pop();
+        }else{
+            activeBets[index] = activeBets[uint24(activeBets.length - 1)];
+            activeBets.pop();
+            bets[activeBets[index]].index = index;
+        }
+    }
+
+    function placeBet(uint80 _wager, uint80 _from, uint80 _to, uint8 _disasterType) public payable {
+
+        unchecked{
+            require(settlers.isDarkAge(),"dark age");
+
+            require(msg.value == _wager * (FEE + FEE_DENOM) / FEE_DENOM,"msg.value");
+
+            uint80 inverse = _wager * _to / _from;
+            require(inverse != 0,"inverse zero");
+            require(_disasterType < 4,"disaster type");
+
+            uint24 betId = uint24(bets.length);
+            activeBets.push(betId);
+
+                bets.push(Bet(
+                    _wager,
+                    inverse,
+                    _disasterType,
+                    msg.sender,
+                    address(0),
+                    0,
+                    uint24(activeBets.length - 1)
+                ));
+
+            emit PlaceBet(_wager,inverse,_disasterType, msg.sender, betId);
+        }
+    }
+    function revokeBet(uint24 _betId) public{
+        unchecked{
+            require(_betId < bets.length,"_betId");
+            require(bets[_betId].better == msg.sender,"better");
+            require(bets[_betId].matcher == address(0),"matched");
+
+            delete bets[_betId].better;
+            _deactivate(_betId);
+
+            payable(msg.sender).transfer(bets[_betId].wager * (FEE + FEE_DENOM) / FEE_DENOM);
+
+            emit RevokeBet(_betId);
+        }
+    }
+    function acceptBet(uint24 _betId) public payable{
+        unchecked{
+            require(settlers.isDarkAge(),"dark age");
+
+            require(_betId < bets.length,"betId");
+
+            require(msg.value == bets[_betId].inverse * (FEE + FEE_DENOM) / FEE_DENOM,"msg.value");
+
+            require(bets[_betId].better != address(0),"revoked");
+            require(bets[_betId].matcher == address(0),"matched");
+
+            uint256 nextDisasterBlock = block.number - (block.number % DISASTER_BLOCK_INTERVAL) - 1 + DISASTER_BLOCK_INTERVAL;
+            if(nextDisasterBlock == block.number){
+                nextDisasterBlock += DISASTER_BLOCK_INTERVAL;
+            }
+
+            bets[_betId].targetBlock = uint32(nextDisasterBlock);
+            bets[_betId].matcher     = msg.sender;
+
+
+            creatorEarnings += (bets[_betId].wager + bets[_betId].inverse) * FEE / FEE_DENOM;
+
+            emit AcceptBet(_betId,msg.sender,bets[_betId].targetBlock);
+        }
+    }
+
+    function claimWinnings(uint24 _betId) public{
+        unchecked{
+            require(bets[_betId].better != address(0)
+                && bets[_betId].matcher != address(0),"unclaimable");
+
+            uint32 _blockNumber = uint32(block.number);
+
+            require(_blockNumber > bets[_betId].targetBlock,"pending");
+            require(_blockNumber < bets[_betId].targetBlock + 255,"void");
+
+            if( disasterTypeAt(bets[_betId].targetBlock) == bets[_betId].disasterType ){
+                require(bets[_betId].better == msg.sender,"better");
+            }else{
+                require(bets[_betId].matcher == msg.sender,"matcher");
+            }
+
+            delete bets[_betId].better;
+            delete bets[_betId].matcher;
+
+            _deactivate(_betId);
+
+            payable(msg.sender).transfer(
+                bets[_betId].wager + bets[_betId].inverse
+            );
+
+            emit ClaimWinnings(_betId);
+        }
+    }
+    function voidBet(uint24 _betId) public{
+        unchecked{
+            require(uint32(block.number) >= bets[_betId].targetBlock + 255,"active");
+
+            address better = bets[_betId].better;
+            address matcher = bets[_betId].matcher;
+
+            require(better != address(0)
+                && matcher != address(0),"cleared");
+
+            delete bets[_betId].better;
+            delete bets[_betId].matcher;
+
+            _deactivate(_betId);
+
+            payable(better).transfer(bets[_betId].wager);
+            payable(matcher).transfer(bets[_betId].inverse);
+
+            emit VoidBet(_betId);
+        }
+    }
+    function setCreator(address _creator) public {
+        require(msg.sender == creator,"sender");
+        creator = _creator;
+    }
+    function creatorWithdraw() public {
+        require(msg.sender == creator,"sender");
+        uint80 _earnings = creatorEarnings;
+        delete creatorEarnings;
+
+        payable(msg.sender).transfer(_earnings);
+    }
+
+    function getGeography(bytes32 _hash) public pure returns(uint8){
+        unchecked{
+            return uint8(uint256(_hash))%4;
+        }
+    }
+    function disasterTypeAt(uint _blockNumber) public view returns (
+        uint8 _type
+    ){
+       unchecked{
+            return uint8(uint256(blockhash(_blockNumber)))%4;
+        }
+    }
+}

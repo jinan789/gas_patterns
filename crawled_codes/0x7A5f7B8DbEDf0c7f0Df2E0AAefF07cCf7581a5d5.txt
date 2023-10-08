@@ -1,0 +1,53 @@
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.19;
+
+contract RedemptionCalculator {
+    uint256 constant _BASE_COST = 1e6;
+
+    function redeemNFTCost(uint256 nftCount, uint256 erc20Count) external pure returns (uint256) {
+        require(erc20Count / 1e6 > 0 , "Invalid ERC20 Count");
+        require(nftCount > 0, "Invalid NFT Count");
+        erc20Count = erc20Count / 1e6;
+        uint256 difference;
+        uint256 adjustmentFactor;
+        if (nftCount > erc20Count) {
+            difference = (nftCount) - (erc20Count);
+            adjustmentFactor = 1e5 / (nftCount);          
+            return _BASE_COST + (difference * adjustmentFactor);
+        } else {
+            difference = erc20Count - nftCount;
+            adjustmentFactor = 1e5 / erc20Count;
+            return _BASE_COST - (difference * adjustmentFactor);
+        }
+    }
+
+    function redeemERC20Cost(uint256 nftCount, uint256 erc20Count) external pure returns (uint256) {
+        require(erc20Count / 1e6 > 0 , "Invalid ERC20 Count");
+        require(nftCount > 0, "Invalid NFT Count");
+        erc20Count = erc20Count / 1e6;
+        uint256 difference;
+        uint256 adjustmentFactor;
+        if (nftCount > erc20Count) {
+            difference = (nftCount) - (erc20Count);
+            adjustmentFactor = 1e5 / (nftCount);          
+            return _BASE_COST + (difference * adjustmentFactor);
+        } else {
+            difference = erc20Count - nftCount;
+            adjustmentFactor = 1e5 / erc20Count;
+            return _BASE_COST - (difference * adjustmentFactor);
+        }
+    }
+
+    function updateRaceProbability(uint256 mintCount) external pure returns (uint256, uint256, uint256, uint256, uint256) {
+        uint tracker = (mintCount / 5000) + 1;
+        if (tracker > 10_000) {
+            tracker = 10_000;
+        }
+        uint d = 50_000 / tracker;
+        uint c = 10_000 / tracker;
+        uint e = 500_000 / tracker;
+        uint n = 500_000 / tracker;
+        uint s = (100_000_000) - (c + d + e + n);
+        return (c, d, e, n, s);
+    }
+}

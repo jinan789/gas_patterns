@@ -1,0 +1,160 @@
+I want you to help me find new gas-wasting patterns for Solidity. Gas is a unique pricing mechanism in Solidity, which measures the amount of computational resources put into the execution of Solidity codes. The goal of gas optimization is to find an equivalent code instruction sequence that produces the same output while consuming less gas, which may misalign from the way people typically write codes, since code writers aim for readability and maintainability, while gas optimization might seem a little unintuitive to newcomers. For example, storage variables in Solidity are expensive in terms of gas, while memory is not, so storage operations should be avoided whenever possible. Gas is paid in real money, so saving gas is saving money.
+
+First, I will give you a list of known gas-wasting patterns. The list is numbered, with each bullet point specifying one gas-wasting pattern, which is followed by an explanation of why this pattern wastes gas. I want you to read through these and learn how to find new gas-wasting patterns from it. The list is as follows:
+
+1. "dead codes." codes that are guaranteed not to be executed (e.g. unreachable conditional branch) should be removed.
+2. "Opaque predicate." If the outcome of a predicate could be inferred to be true/false without execution, then we could just replace it with the corresponding value to save the compuation during runtime.
+3. "Expensive operations in a loop." If an gas-expensive operation is executed multiple times in a loop, while there is a way to equivalently move it out of the loop to execute only once (e.g. storing a storage variable in a memory variable and performing operations on the memory variable inside the loop), then we should do it to save gas.
+4. "Constant outcome of a loop." If the outcome of a loop could be inferred without execution, then we could just replace it with the corresponding value to save the compuation during runtime.
+5. "Loop fusion." If two loops have the same starting and stopping conditions with the same increment steps, then we could consider combining them into one (e.g. delete the second loop, and put its loop body codes into the first one) if they have no dependencies. This way, we save the logical comparisons, conditional jumps, as well as the incremental steps of the second loop, which saves computation and thus gas.
+6. "Repeated computations in a loop." If there are expressions that produce the same outcome in each iteration of a loop, we could move it out of the loop and execute only once, which saves computation.
+8. "Struct variable refactoring." If a struct used in a contract contains some fields that are used more often and some that are less often, then by breaking up the struct into two, where the frequently used fields are now put as a separate struct, we get to avoid unnecessary reads on the less often used fields and save gas.s
+
+Next, I will give you a chunk of Solidity codes from which you will find gas-inefficient patterns; note that I have removed simple functions from the contract and only kept complex ones, with the hope that you could focus on the most complicated function codes:contract OpenMarketplace is Ownable, Pausable, FeeManager, IMarketplace, ERC721Holder {
+    function cancelOrder(address _nftAddress, uint256 _assetId) external whenNotPaused {
+        Order memory order = orderByAssetId[_nftAddress][_assetId];
+
+        require(order.seller == msg.sender || msg.sender == owner(), "Marketplace: unauthorized sender");
+
+        // Remove pending bid if any
+        Bid memory bid = bidByOrderId[_nftAddress][_assetId];
+
+        if (bid.id != 0) {
+            _cancelBid(bid.id, _nftAddress, _assetId, bid.bidder, bid.price);
+        }
+
+        // Cancel order.
+        _cancelOrder(order.id, _nftAddress, _assetId, msg.sender);
+    }
+
+    /**
+     * @dev Update an already published order
+     *  can only be updated by seller
+     * @param _nftAddress - Address of the NFT registry
+     * @param _assetId - ID of the published NFT
+     */
+    function updateOrder(address _nftAddress, uint256 _assetId, uint256 _priceInWei, uint256 _expiresAt)
+        external whenNotPaused {
+        Order storage order = orderByAssetId[_nftAddress][_assetId];
+
+        // Check valid order to update
+        require(order.id != 0, "Marketplace: asset not published");
+        require(order.seller == msg.sender, "Marketplace: sender not allowed");
+        require(order.expiresAt >= block.timestamp, "Marketplace: order expired");
+
+        // check order updated params
+        require(_priceInWei > 0, "Marketplace: Price should be bigger than 0");
+        require(_expiresAt > block.timestamp.add(1 minutes), "Marketplace: Expire time should be more than 1 minute in the future");
+
+        order.price = _priceInWei;
+        order.expiresAt = _expiresAt;
+
+        emit OrderUpdated(order.id, _priceInWei, _expiresAt);
+    }
+    function safeExecuteOrder(address _nftAddress, uint256 _assetId, uint256 _priceInWei) external payable whenNotPaused {
+        
+        // Get the current valid order for the asset or fail
+        Order memory order = _getValidOrder(_nftAddress, _assetId);
+
+        require(!order.isOnlyAuction, "Marketplace: Only auction order");
+
+        /// Check the execution price matches the order price
+        // require(order.price == _priceInWei, "Marketplace: invalid price");
+        require(order.seller != msg.sender, "Marketplace: unauthorized sender");
+        
+        order.currency == MARKETPLACE_ETHER ? 
+            require(order.price == msg.value, "Marketplace: invalid price")
+            :
+            require(order.price == _priceInWei, "Marketplace: invalid price");
+
+        // market fee to cut
+        uint256 saleShareAmount = 0;
+
+        // Send market fees to owner
+        
+        if (FeeManager.cutPerMillion > 0) {
+            // Calculate sale share
+            saleShareAmount = order.price.mul(FeeManager.cutPerMillion).div(1e6);
+
+            // Transfer share amount for marketplace Owner           
+            order.currency == MARKETPLACE_ETHER ? 
+                payable(owner()).transfer(saleShareAmount)
+                :
+                IERC20(order.currency).safeTransferFrom(msg.sender, owner(), saleShareAmount);
+        
+        }
+
+        // royalty fee to cut
+        uint256 royaltyAmount = 0;
+
+        // Send market fees to owner
+        if (order.royalty != 0) {
+            // Calculate sale share
+            royaltyAmount = order.price.mul(order.royalty).div(
+                100
+            );
+
+            if(NFT(order.nftAddress).getMinterAddress(_assetId) != msg.sender)
+            {
+               // Transfer royalty percentage for marketplace Owner
+                order.currency == MARKETPLACE_ETHER ? 
+                payable(address(NFT(order.nftAddress).getMinterAddress(_assetId))).transfer(royaltyAmount)
+                :
+                IERC20(order.currency).safeTransferFrom(msg.sender, address(NFT(order.nftAddress).getMinterAddress(_assetId)), royaltyAmount);
+        
+            }
+        }
+
+        order.currency == MARKETPLACE_ETHER ? 
+            payable(order.seller).transfer(order.price.sub(saleShareAmount).sub(royaltyAmount))
+            :
+            IERC20(order.currency).safeTransferFrom(msg.sender, order.seller, order.price.sub(saleShareAmount).sub(royaltyAmount));
+
+        // Remove pending bid if any
+        Bid memory bid = bidByOrderId[_nftAddress][_assetId];
+
+        if (bid.id != 0) {
+            _cancelBid(bid.id, _nftAddress, _assetId, bid.bidder, bid.price);
+        }
+
+        _executeOrder(order.id, msg.sender, _nftAddress, _assetId, _priceInWei);
+    }
+
+    /**
+     * @dev Places a bid for a published NFT
+     * @param _nftAddress - Address of the NFT registry
+     * @param _assetId - ID of the published NFT
+     * @param _priceInWei - Bid price in acceptedToken currency
+     * @param _expiresAt - Bid expiration time
+     */
+    function safePlaceBid(address _nftAddress, uint256 _assetId, uint256 _priceInWei, uint256 _expiresAt)
+        external payable whenNotPaused {
+
+        Order memory order = _getValidOrder(_nftAddress, _assetId);
+
+        order.currency == MARKETPLACE_ETHER ? 
+            _createBid(_nftAddress, _assetId, msg.value, _expiresAt)
+            :
+            _createBid(_nftAddress, _assetId, _priceInWei, _expiresAt);
+           
+    }
+    function cancelBid(address _nftAddress, uint256 _assetId) public whenNotPaused {
+        Bid memory bid = bidByOrderId[_nftAddress][_assetId];
+
+        require(bid.bidder == msg.sender || msg.sender == owner(),"Marketplace: Unauthorized sender");
+
+        _cancelBid(bid.id, _nftAddress, _assetId, bid.bidder, bid.price);
+    }
+    }
+
+Now that I have given you the necessary information, I want you to help me find new gas-wasting patterns from the above codes, based on what you learn from the list of patterns. Please be creative and think out of the box beyond the patterns listed above. Please put the new gas wasting patterns in bullet points (in the form of '1.', '2.', etc), and answer the following questions for each of the found patterns (in sub-bullet-points under each bullet point):
+
+1. How did you find this pattern? Could you explain the reasoning process, step by step, behind the discovery?
+
+2. What should I do, step by step, to fix the found gas-wasting patterns? Could you explain the reasoning process, step by step, behind the reason why such a fix works?
+
+3. On a score of 0 to 5, could you please tell me how would you rate this found new pattern, in terms of how much it is sacrificing readability, security, and maintainability in exchange for gas optimization (5 is the least impacted. For example, Security score of 5 means implementing the found gas-optimization pattern would have no effect on security, whereas 1 means it would reduce security)? Please format your answer as in "Readability: 5; Security: 4; Maintainability: 3". Please also provide explanations.
+
+Here are some additional requirements:
+1. If you think my prompt to you has any issues (e.g. ambiguity or lack of information), please tell me how I should improve it in the next time.
+2. please help me format your answer in the form of a Latex section (e.g. \section*{Analysis of Provided Solidity Code}), since I want to assert it to a Latex document.

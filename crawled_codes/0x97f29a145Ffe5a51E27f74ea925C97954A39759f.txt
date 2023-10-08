@@ -1,0 +1,67 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.4;
+
+import "erc721a/contracts/ERC721A.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+
+contract DedragonZ is ERC721A, Ownable {
+    uint256 MAX_MINTS = 10;
+    uint256 MAX_SUPPLY = 10000;
+    uint256 public mintPrice = 0.8 ether;
+    bool public paused = false;
+
+    string public baseURI = "ipfs://QmfQnrvobhZoXMDjDqDg6cnbvvhz6W9WHscD3DsWZcnEVk/";
+
+    constructor() ERC721A("DedragonZ", "DDZ") {}
+
+    function mint(uint256 quantity) external payable {
+        // _safeMint's second argument now takes in a quantity, not a tokenId.
+        require(!paused);
+        require(totalSupply() + quantity <= MAX_SUPPLY, "Not enough tokens left");
+        if (msg.sender != owner()) {
+            require(quantity + _numberMinted(msg.sender) <= MAX_MINTS, "Exceeded the limit");
+            require(msg.value >= (mintPrice * quantity), "Not enough ether sent");
+        }
+        
+        _safeMint(msg.sender, quantity);
+    }
+
+    function ownerMint(address to, uint256 quantity) external onlyOwner {
+        // _safeMint's second argument now takes in a quantity, not a tokenId.
+        
+        require(totalSupply() + quantity <= MAX_SUPPLY, "Not enough tokens left");
+        
+        _safeMint(to, quantity);
+    }
+
+    function withdraw() external payable onlyOwner {
+        payable(owner()).transfer(address(this).balance);
+    }
+
+    function _baseURI() internal view override returns (string memory) {
+        return baseURI;
+    }
+
+    function _startTokenId() internal pure override returns (uint256) {
+        return 1;
+    }
+
+    function tokenURI(uint256 tokenId) public view virtual override returns (string memory) {
+        if (!_exists(tokenId)) revert URIQueryForNonexistentToken();
+
+        string memory currentBaseURI = _baseURI();
+        return bytes(baseURI).length != 0 ? string(abi.encodePacked(currentBaseURI, _toString(tokenId), ".json")) : '';
+    }
+
+    function setMintPrice(uint256 _mintPrice) public onlyOwner {
+        mintPrice = _mintPrice;
+    }
+
+    function setBaseURI(string memory _newBaseURI) public onlyOwner {
+        baseURI = _newBaseURI;
+    }
+    
+    function pause(bool _state) public onlyOwner {
+        paused = _state;
+    }
+}

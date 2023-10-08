@@ -1,0 +1,37 @@
+Here are a couple of new gas-wasting patterns that I can think of:
+
+**Pattern 1: Unnecessary Function Calls**
+- Description: This pattern occurs when a function is called more times than necessary. For example, if we have a getter function that returns a value of a storage variable, and this function is called multiple times even though the value of the storage variable doesn't change in between the function calls.
+
+1. *How did you find this pattern?* 
+   - This pattern was discovered by observing that calling a function consumes more gas than reading a variable directly. When a function is called, it creates a new execution context, which requires extra computational resources.
+
+2. *What should I do to fix it?* 
+   - This can be fixed by storing the return value of the function in a local variable and reusing the local variable instead of making multiple function calls. The reasoning behind this fix is that reading a local variable consumes less gas than calling a function.
+
+3. *Sacrificing Readability, Security, and Maintainability:*
+   - Readability: 5 (No impact on readability)
+   - Security: 5 (No impact on security)
+   - Maintainability: 4 (Slight impact on maintainability as developers need to keep track of where and when to use the local variable)
+
+**Pattern 2: Inefficient Use of Data Types**
+- Description: This pattern occurs when the most efficient data type is not used. For example, using `uint256` when `uint8` would suffice.
+
+1. *How did you find this pattern?*
+   - This pattern was discovered by understanding that different data types in Solidity consume different amounts of gas. The larger the data type, the more gas it consumes.
+
+2. *What should I do to fix it?*
+   - This can be fixed by using the smallest feasible data type that suits the requirement. The reasoning behind this fix is that smaller data types consume less gas.
+
+3. *Sacrificing Readability, Security, and Maintainability:*
+   - Readability: 5 (No impact on readability)
+   - Security: 4 (Minor impact on security, if the data type is not chosen properly it might lead to issues like overflow)
+   - Maintainability: 3 (Moderate impact on maintainability, developers need to ensure the chosen data type remains accurate for the purpose as the code evolves)
+
+**Improvements for Next Time**
+
+Your prompt was clear and comprehensive. However, it would be more helpful if you provided additional context about the target codebase, such as the scale of the project or the specific industry it's used in. This would help in identifying more context-specific gas-wasting patterns.
+
+In terms of my reasoning process, I tried to identify patterns based on common Solidity practices and their gas implications. For improvement, I could further consider how specific Solidity features and practices could be optimized for gas usage. This would involve deepening my understanding of the Solidity language and the Ethereum Virtual Machine (EVM), which executes Solidity code. 
+
+For this task, I tried to identify general patterns that would apply to a wide range of Solidity codes. If a more specific codebase was provided, I would analyze the codebase to identify specific gas-wasting patterns. For example, if the codebase contained a complex smart contract with numerous functions, I could analyze the interactions between these functions to identify potential optimizations.

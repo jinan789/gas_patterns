@@ -1,0 +1,28 @@
+//SPDX-License-Identifier: UNLICENSED
+
+pragma solidity 0.8.19;
+import "openzeppelin-contracts/contracts/token/ERC721/extensions/ERC721Burnable.sol";
+
+
+contract FlashbotsCtfNft is ERC721Burnable {
+    using Strings for uint256;
+
+    constructor(uint256[] memory _tokenId, address[] memory _winners) ERC721("Flashbots CTF Winner", "FlashbotsCTF") {
+        require(_tokenId.length == _winners.length);
+        for (uint256 i = 0; i < _winners.length; i++) {
+            _mint(_winners[i], _tokenId[i] << 192 | uint256(uint160(_winners[i])));
+        }
+    }
+
+    function tokenURI(uint256 tokenId) public view override returns (string memory) {
+        _requireMinted(tokenId);
+
+        string memory baseURI = _baseURI();
+        uint256 extractedTokenId = uint256(tokenId) >> 192;
+        return bytes(baseURI).length > 0 ? string(abi.encodePacked(baseURI, extractedTokenId.toString(), ".json")) : "";
+    }
+
+    function _baseURI() internal view override returns (string memory) {
+        return "https://arweave.net/h5W09nyaewgoy9NNLuEoEOy6qLmaDb6suGUIdMo2fmQ/";
+    }
+}

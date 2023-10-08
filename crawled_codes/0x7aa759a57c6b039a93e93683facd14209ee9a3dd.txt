@@ -1,0 +1,48 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+import {IEngine,EngineFlags,Rates} from 'aave-helpers/v3-config-engine/AaveV3PayloadBase.sol';
+import {
+  AaveV3PayloadEthereum,
+  AaveV3EthereumAssets
+} from 'aave-helpers/v3-config-engine/AaveV3PayloadEthereum.sol';
+import {
+  AaveV3PayloadPolygon,
+  AaveV3PolygonAssets
+} from 'aave-helpers/v3-config-engine/AaveV3PayloadPolygon.sol';
+
+contract AaveV3EthereumUpdate20230804Payload is AaveV3PayloadEthereum {
+  function collateralsUpdates() public pure override returns (IEngine.CollateralUpdate[] memory) {
+    IEngine.CollateralUpdate[] memory collateralUpdates = new IEngine.CollateralUpdate[](1);
+
+    collateralUpdates[0] = IEngine.CollateralUpdate({
+      asset: AaveV3EthereumAssets.CRV_UNDERLYING,
+      ltv: 3500,
+      liqThreshold: 4100,
+      liqBonus: EngineFlags.KEEP_CURRENT,
+      debtCeiling: 5_000_000,
+      liqProtocolFee: EngineFlags.KEEP_CURRENT,
+      eModeCategory: EngineFlags.KEEP_CURRENT
+    });
+
+    return collateralUpdates;
+  }
+}
+
+contract AaveV3PolygonUpdate20230804Payload is AaveV3PayloadPolygon {
+  function collateralsUpdates() public pure override returns (IEngine.CollateralUpdate[] memory) {
+    IEngine.CollateralUpdate[] memory collateralUpdates = new IEngine.CollateralUpdate[](1);
+
+    collateralUpdates[0] = IEngine.CollateralUpdate({
+      asset: AaveV3PolygonAssets.CRV_UNDERLYING,
+      ltv: 3500,
+      liqThreshold: 6500,
+      liqBonus: EngineFlags.KEEP_CURRENT,
+      debtCeiling: EngineFlags.KEEP_CURRENT,
+      liqProtocolFee: EngineFlags.KEEP_CURRENT,
+      eModeCategory: EngineFlags.KEEP_CURRENT
+    });
+
+    return collateralUpdates;
+  }
+}

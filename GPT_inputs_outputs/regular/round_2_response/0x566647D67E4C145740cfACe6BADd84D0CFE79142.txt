@@ -1,0 +1,81 @@
+
+Based on the Solidity code provided, I've identified a few potential gas-wasting patterns, which I'll explain in detail below.
+
+## Pattern 1: Repeated Calls to External Contract Functions
+
+One pattern that appears to be inefficient with regard to gas usage is the repeated calls to external contract functions. For example, in the `earned` function, both `stakedOf` and `getBoost` are likely external function calls that are being accessed twice within the same contract.
+
+\\begin{enumerate}
+\\item \\textbf{How did you find this pattern?}
+
+````
+The reasoning behind this is quite simple: external function calls in Solidity are costly in terms of gas. The more calls to external contracts are made, the higher the gas cost. By looking for repeated external function calls, we can identify potential areas of optimization.
+
+\item \textbf{What should I do, step by step, to fix the found gas-wasting patterns?}
+
+A potential fix would be to store the results of these calls in memory variables if they are used more than once in the same function. Here's how it might look for the `earned` function:
+
+```solidity
+function earned(address _account) public view returns (uint256) {
+        uint256 stakedAmount = stakedOf(_account);
+        uint256 boost = getBoost(_account);
+        return
+            ((stakedAmount *
+                boost *
+                (rewardPerToken() - userRewardPerTokenPaid[_account])) / 1e38) +
+            rewards[_account];
+}
+```
+
+\item \textbf{On a score of 0 to 5, could you please tell me how would you rate this found new pattern?}
+
+* Readability: 5 - The changes made here do not affect readability significantly.
+* Security: 5 - The security isn't affected as we're simply reducing the number of external calls.
+* Maintainability: 4 - The code is still quite maintainable, however, developers need to remember to update the local variables if the external function calls are updated.
+````
+
+\\end{enumerate}
+
+## Pattern 2: Use of 'now' alias for 'block.timestamp'
+
+The `now` keyword is used in this contract as an alias for `block.timestamp`. While this is not necessarily a "gas-wasting" pattern, it's more of a best practice to use `block.timestamp` for clarity and readability.
+
+\\begin{enumerate}
+\\item \\textbf{How did you find this pattern?}
+
+```
+In Solidity, `now` is an alias for `block.timestamp`. However, `now` is seen as a deprecated keyword as of Solidity 0.7.0 and it's generally recommended to use `block.timestamp` instead for clarity. 
+
+\item \textbf{What should I do, step by step, to fix the found gas-wasting patterns?}
+
+The fix for this issue is simple: replace all instances of `now` with `block.timestamp`.
+
+\item \textbf{On a score of 0 to 5, could you please tell me how would you rate this found new pattern?}
+
+* Readability: 5 - The use of `block.timestamp` makes the code more readable as it's clearer what the function is referring to.
+* Security: 5 - There is no impact on security.
+* Maintainability: 5 - The code is just as maintainable.
+```
+
+\\end{enumerate}
+
+## Pattern 3: Frequent use of multiplication and division by 1e18
+
+The contract frequently multiplies or divides values by 1e18. These operations are gas-intensive and can be optimized.
+
+\\begin{enumerate}
+\\item \\textbf{How did you find this pattern?}
+
+```
+While examining the contract, I noticed that 1e18 is used frequently as a multiplier or divisor. In Solidity, mathematical operations are costly in terms of gas, especially multiplication and division.
+
+\item \textbf{What should I do, step by step, to fix the found gas-wasting patterns?}
+
+Instead of multiplying or dividing by 1e18, we should consider using shift operators. For example, `x * 1e18` is equivalent to `x << 60` and `x / 1e18` is equivalent to `x >> 60`. This is because `1e18` is `2^60`.
+
+\item \textbf{On a score of 0 to 5, could you please tell me how would you rate this found new pattern?}
+
+* Readability: 3 - Shifting bits may seem less intuitive than simple multiplication or division for some developers. It may need additional comments to maintain the readability.
+* Security: 5 - There is no impact on security.
+* Maintainability: 4 - The code could be a bit harder to maintain# Analysis of Provided Solidity Code
+```

@@ -1,0 +1,152 @@
+I want you to help me find new gas-wasting patterns for Solidity. Gas is a unique pricing mechanism in Solidity, which measures the amount of computational resources put into the execution of Solidity codes. The goal of gas optimization is to find an equivalent code instruction sequence that produces the same output while consuming less gas, which may misalign from the way people typically write codes, since code writers aim for readability and maintainability, while gas optimization might seem a little unintuitive to newcomers. For example, storage variables in Solidity are expensive in terms of gas, while memory is not, so storage operations should be avoided whenever possible. Gas is paid in real money, so saving gas is saving money.
+
+First, I will give you a list of known gas-wasting patterns. The list is numbered, with each bullet point specifying one gas-wasting pattern, which is followed by an explanation of why this pattern wastes gas. I want you to read through these and learn how to find new gas-wasting patterns from it. The list is as follows:
+
+1. Repeated computation of the same expression: including repetitive reads of the same expensive storage variable (e.g. Overuse of expensive storage variables). This could be solved by introducing an intermediate variable to hold the value.
+ 
+2. Extractable code chunks: if there are multiple chunks of codes that perform the same/similar functionalities, then we could abstract them into one function (or modifier) to save deployment costs 
+
+3. Variable refactoring: by refactoring variable types and thus adjusting memory layout, we could save gas by saving the amount of storage space needed
+
+4. Redundant operations with same effects: redundant operations that overwrite the effect of the previous operation, making the previous useless
+
+5. Pre-computable operations on constants: performing comparisons (or say other operations) to constants is useless and could be pre-computed
+
+6. Persistent conditional checks: some of the condition checks may always evaluate to true or always evaluate to false, which could be directly replaced by their evaluated values
+
+7. Simplifiable conditional operations: expressions that involve logical operations that could be simplified to reduce the amount of computational workload.
+
+Next, I will give you a chunk of Solidity codes from which you will find gas-inefficient patterns; note that I have removed simple functions from the contract and only kept complex ones, with the hope that you could focus on the most complicated function codescontract OmniseaUniversalONFT721 is NonblockingLzApp, ERC165, ReentrancyGuard, IOmniseaUniversalONFT721 {
+    function _send(
+        address _from,
+        uint16 _dstChainId,
+        bytes memory _toAddress,
+        uint[] memory _tokenIds,
+        address payable _refundAddress,
+        address _zroPaymentAddress,
+        bytes memory _adapterParams,
+        BasicCollectionParams memory _collectionParams
+    ) internal virtual {
+        require(_tokenIds.length > 0);
+        require(_tokenIds.length <= dstChainIdToBatchLimit[_dstChainId]);
+
+        bytes32 collectionId = collectionToId[msg.sender];
+        if (collectionId == bytes32(0)) {
+            require(_factory.drops(msg.sender));
+            collectionId = keccak256(abi.encode(msg.sender, _chainId));
+            idToCollection[collectionId] = msg.sender;
+            collectionToId[msg.sender] = collectionId;
+        }
+
+        for (uint i = 0; i < _tokenIds.length; i++) {
+            _debitFrom(_from, _dstChainId, msg.sender, _toAddress, _tokenIds[i]);
+        }
+
+        bytes memory payload = abi.encode(_toAddress, _tokenIds, _collectionParams, collectionId);
+        _checkGasLimit(_dstChainId, FUNCTION_TYPE_SEND, _adapterParams, dstChainIdToTransferGas[_dstChainId] * _tokenIds.length);
+        (uint nativeFee) = _payONFTFee(msg.value);
+        _lzSend(_dstChainId, payload, _refundAddress, _zroPaymentAddress, _adapterParams, nativeFee);
+        emit SendToChain(_dstChainId, _from, _toAddress, _tokenIds);
+    }
+
+    function _nonblockingLzReceive(
+        uint16 _srcChainId,
+        bytes memory _srcAddress,
+        uint64, /*_nonce*/
+        bytes memory _payload
+    ) internal virtual override {
+        (bytes memory toAddressBytes, uint[] memory tokenIds, BasicCollectionParams memory _collectionParams, bytes32 _collectionId) = abi.decode(_payload, (bytes, uint[], BasicCollectionParams, bytes32));
+
+        address toAddress;
+        assembly {
+            toAddress := mload(add(toAddressBytes, 20))
+        }
+
+        address collection = idToCollection[_collectionId];
+        if (collection == address(0)) {
+            OmniseaERC721Proxy proxy = new OmniseaERC721Proxy();
+            collection = address(proxy);
+            IOmniseaRemoteERC721(collection).initialize(_collectionParams);
+            idToCollection[_collectionId] = collection;
+            collectionToId[collection] = _collectionId;
+        }
+
+        uint nextIndex = _creditTill(_srcChainId, collection, toAddress, 0, tokenIds);
+        if (nextIndex < tokenIds.length) {
+            // not enough gas to complete transfers, store to be cleared in another tx
+            bytes32 hashedPayload = keccak256(_payload);
+            storedCredits[hashedPayload] = StoredCredit(_srcChainId, collection, toAddress, nextIndex, true);
+            emit CreditStored(hashedPayload, _payload);
+        }
+
+        emit ReceiveFromChain(_srcChainId, _srcAddress, toAddress, tokenIds);
+    }
+
+    // Public function for anyone to clear and deliver the remaining batch sent tokenIds
+    function clearCredits(bytes memory _payload) external virtual nonReentrant {
+        bytes32 hashedPayload = keccak256(_payload);
+        require(storedCredits[hashedPayload].creditsRemain);
+
+        (,uint[] memory tokenIds) = abi.decode(_payload, (bytes, uint[]));
+
+        uint nextIndex = _creditTill(storedCredits[hashedPayload].srcChainId, storedCredits[hashedPayload].collection, storedCredits[hashedPayload].toAddress, storedCredits[hashedPayload].index, tokenIds);
+        require(nextIndex > storedCredits[hashedPayload].index);
+
+        if (nextIndex == tokenIds.length) {
+            // cleared the credits, delete the element
+            delete storedCredits[hashedPayload];
+            emit CreditCleared(hashedPayload);
+        } else {
+            // store the next index to mint
+            storedCredits[hashedPayload] = StoredCredit(storedCredits[hashedPayload].srcChainId, storedCredits[hashedPayload].collection, storedCredits[hashedPayload].toAddress, nextIndex, true);
+        }
+    }
+
+    // When a srcChain has the ability to transfer more chainIds in a single tx than the dst can do.
+    // Needs the ability to iterate and stop if the minGasToTransferAndStore is not met
+    function _creditTill(uint16 _srcChainId, address _collection, address _toAddress, uint _startIndex, uint[] memory _tokenIds) internal returns (uint256){
+        uint i = _startIndex;
+        while (i < _tokenIds.length) {
+            if (gasleft() < minGasToTransferAndStore) break;
+
+            _creditTo(_srcChainId, _collection, _toAddress, _tokenIds[i]);
+            i++;
+        }
+
+        return i;
+    }
+
+    // limit on src the amount of tokens to batch send
+    function _payONFTFee(uint _nativeFee) internal virtual returns (uint amount) {
+        uint fee = fixedFee;
+        amount = _nativeFee - fee;
+        if (fee > 0) {
+            (bool p,) = payable(revenueManager).call{value : (fee)}("");
+            require(p);
+        }
+    }
+
+    function _creditTo(uint16, address _collection, address _toAddress, uint _tokenId) internal virtual {
+        IOmniseaRemoteERC721 collection = IOmniseaRemoteERC721(_collection);
+        bool exists = collection.exists(_tokenId);
+
+        require(!exists || (exists && collection.ownerOf(_tokenId) == address(this)));
+        if (exists) {
+            collection.transferFrom(address(this), _toAddress, _tokenId);
+            return;
+        }
+        collection.mint(_toAddress, _tokenId);
+    }
+
+    }
+Now that I have given you the necessary information, I want you to help me find new gas-wasting patterns from the above codes, based on what you learn from the list of patterns. Please be creative and think out of the box beyond the patterns listed above. Please put the new gas wasting patterns in bullet points (in the form of '1.', '2.', etc), and answer the following questions for each of the found patterns (in sub-bullet-points under each bullet point):
+
+1. How did you find this pattern? Could you explain the reasoning process, step by step, behind the discovery?
+
+2. What should I do, step by step, to fix the found gas-wasting patterns? Could you explain the reasoning process, step by step, behind the reason why such a fix works?
+
+3. On a score of 0 to 5, could you please tell me how would you rate this found new pattern, in terms of how much it is sacrificing readability, security, and maintainability in exchange for gas optimization (5 is the least impacted. For example, Security score of 5 means implementing the found gas-optimization pattern would have no effect on security, whereas 1 means it would reduce security)? Please format your answer as in "Readability: 5; Security: 4; Maintainability: 3". Please also provide explanations.
+
+Here are some additional requirements:
+1. If you think my prompt to you has any issues (e.g. ambiguity or lack of information), please tell me how I should improve it in the next time.
+2. please help me format your answer in the form of a Latex section (e.g. \section*{Analysis of Provided Solidity Code}), since I want to assert it to a Latex document.

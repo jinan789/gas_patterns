@@ -1,0 +1,17 @@
+// SPDX-License-Identifier: MIT
+
+pragma solidity ^0.8.19;
+
+import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+
+contract REKT is ERC20 {
+
+    string constant public rektName = "REKT";
+    string constant public rektSymbol = "$REKT";
+
+    constructor(address to) 
+        ERC20(rektName, rektSymbol) 
+    {
+        _mint(to, 1000000000e18);
+    }
+}

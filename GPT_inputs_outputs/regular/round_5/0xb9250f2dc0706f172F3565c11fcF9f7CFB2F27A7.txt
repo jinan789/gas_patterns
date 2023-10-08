@@ -1,0 +1,156 @@
+I want you to help me find new gas-wasting patterns for Solidity. Gas is a unique pricing mechanism in Solidity, which measures the amount of computational resources put into the execution of Solidity codes. The goal of gas optimization is to find an equivalent code instruction sequence that produces the same output while consuming less gas, which may misalign from the way people typically write codes, since code writers aim for readability and maintainability, while gas optimization might seem a little unintuitive to newcomers. For example, storage variables in Solidity are expensive in terms of gas, while memory is not, so storage operations should be avoided whenever possible. Gas is paid in real money, so saving gas is saving money.
+
+First, I will give you a list of known gas-wasting patterns. The list is numbered, with each bullet point specifying one gas-wasting pattern, which is followed by an explanation of why this pattern wastes gas. I want you to read through these and learn how to find new gas-wasting patterns from it. The list is as follows:
+
+1. "dead codes." codes that are guaranteed not to be executed (e.g. unreachable conditional branch) should be removed.
+2. "Opaque predicate." If the outcome of a predicate could be inferred to be true/false without execution, then we could just replace it with the corresponding value to save the compuation during runtime.
+3. "Expensive operations in a loop." If an gas-expensive operation is executed multiple times in a loop, while there is a way to equivalently move it out of the loop to execute only once (e.g. storing a storage variable in a memory variable and performing operations on the memory variable inside the loop), then we should do it to save gas.
+4. "Constant outcome of a loop." If the outcome of a loop could be inferred without execution, then we could just replace it with the corresponding value to save the compuation during runtime.
+5. "Loop fusion." If two loops have the same starting and stopping conditions with the same increment steps, then we could consider combining them into one (e.g. delete the second loop, and put its loop body codes into the first one) if they have no dependencies. This way, we save the logical comparisons, conditional jumps, as well as the incremental steps of the second loop, which saves computation and thus gas.
+6. "Repeated computations in a loop." If there are expressions that produce the same outcome in each iteration of a loop, we could move it out of the loop and execute only once, which saves computation.
+8. "Struct variable refactoring." If a struct used in a contract contains some fields that are used more often and some that are less often, then by breaking up the struct into two, where the frequently used fields are now put as a separate struct, we get to avoid unnecessary reads on the less often used fields and save gas.s
+
+Next, I will give you a chunk of Solidity codes from which you will find gas-inefficient patterns; note that I have removed simple functions from the contract and only kept complex ones, with the hope that you could focus on the most complicated function codes:contract VoteForLaunch is Ownable {
+    function newVote(string memory _tick, uint40 _expireSeconds, string memory _cid) public {
+        require(_expireSeconds <= MAX_VOTING_DAYS, "more than max days to vote");
+        require(!reservedTicks[_tick], "reserved ticks can not apply");
+        require(applications[_tick].expireAt == 0, "tick application exist");
+        require(bytes(_tick).length < 6, "tick name too long");
+
+        // Deposit for new vote
+        require(voteToken.allowance(msg.sender, address(this)) >= newVoteDeposit, "allowance of ferc as deposit not enough");
+        require(voteToken.balanceOf(msg.sender) >= newVoteDeposit, "balance of ferc as deposit not enough");
+        TransferHelper.safeTransferFrom(address(voteToken), msg.sender, address(this), newVoteDeposit);
+
+        applications[_tick] = IVoteForLaunch.Application(
+            0,
+            newVoteDeposit,
+            msg.sender,
+            uint40(block.timestamp + _expireSeconds),
+            0,
+            false,
+            _cid,
+            false,
+            0
+        );
+
+        if(tickIds[_tick] == 0) {
+            tickArray.push(_tick);
+            tickIds[_tick] = tickArray.length;
+        }
+
+        emit NewApplication(_tick, msg.sender, uint40(block.timestamp + _expireSeconds), _cid, newVoteDeposit);
+    }
+
+    function withdrawNewVote(string memory _tick) public {
+        IVoteForLaunch.Application memory application = applications[_tick];
+        require(application.applicant == msg.sender, "only applicant can withdraw");
+        require(application.expireAt + UNDEPLOYED_EXPIRE < block.timestamp, "should be wait until some days after vote finish");
+        require(application.deposit > 0, "deposit is zero");
+        TransferHelper.safeTransfer(address(voteToken), application.applicant, application.deposit);
+        applications[_tick].deposit = 0;
+    }
+    function deposit(uint128 _amount) public {
+        require(voteToken.allowance(msg.sender, address(this)) >= _amount, "allowance is not enough");
+        require(voteToken.balanceOf(msg.sender) >= _amount, "balance is not enough");
+        TransferHelper.safeTransferFrom(address(voteToken), msg.sender, address(this), _amount);
+
+        deposits[msg.sender] += _amount;
+        totalDeposit += _amount;
+        ballots[msg.sender] += _amount;
+        emit Deposit(msg.sender, _amount, _amount);
+    }
+    function withdraw(uint128 _amount) public {
+        require(deposits[msg.sender] >= _amount, "balance is not enough");
+        require(ballots[msg.sender] >= _amount, "ballots is not enough");
+        
+        deposits[msg.sender] -= _amount;
+        totalDeposit -= _amount;
+        ballots[msg.sender] -= _amount;
+        
+        TransferHelper.safeTransfer(address(voteToken), msg.sender, _amount);
+        emit Withdraw(msg.sender, _amount, _amount);
+    }
+    function addVote(string memory _tick, uint128 _ballots) public {
+        require(ballots[msg.sender] >= _ballots, "you ballots is not enough");
+        require(applications[_tick].expireAt >= block.timestamp, "vote is expired");
+        require(Ids[_tick][msg.sender] == 0, "you have voted, cancel and revote if you want");
+
+        applications[_tick].totalVotes += _ballots;
+        applications[_tick].topVotes = applications[_tick].totalVotes;
+
+        everyVotes[_tick].push(IVoteForLaunch.Ballot(msg.sender, _ballots));
+        Ids[_tick][msg.sender] = totalVoters(_tick);
+        ballots[msg.sender] -= _ballots;
+        totalVoted += _ballots;
+
+        if(!applications[_tick].passed && applications[_tick].totalVotes >= totalBallots * PASSED_RATIO / 10000) {
+            applications[_tick].passed = true;
+            applications[_tick].passedTimestamp = uint40(block.timestamp);
+        }
+        emit AddVote(_tick, applications[_tick].applicant, msg.sender, _ballots);
+    }
+
+    function cancelVote(string memory _tick) public {
+        uint128 voted = everyVotes[_tick][Ids[_tick][msg.sender] - 1].amount;
+        require(voted > 0, "You did not voted");
+        ballots[msg.sender] += voted;
+        totalVoted -= voted;
+        applications[_tick].totalVotes -= voted;
+
+        _removeVoteByAddress(_tick, msg.sender);
+        
+        emit CancelVote(_tick, applications[_tick].applicant, msg.sender, voted);
+    }
+
+    function getVotedApplications(address _addr) public view returns(
+        IVoteForLaunch.Application[] memory applications_,
+        uint128[] memory amount_,
+        bool[] memory isExpireForVote_,
+        bool[] memory isExpireForDeploy_,
+        bool[] memory canDeploy_,
+        uint8[] memory code_,
+        string[] memory description_,
+        string[] memory tick_
+    ) {
+        uint len = tickArray.length;
+        if(len > 0) {
+            tick_ = new string[](len);
+            applications_ = new IVoteForLaunch.Application[](len);
+            amount_ = new uint128[](len);
+            isExpireForVote_ = new bool[](len);
+            isExpireForDeploy_ = new bool[](len);
+            canDeploy_ = new bool[](len);
+            code_ = new uint8[](len);
+            description_ = new string[](len);
+
+            uint index = 0;
+            for(uint i = 0; i < len; i++) {
+                string memory _tick = tickArray[i];
+                uint128 _votes = getVotesByAddress(_tick, _addr);
+                if(applications[_tick].expireAt == 0) continue;
+                tick_[index] = _tick;
+                applications_[index] = applications[_tick];
+                amount_[index] = _votes;
+                isExpireForVote_[index] = isExpireForVote(_tick);
+                isExpireForDeploy_[index] = isExpireForDeploy(_tick);
+                (bool _canDeploy, uint8 _code, string memory _description) = getStatus(_tick, _addr);
+                canDeploy_[index] = _canDeploy;
+                code_[index] = _code;
+                description_[index] = _description;
+                index++;
+            }
+        }
+    }
+
+Now that I have given you the necessary information, I want you to help me find new gas-wasting patterns from the above codes, based on what you learn from the list of patterns. Please be creative and think out of the box beyond the patterns listed above. Please put the new gas wasting patterns in bullet points (in the form of '1.', '2.', etc), and answer the following questions for each of the found patterns (in sub-bullet-points under each bullet point):
+
+1. How did you find this pattern? Could you explain the reasoning process, step by step, behind the discovery?
+
+2. What should I do, step by step, to fix the found gas-wasting patterns? Could you explain the reasoning process, step by step, behind the reason why such a fix works?
+
+3. On a score of 0 to 5, could you please tell me how would you rate this found new pattern, in terms of how much it is sacrificing readability, security, and maintainability in exchange for gas optimization (5 is the least impacted. For example, Security score of 5 means implementing the found gas-optimization pattern would have no effect on security, whereas 1 means it would reduce security)? Please format your answer as in "Readability: 5; Security: 4; Maintainability: 3". Please also provide explanations.
+
+Here are some additional requirements:
+1. If you think my prompt to you has any issues (e.g. ambiguity or lack of information), please tell me how I should improve it in the next time.
+2. please help me format your answer in the form of a Latex section (e.g. \section*{Analysis of Provided Solidity Code}), since I want to assert it to a Latex document.

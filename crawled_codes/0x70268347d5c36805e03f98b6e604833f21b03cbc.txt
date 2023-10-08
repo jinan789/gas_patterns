@@ -1,0 +1,21 @@
+// SPDX-License-Identifier: MIT
+
+pragma solidity ^0.8.0;
+
+/// @title: 1407 Gets His MBA
+/// @author: manifold.xyz
+
+import "./manifold/ERC721Creator.sol";
+
+///////////////
+//           //
+//           //
+//    NGB    //
+//           //
+//           //
+///////////////
+
+
+contract NGB is ERC721Creator {
+    constructor() ERC721Creator("1407 Gets His MBA", "NGB") {}
+}

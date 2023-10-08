@@ -1,0 +1,68 @@
+In the provided Solidity code, there are several areas that can be optimized to reduce gas usage. These areas have been identified based on the known gas-wasting patterns and by analyzing the code line by line.
+
+\subsection*{1. Repeated Calls to External Contract Functions}
+
+\subsubsection*{Finding Process}
+
+Upon reviewing the code, the repeated calls to external contract functions are noticeable. For example, the method \texttt{apeCoinStaking.getCurrentTimeRange} is called multiple times in the \texttt{viewPool} function. Each call to this function consumes gas as it triggers an external call to another contract. This pattern is similar to the "Expensive operations in a loop" from the known patterns, but in this case, the repetition is not inside a loop.
+
+\subsubsection*{Fixing Process}
+
+Optimization can be achieved by reducing the number of these external calls. If the function call returns the same result, it can be stored in a local variable and reused. For example, in the \texttt{viewPool} function, we can store the results of \texttt{apeCoinStaking.getCurrentTimeRange} and use them instead of making repeated calls.
+
+```solidity
+TimeRange memory baycTimeRange = apeCoinStaking.getCurrentTimeRange(ApeStakingLib.BAYC_POOL_ID);
+TimeRange memory maycTimeRange = apeCoinStaking.getCurrentTimeRange(ApeStakingLib.MAYC_POOL_ID);
+TimeRange memory bakcTimeRange = apeCoinStaking.getCurrentTimeRange(ApeStakingLib.BAKC_POOL_ID);
+poolState.baycPoolMaxCap = baycTimeRange.capPerPosition;
+poolState.maycPoolMaxCap = maycTimeRange.capPerPosition;
+poolState.bakcPoolMaxCap = bakcTimeRange.capPerPosition;
+```
+
+\subsubsection*{Impact Score}
+
+Readability: 5; Security: 5; Maintainability: 4
+
+The readability and security are not affected, as the code remains clear and straightforward. The maintainability might slightly decrease because developers need to remember to update the local variable whenever the external state might change.
+
+\subsection*{2. Duplicate Code in Loop}
+
+\subsubsection*{Finding Process}
+
+The \texttt{getStakedNftCount} function contains duplicate code in the two for-loops which can be abstracted into a single function. This pattern is related to the "Repeated computations in a loop" from the known patterns. Even though the code inside the loops is not exactly the same, they both perform the same operation with different inputs.
+
+\subsubsection*{Fixing Process}
+
+To fix this, we can create a helper function that accepts the \texttt{IERC721Enumerable} contract and user address as parameters, and then invoke this function in the \texttt{getStakedNftCount} function.
+
+```solidity
+function countStakedNfts(IERC721Enumerable nftContract, address userAddr) internal view returns (uint256 count) {
+    for (uint256 i = 0; i < nftContract.balanceOf(userAddr); i++) {
+        if (nft_.stakerOf(nftContract.tokenOfOwnerByIndex(userAddr, i)) == address(staker)) {
+            count += 1;
+        }
+    }
+    return count;
+}
+
+// Use the helper function inside getStakedNftCount
+function getStakedNftCount(IStakedNft nft_, address userAddr_) public view returns (uint256 count) {
+    count += countStakedNfts(nft_, userAddr_);
+    (address bnftProxy, ) = bnftRegistry.getBNFTAddresses(address(nft_));
+    if (bnftProxy != address(0)) {
+        IERC721Enumerable bnft = IERC721Enumerable(bnftProxy);
+        count += countStakedNfts(bnft, userAddr_);
+    }
+    return count;
+}
+```
+
+\subsubsection*{Impact Score}
+
+Readability: 5; Security: 5; Maintainability: 5
+
+This change improves readability by removing duplicate code, and it doesn't sacrifice security or maintainability. The code becomes easier to maintain as future changes only need to be made in one place.
+
+\subsection*{Feedback on the Prompt}
+
+The prompt was clear and provided a good mix of background information and specific requirements. However, it could be more explicit in specifying whether the "new" gas-wasting patterns should be entirely new, or if they could be variations or expansions of the known patterns. Providing an example of a new pattern could also help clarify this point.

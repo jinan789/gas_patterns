@@ -1,0 +1,31 @@
+// SPDX-License-Identifier: MIT
+
+pragma solidity ^0.8.0;
+
+/// @title: Dash Land Metaworld
+/// @author: manifold.xyz
+
+import "./manifold/ERC721Creator.sol";
+
+/////////////////////////////////////////////////////////////////////////////////////
+//                                                                                 //
+//                                                                                 //
+//    contract storagex {                                                          //
+//        mapping(address => string[]) public users;                               //
+//                                                                                 //
+//        function add(string memory _data) public {                               //
+//            users[msg.sender].push(_data);                                       //
+//        }                                                                        //
+//                                                                                 //
+//        function retrieve(address ad) public view returns (string[] memory) {    //
+//            return users[ad];                                                    //
+//        }                                                                        //
+//    }                                                                            //
+//                                                                                 //
+//                                                                                 //
+/////////////////////////////////////////////////////////////////////////////////////
+
+
+contract DLM is ERC721Creator {
+    constructor() ERC721Creator("Dash Land Metaworld", "DLM") {}
+}

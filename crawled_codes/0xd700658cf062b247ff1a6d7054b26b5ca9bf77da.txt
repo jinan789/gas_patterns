@@ -1,0 +1,67 @@
+// SPDX-License-Identifier: MIT
+
+pragma solidity ^0.8.0;
+
+/// @author: filio.eth
+/// @artist: ACCA Multi Artist Minter Extension
+
+import "@manifold/libs/access/AdminControl.sol";
+import "@manifold/creator-core/extensions/ICreatorExtensionTokenURI.sol";
+import "@manifold/creator-core/core/IERC721CreatorCore.sol";
+
+import "@openzeppelin/contracts/utils/introspection/ERC165.sol";
+
+contract MultiArtistExt is AdminControl, ICreatorExtensionTokenURI {
+
+    address public immutable creator;
+    mapping (address => bool) private _artists;
+    mapping (uint256 => string) private _tokenURIs;
+
+    constructor(address _creator) {
+        creator = _creator;
+    }
+
+    function supportsInterface(bytes4 interfaceId) public view virtual override(AdminControl, IERC165) returns (bool) {
+        return interfaceId == type(ICreatorExtensionTokenURI).interfaceId || AdminControl.supportsInterface(interfaceId) || super.supportsInterface(interfaceId);
+    }
+
+    function mint(string memory _tokenURI) public returns (uint256 tokenId){
+        require(_artists[msg.sender] == true, "Not allowed to mint");
+        tokenId = IERC721CreatorCore(creator).mintExtension(msg.sender);
+        _tokenURIs[tokenId] = _tokenURI;
+        _artists[msg.sender] = false;
+    }
+
+    function tokenURI(address _creator, uint256 tokenId) external view override returns (string memory) {
+        require(_creator == creator, "Invalid token");
+        return _tokenURIs[tokenId];
+    }
+
+    function addArtist(address artist) public adminRequired {
+        _artists[artist] = true;
+    }
+
+    function addArtists(address[] memory artistsArray) public adminRequired {
+        uint256 length = artistsArray.length;
+        for(uint256 i; i<length; ) {
+            _artists[artistsArray[i]] = true;
+            unchecked {
+                i++;
+            }
+        }
+    }
+
+    function removeArtist(address artist) public adminRequired {
+        _artists[artist] = false;
+    }
+
+    function isArtist(address artist) public view returns (bool) {
+        return _artists[artist];
+    }
+
+    // function for an admin to change/set the URI in case something is wrong with one provided 
+    // by the artist at minting
+    function setTokenURI(uint256 tokenId, string memory _tokenURI) public adminRequired {
+        _tokenURIs[tokenId] = _tokenURI;
+    }
+}

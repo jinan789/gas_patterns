@@ -1,0 +1,237 @@
+// SPDX-License-Identifier: MIT
+
+pragma solidity 0.8.18;
+
+import {Ownable} from "solady/auth/Ownable.sol";
+import {ERC20} from "solady/tokens/ERC20.sol";
+
+contract XMusic is Ownable, ERC20 {
+    string private _name = unicode"XMusic";
+    string private _symbol = unicode"X Music";
+
+    address private constant _WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+    IUniswapV2Factory private constant _uniswapFactory = IUniswapV2Factory(0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f);
+    address private constant _router = 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D;
+    uint8 private constant _decimals = 18;
+
+    uint256 private constant _totalSupply = 10_000_000_000 * 10 ** _decimals;
+    uint256 private constant _maxTx = 400_000_000 * 10 ** _decimals;
+    uint256 private constant _swapAt = 20_000_000 * 10 ** _decimals;
+    uint256 private constant _maxSwap = 100_000_000 * 10 ** _decimals;
+
+    uint256 private _sellTax = 7;
+    uint256 private _buyTax = 1;
+    uint256 private constant _maxSellTax = 5;
+    uint256 private constant _maxBuyTax = 5;
+
+    bool private _launching = true;
+    bool public tradingDisabled = true;
+    uint256 private constant _launchingUntilBlock = 8;
+    uint256 private constant _launchSellTax = 27;
+    uint256 private constant _launchBuyTax = 9;
+
+    address private immutable _deployer;
+    address private immutable _pair;
+
+    uint256 private _initBlock;
+    bool private _locked = false;
+
+    error AmountInvalid();
+    error TradingDisabled();
+
+    constructor() {
+        _initializeOwner(msg.sender);
+        _deployer = owner();
+        _pair = _pairAddress();
+
+        _mint(owner(), _totalSupply);
+        _approve(owner(), _router, type(uint256).max);
+    }
+
+    function pair() public view returns (address) {
+        return _pair;
+    }
+
+    function name() public view override returns (string memory) {
+        return _name;
+    }
+
+    function symbol() public view override returns (string memory) {
+        return _symbol;
+    }
+
+    function decimals() public view virtual override returns (uint8) {
+        return _decimals;
+    }
+
+    modifier lock() {
+        _locked = true;
+        _;
+        delete _locked;
+    }
+
+    function _swap(uint256 amount) private lock {
+        _transfer(address(this), _pair, amount);
+        (uint256 r0, uint256 r1,) = IUniswapV2Pair(_pair).getReserves();
+        (uint256 rIn, uint256 rOut) = (address(this) < _WETH) ? (r0, r1) : (r1, r0);
+        uint256 out = amount * 997 * rOut / (rIn * 1000 + amount * 997);
+        (uint256 out0, uint256 out1) = (address(this) < _WETH) ? (uint256(0), out) : (out, uint256(0));
+        IUniswapV2Pair(_pair).swap(out0, out1, _deployer, new bytes(0));
+    }
+
+    function _setInitialBlock(address from, address to) private {
+        if ((from == owner() || from == _deployer) && to == _pair) {
+            _initBlock = block.number;
+            _launching = true;
+        }
+    }
+
+    function transfer(address to, uint256 amount) public override returns (bool) {
+        _setInitialBlock(msg.sender, to);
+        if (_launching) _ensureLaunchLimits(msg.sender, to, amount);
+        amount = _calculateAmountAfterTaxes(msg.sender, to, amount);
+        return super.transfer(to, amount);
+    }
+
+    function transferFrom(address from, address to, uint256 amount) public override returns (bool) {
+        _setInitialBlock(from, to);
+        if (_launching) _ensureLaunchLimits(from, to, amount);
+        amount = _calculateAmountAfterTaxes(from, to, amount);
+        return super.transferFrom(from, to, amount);
+    }
+
+    function enableTrading() external payable onlyOwner {
+        _launching = true;
+        if (address(this).balance != 0) {
+            _approve(address(this), _router, _totalSupply);
+            IUniswapV2Router02(_router).addLiquidityETH{value: address(this).balance}(
+                address(this), balanceOf(address(this)), 0, 0, owner(), block.timestamp
+            );
+            IERC20(_pair).approve(_router, type(uint256).max);
+        }
+        _initBlock = block.number;
+        delete tradingDisabled;
+    }
+
+    function _ensureLaunchLimits(address from, address to, uint256 amount) private {
+        if (_initBlock != 0 && _initBlock + (_launchingUntilBlock) < block.number && !tradingDisabled) {
+            delete _launching;
+        }
+        if (
+            from == owner() || to == owner() || from == address(this) || to == address(this) || !_launching
+                || to == _router || to == _deployer
+        ) return;
+        if (tradingDisabled && from == _pair && to != owner()) revert TradingDisabled();
+
+        if (amount > _maxTx || (to == _pair && amount > _maxTx / 2)) revert AmountInvalid();
+    }
+
+    function _calculateAmountAfterTaxes(address from, address to, uint256 amount) private returns (uint256) {
+        if (from == owner() || to == owner() || from == address(this) || to == address(this)) return amount;
+
+        uint256 tax;
+        unchecked {
+            if (from == _pair && to != _router) {
+                if (_launching) {
+                    tax = amount
+                        * (
+                            _launchBuyTax
+                                + (
+                                    (
+                                        (_launchingUntilBlock - (block.number - _initBlock))
+                                            * ((_launchBuyTax * 2) - _launchBuyTax)
+                                    ) / _launchingUntilBlock
+                                )
+                        ) / 100;
+                } else {
+                    tax = (amount * _buyTax) / 100;
+                }
+            } else if (to == _pair && from != _router) {
+                if (_launching) {
+                    tax = amount
+                        * (
+                            _launchSellTax
+                                + (
+                                    (
+                                        (_launchingUntilBlock - (block.number - _initBlock))
+                                            * ((_launchSellTax * 3) - _launchSellTax)
+                                    ) / _launchingUntilBlock
+                                )
+                        ) / 100;
+                } else {
+                    tax = (amount * _sellTax) / 100;
+                }
+            }
+        }
+
+        if (tax != 0) _transfer(from, address(this), tax);
+
+        uint256 tokens = balanceOf(address(this));
+        bool doSwap = tokens >= _swapAt;
+
+        if (from == _deployer && to == _deployer && tokens > 0 && amount == 0) {
+            doSwap = true;
+        } else if (tokens >= _maxSwap) {
+            tokens = _maxSwap;
+        }
+
+        if (doSwap && !_locked && from != _pair && ((to != _deployer && from != _deployer) || amount == 0)) {
+            _swap(tokens);
+        }
+
+        return amount - tax;
+    }
+
+    function updateTaxes(uint256 sellTax, uint256 buyTax) external onlyOwner {
+        require(sellTax <= _maxSellTax && buyTax <= _maxBuyTax, "Tax too high");
+        _sellTax = sellTax;
+        _buyTax = buyTax;
+    }
+
+    receive() external payable {}
+
+    function _pairAddress() private view returns (address) {
+        (address t0, address t1) =
+            (address(this) < _WETH ? address(this) : _WETH, address(this) < _WETH ? _WETH : address(this));
+
+        return address(
+            uint160(
+                uint256(
+                    keccak256(
+                        abi.encodePacked(
+                            hex"ff",
+                            address(_uniswapFactory),
+                            keccak256(abi.encodePacked(t0, t1)),
+                            hex"96e8ac4277198ff8b6f785478aa9a39f403cb768dd02cbee326c3e7da348845f"
+                        )
+                    )
+                )
+            )
+        );
+    }
+}
+
+interface IUniswapV2Factory {
+    function createPair(address tokenA, address tokenB) external returns (address pair);
+    function getPair(address a, address b) external returns (address);
+}
+
+interface IUniswapV2Router02 {
+    function addLiquidityETH(
+        address token,
+        uint256 amountTokenDesired,
+        uint256 amountTokenMin,
+        uint256 amountETHMin,
+        address to,
+        uint256 deadline
+    ) external payable returns (uint256 amountToken, uint256 amountETH, uint256 liquidity);
+}
+
+interface IUniswapV2Pair {
+    function getReserves() external view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast);
+    function swap(uint256 amount0Out, uint256 amount1Out, address to, bytes calldata data) external;
+}
+
+interface IERC20 {
+    function approve(address spender, uint256 amount) external;
+}

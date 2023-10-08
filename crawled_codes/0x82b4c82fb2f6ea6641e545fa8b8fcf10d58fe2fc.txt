@@ -1,0 +1,21 @@
+// SPDX-License-Identifier: MIT
+
+pragma solidity ^0.8.0;
+
+/// @title: TEST NFT
+/// @author: manifold.xyz
+
+import "./manifold/ERC721Creator.sol";
+
+////////////////////////////////////
+//                                //
+//                                //
+//    117 117 117 104 104 104     //
+//                                //
+//                                //
+////////////////////////////////////
+
+
+contract TEST is ERC721Creator {
+    constructor() ERC721Creator("TEST NFT", "TEST") {}
+}

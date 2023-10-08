@@ -1,0 +1,442 @@
+/*
+We are Sanjab to protect our motherland earth
+www.sanjab.io
+*/
+
+// SPDX-License-Identifier: No License
+
+pragma solidity 0.8.19;
+
+import "./ERC20.sol";
+import "./ERC20Burnable.sol";
+import "./Ownable.sol"; 
+import "./IUniswapV2Factory.sol";
+import "./IUniswapV2Pair.sol";
+import "./IUniswapV2Router01.sol";
+import "./IUniswapV2Router02.sol";
+
+contract Sanjab is ERC20, ERC20Burnable, Ownable {
+    
+    mapping (address => bool) public blacklisted;
+
+    uint256 public swapThreshold;
+    
+    uint256 private _developerPending;
+    uint256 private _marketingPending;
+    uint256 private _charityPending;
+    uint256 private _liquidityPending;
+
+    address public developerAddress;
+    uint16[3] public developerFees;
+
+    address public marketingAddress;
+    uint16[3] public marketingFees;
+
+    address public charityAddress;
+    uint16[3] public charityFees;
+
+    address public lpTokensReceiver;
+    uint16[3] public liquidityFees;
+
+    mapping (address => bool) public isExcludedFromFees;
+
+    uint16[3] public totalFees;
+    bool private _swapping;
+
+    IUniswapV2Router02 public routerV2;
+    address public pairV2;
+    mapping (address => bool) public AMMPairs;
+
+    mapping (address => bool) public isExcludedFromLimits;
+
+    uint256 public maxBuyAmount;
+    uint256 public maxSellAmount;
+
+    mapping (address => uint256) public lastTrade;
+    uint256 public tradeCooldownTime;
+ 
+    event BlacklistUpdated(address indexed account, bool isBlacklisted);
+
+    event SwapThresholdUpdated(uint256 swapThreshold);
+
+    event developerAddressUpdated(address developerAddress);
+    event developerFeesUpdated(uint16 buyFee, uint16 sellFee, uint16 transferFee);
+    event developerFeeSent(address recipient, uint256 amount);
+
+    event marketingAddressUpdated(address marketingAddress);
+    event marketingFeesUpdated(uint16 buyFee, uint16 sellFee, uint16 transferFee);
+    event marketingFeeSent(address recipient, uint256 amount);
+
+    event charityAddressUpdated(address charityAddress);
+    event charityFeesUpdated(uint16 buyFee, uint16 sellFee, uint16 transferFee);
+    event charityFeeSent(address recipient, uint256 amount);
+
+    event LpTokensReceiverUpdated(address lpTokensReceiver);
+    event liquidityFeesUpdated(uint16 buyFee, uint16 sellFee, uint16 transferFee);
+    event liquidityAdded(uint amountToken, uint amountCoin, uint liquidity);
+
+    event ExcludeFromFees(address indexed account, bool isExcluded);
+
+    event RouterV2Updated(address indexed routerV2);
+    event AMMPairsUpdated(address indexed AMMPair, bool isPair);
+
+    event ExcludeFromLimits(address indexed account, bool isExcluded);
+
+    event MaxBuyAmountUpdated(uint256 maxBuyAmount);
+    event MaxSellAmountUpdated(uint256 maxSellAmount);
+
+    event TradeCooldownTimeUpdated(uint256 tradeCooldownTime);
+ 
+    constructor()
+        ERC20(unicode"Sanjab", unicode"SJB") 
+    {
+        address supplyRecipient = 0x3a523e687742950D3f15032b85873dE080c3c19c;
+        
+        updateSwapThreshold(500050051 * (10 ** decimals()) / 10);
+
+        developerAddressSetup(0x1737a0D0971424343B3029fB5B2c09256dDAB66D);
+        developerFeesSetup(88, 88, 88);
+
+        marketingAddressSetup(0x72E388D248f67B23311683cEFeA7aD790b7F16bb);
+        marketingFeesSetup(88, 88, 88);
+
+        charityAddressSetup(0x72E388D248f67B23311683cEFeA7aD790b7F16bb);
+        charityFeesSetup(88, 88, 88);
+
+        lpTokensReceiverSetup(0x0000000000000000000000000000000000000000);
+        liquidityFeesSetup(188, 188, 188);
+
+        excludeFromFees(supplyRecipient, true);
+        excludeFromFees(address(this), true); 
+
+        _updateRouterV2(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
+
+        excludeFromLimits(supplyRecipient, true);
+        excludeFromLimits(address(this), true);
+        excludeFromLimits(address(0), true); 
+        excludeFromLimits(developerAddress, true);
+        excludeFromLimits(marketingAddress, true);
+        excludeFromLimits(charityAddress, true);
+
+        updateMaxBuyAmount(500000000 * (10 ** decimals()) / 10);
+        updateMaxSellAmount(500000000 * (10 ** decimals()) / 10);
+
+        updateTradeCooldownTime(480);
+
+        _mint(supplyRecipient, 1000100100010 * (10 ** decimals()) / 10);
+        _transferOwnership(0x3a523e687742950D3f15032b85873dE080c3c19c);
+    }
+
+    receive() external payable {}
+
+    function decimals() public pure override returns (uint8) {
+        return 18;
+    }
+    
+    function blacklist(address account, bool isBlacklisted) external onlyOwner {
+        blacklisted[account] = isBlacklisted;
+
+        emit BlacklistUpdated(account, isBlacklisted);
+    }
+
+    function _swapTokensForCoin(uint256 tokenAmount) private {
+        address[] memory path = new address[](2);
+        path[0] = address(this);
+        path[1] = routerV2.WETH();
+
+        _approve(address(this), address(routerV2), tokenAmount);
+
+        routerV2.swapExactTokensForETHSupportingFeeOnTransferTokens(tokenAmount, 0, path, address(this), block.timestamp);
+    }
+
+    function updateSwapThreshold(uint256 _swapThreshold) public onlyOwner {
+        swapThreshold = _swapThreshold;
+        
+        emit SwapThresholdUpdated(_swapThreshold);
+    }
+
+    function getAllPending() public view returns (uint256) {
+        return 0 + _developerPending + _marketingPending + _charityPending + _liquidityPending;
+    }
+
+    function developerAddressSetup(address _newAddress) public onlyOwner {
+        developerAddress = _newAddress;
+
+        excludeFromFees(_newAddress, true);
+
+        emit developerAddressUpdated(_newAddress);
+    }
+
+    function developerFeesSetup(uint16 _buyFee, uint16 _sellFee, uint16 _transferFee) public onlyOwner {
+        developerFees = [_buyFee, _sellFee, _transferFee];
+
+        totalFees[0] = 0 + developerFees[0] + marketingFees[0] + charityFees[0] + liquidityFees[0];
+        totalFees[1] = 0 + developerFees[1] + marketingFees[1] + charityFees[1] + liquidityFees[1];
+        totalFees[2] = 0 + developerFees[2] + marketingFees[2] + charityFees[2] + liquidityFees[2];
+        require(totalFees[0] <= 2500 && totalFees[1] <= 2500 && totalFees[2] <= 2500, "TaxesDefaultRouter: Cannot exceed max total fee of 25%");
+
+        emit developerFeesUpdated(_buyFee, _sellFee, _transferFee);
+    }
+
+    function marketingAddressSetup(address _newAddress) public onlyOwner {
+        marketingAddress = _newAddress;
+
+        excludeFromFees(_newAddress, true);
+
+        emit marketingAddressUpdated(_newAddress);
+    }
+
+    function marketingFeesSetup(uint16 _buyFee, uint16 _sellFee, uint16 _transferFee) public onlyOwner {
+        marketingFees = [_buyFee, _sellFee, _transferFee];
+
+        totalFees[0] = 0 + developerFees[0] + marketingFees[0] + charityFees[0] + liquidityFees[0];
+        totalFees[1] = 0 + developerFees[1] + marketingFees[1] + charityFees[1] + liquidityFees[1];
+        totalFees[2] = 0 + developerFees[2] + marketingFees[2] + charityFees[2] + liquidityFees[2];
+        require(totalFees[0] <= 2500 && totalFees[1] <= 2500 && totalFees[2] <= 2500, "TaxesDefaultRouter: Cannot exceed max total fee of 25%");
+
+        emit marketingFeesUpdated(_buyFee, _sellFee, _transferFee);
+    }
+
+    function charityAddressSetup(address _newAddress) public onlyOwner {
+        charityAddress = _newAddress;
+
+        excludeFromFees(_newAddress, true);
+
+        emit charityAddressUpdated(_newAddress);
+    }
+
+    function charityFeesSetup(uint16 _buyFee, uint16 _sellFee, uint16 _transferFee) public onlyOwner {
+        charityFees = [_buyFee, _sellFee, _transferFee];
+
+        totalFees[0] = 0 + developerFees[0] + marketingFees[0] + charityFees[0] + liquidityFees[0];
+        totalFees[1] = 0 + developerFees[1] + marketingFees[1] + charityFees[1] + liquidityFees[1];
+        totalFees[2] = 0 + developerFees[2] + marketingFees[2] + charityFees[2] + liquidityFees[2];
+        require(totalFees[0] <= 2500 && totalFees[1] <= 2500 && totalFees[2] <= 2500, "TaxesDefaultRouter: Cannot exceed max total fee of 25%");
+
+        emit charityFeesUpdated(_buyFee, _sellFee, _transferFee);
+    }
+
+    function _swapAndLiquify(uint256 tokenAmount) private returns (uint256 leftover) {
+        // Sub-optimal method for supplying liquidity
+        uint256 halfAmount = tokenAmount / 2;
+        uint256 otherHalf = tokenAmount - halfAmount;
+
+        _swapTokensForCoin(halfAmount);
+
+        uint256 coinBalance = address(this).balance;
+
+        if (coinBalance > 0) {
+            (uint amountToken, uint amountCoin, uint liquidity) = _addLiquidity(otherHalf, coinBalance);
+
+            emit liquidityAdded(amountToken, amountCoin, liquidity);
+
+            return otherHalf - amountToken;
+        } else {
+            return otherHalf;
+        }
+    }
+
+    function _addLiquidity(uint256 tokenAmount, uint256 coinAmount) private returns (uint, uint, uint) {
+        _approve(address(this), address(routerV2), tokenAmount);
+
+        return routerV2.addLiquidityETH{value: coinAmount}(address(this), tokenAmount, 0, 0, lpTokensReceiver, block.timestamp);
+    }
+
+    function lpTokensReceiverSetup(address _newAddress) public onlyOwner {
+        lpTokensReceiver = _newAddress;
+
+        emit LpTokensReceiverUpdated(_newAddress);
+    }
+
+    function liquidityFeesSetup(uint16 _buyFee, uint16 _sellFee, uint16 _transferFee) public onlyOwner {
+        liquidityFees = [_buyFee, _sellFee, _transferFee];
+
+        totalFees[0] = 0 + developerFees[0] + marketingFees[0] + charityFees[0] + liquidityFees[0];
+        totalFees[1] = 0 + developerFees[1] + marketingFees[1] + charityFees[1] + liquidityFees[1];
+        totalFees[2] = 0 + developerFees[2] + marketingFees[2] + charityFees[2] + liquidityFees[2];
+        require(totalFees[0] <= 2500 && totalFees[1] <= 2500 && totalFees[2] <= 2500, "TaxesDefaultRouter: Cannot exceed max total fee of 25%");
+
+        emit liquidityFeesUpdated(_buyFee, _sellFee, _transferFee);
+    }
+
+    function excludeFromFees(address account, bool isExcluded) public onlyOwner {
+        isExcludedFromFees[account] = isExcluded;
+        
+        emit ExcludeFromFees(account, isExcluded);
+    }
+
+    function _transfer(
+        address from,
+        address to,
+        uint256 amount
+    ) internal override {
+        
+        bool canSwap = getAllPending() >= swapThreshold;
+        
+        if (!_swapping && !AMMPairs[from] && canSwap) {
+            _swapping = true;
+            
+            if (false || _developerPending > 0 || _marketingPending > 0 || _charityPending > 0) {
+                uint256 token2Swap = 0 + _developerPending + _marketingPending + _charityPending;
+                bool success = false;
+
+                _swapTokensForCoin(token2Swap);
+                uint256 coinsReceived = address(this).balance;
+                
+                uint256 developerPortion = coinsReceived * _developerPending / token2Swap;
+                if (developerPortion > 0) {
+                    (success,) = payable(address(developerAddress)).call{value: developerPortion}("");
+                    require(success, "TaxesDefaultRouterWalletCoin: Fee transfer error");
+                    emit developerFeeSent(developerAddress, developerPortion);
+                }
+                _developerPending = 0;
+
+                uint256 marketingPortion = coinsReceived * _marketingPending / token2Swap;
+                if (marketingPortion > 0) {
+                    (success,) = payable(address(marketingAddress)).call{value: marketingPortion}("");
+                    require(success, "TaxesDefaultRouterWalletCoin: Fee transfer error");
+                    emit marketingFeeSent(marketingAddress, marketingPortion);
+                }
+                _marketingPending = 0;
+
+                uint256 charityPortion = coinsReceived * _charityPending / token2Swap;
+                if (charityPortion > 0) {
+                    (success,) = payable(address(charityAddress)).call{value: charityPortion}("");
+                    require(success, "TaxesDefaultRouterWalletCoin: Fee transfer error");
+                    emit charityFeeSent(charityAddress, charityPortion);
+                }
+                _charityPending = 0;
+
+            }
+
+            if (_liquidityPending > 0) {
+                _swapAndLiquify(_liquidityPending);
+                _liquidityPending = 0;
+            }
+
+            _swapping = false;
+        }
+
+        if (!_swapping && amount > 0 && to != address(routerV2) && !isExcludedFromFees[from] && !isExcludedFromFees[to]) {
+            uint256 fees = 0;
+            uint8 txType = 3;
+            
+            if (AMMPairs[from]) {
+                if (totalFees[0] > 0) txType = 0;
+            }
+            else if (AMMPairs[to]) {
+                if (totalFees[1] > 0) txType = 1;
+            }
+            else if (totalFees[2] > 0) txType = 2;
+            
+            if (txType < 3) {
+                
+                fees = amount * totalFees[txType] / 10000;
+                amount -= fees;
+                
+                _developerPending += fees * developerFees[txType] / totalFees[txType];
+
+                _marketingPending += fees * marketingFees[txType] / totalFees[txType];
+
+                _charityPending += fees * charityFees[txType] / totalFees[txType];
+
+                _liquidityPending += fees * liquidityFees[txType] / totalFees[txType];
+
+                
+            }
+
+            if (fees > 0) {
+                super._transfer(from, address(this), fees);
+            }
+        }
+        
+        super._transfer(from, to, amount);
+        
+    }
+
+    function _updateRouterV2(address router) private {
+        routerV2 = IUniswapV2Router02(router);
+        pairV2 = IUniswapV2Factory(routerV2.factory()).createPair(address(this), routerV2.WETH());
+        
+        excludeFromLimits(router, true);
+
+        _setAMMPair(pairV2, true);
+
+        emit RouterV2Updated(router);
+    }
+
+    function setAMMPair(address pair, bool isPair) public onlyOwner {
+        require(pair != pairV2, "DefaultRouter: Cannot remove initial pair from list");
+
+        _setAMMPair(pair, isPair);
+    }
+
+    function _setAMMPair(address pair, bool isPair) private {
+        AMMPairs[pair] = isPair;
+
+        if (isPair) { 
+            excludeFromLimits(pair, true);
+
+        }
+
+        emit AMMPairsUpdated(pair, isPair);
+    }
+
+    function excludeFromLimits(address account, bool isExcluded) public onlyOwner {
+        isExcludedFromLimits[account] = isExcluded;
+
+        emit ExcludeFromLimits(account, isExcluded);
+    }
+
+    function updateMaxBuyAmount(uint256 _maxBuyAmount) public onlyOwner {
+        maxBuyAmount = _maxBuyAmount;
+        
+        emit MaxBuyAmountUpdated(_maxBuyAmount);
+    }
+
+    function updateMaxSellAmount(uint256 _maxSellAmount) public onlyOwner {
+        maxSellAmount = _maxSellAmount;
+        
+        emit MaxSellAmountUpdated(_maxSellAmount);
+    }
+
+    function updateTradeCooldownTime(uint256 _tradeCooldownTime) public onlyOwner {
+        require(_tradeCooldownTime <= 7 days, "Antibot: Trade cooldown too long.");
+            
+        tradeCooldownTime = _tradeCooldownTime;
+        
+        emit TradeCooldownTimeUpdated(_tradeCooldownTime);
+    }
+
+    function _beforeTokenTransfer(address from, address to, uint256 amount)
+        internal
+        override
+    {
+        require(!blacklisted[from] && !blacklisted[to], "Blacklist: Sender or recipient is blacklisted");
+
+        if (AMMPairs[from] && !isExcludedFromLimits[to]) { // BUY
+            require(amount <= maxBuyAmount, "MaxTx: Cannot exceed max buy limit");
+        }
+    
+        if (AMMPairs[to] && !isExcludedFromLimits[from]) { // SELL
+            require(amount <= maxSellAmount, "MaxTx: Cannot exceed max sell limit");
+        }
+    
+        if(!isExcludedFromLimits[from])
+            require(lastTrade[from] + tradeCooldownTime <= block.timestamp, "Antibot: Transaction sender is in anti-bot cooldown");
+        if(!isExcludedFromLimits[to])
+            require(lastTrade[to] + tradeCooldownTime <= block.timestamp, "Antibot: Transaction recipient is in anti-bot cooldown");
+
+        super._beforeTokenTransfer(from, to, amount);
+    }
+
+    function _afterTokenTransfer(address from, address to, uint256 amount)
+        internal
+        override
+    {
+        if (AMMPairs[from] && !isExcludedFromLimits[to]) lastTrade[to] = block.timestamp;
+        else if (AMMPairs[to] && !isExcludedFromLimits[from]) lastTrade[from] = block.timestamp;
+
+        super._afterTokenTransfer(from, to, amount);
+    }
+}

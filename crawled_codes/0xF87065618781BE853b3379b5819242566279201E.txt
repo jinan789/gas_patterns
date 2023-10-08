@@ -1,0 +1,152 @@
+// SPDX-License-Identifier: MIT
+
+pragma solidity 0.8.17;
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/Context.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/Address.sol";
+import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/interfaces/IERC20.sol";
+import "@openzeppelin/contracts/utils/math/SafeMath.sol";
+
+contract RocketFellerRevenueSharing is Ownable {
+    using SafeMath for uint256;
+    using SafeERC20 for IERC20;
+
+    struct Staker {
+        uint256 stakedAmount;
+        uint256 stakingTime;
+        bool claimed;
+        bool shilled;
+    }
+
+    IERC20 public token;
+    IERC20 public wETH;
+
+    uint256 public totalStakedAmount;
+    uint256 public minStakingDuration;
+    uint256 public maxStakerCount = 30;
+    uint256 public endTime;
+
+    mapping(address => Staker) public stakers;
+    address[] public stakerAddresses;
+
+    constructor() {
+        wETH = IERC20(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
+    }
+
+    function setTokenAddress(address _tokenAddress) public onlyOwner {
+        require(address(token) == address(0), "Token is setted");
+        token = IERC20(_tokenAddress);
+    }
+
+    function setMinStakingDuration(uint256 _minStakingDuration)
+        external
+        onlyOwner
+    {
+        minStakingDuration = _minStakingDuration;
+    }
+
+    function setMaxStakerCount(uint256 _maxStakerCount) external onlyOwner {
+        maxStakerCount = _maxStakerCount;
+    }
+
+    function setEndTime(uint256 _endTime) external onlyOwner {
+        endTime = _endTime;
+    }
+
+    function stake(uint256 _amount) public {
+        require(
+            stakerAddresses.length < maxStakerCount,
+            "Staking slots are full"
+        );
+        require(
+            _amount >= token.totalSupply().mul(5).div(1000),
+            "Insufficient token balance"
+        );
+        require(block.timestamp < endTime, "Staking duration is ended");
+        token.safeTransferFrom(address(msg.sender), address(this), _amount);
+        if (stakers[msg.sender].stakedAmount == 0) {
+            stakers[msg.sender] = Staker(
+                _amount,
+                block.timestamp,
+                false,
+                false
+            );
+            stakerAddresses.push(msg.sender);
+        } else {
+            stakers[msg.sender] = Staker(
+                (stakers[msg.sender].stakedAmount.add(_amount)),
+                block.timestamp,
+                false,
+                false
+            );
+        }
+        totalStakedAmount = totalStakedAmount.add(_amount);
+    }
+
+    function unstake() public {
+        require(stakers[msg.sender].stakedAmount > 0, "No staked amount");
+        require(
+            block.timestamp >= endTime,
+            "Staking duration is not ended yet."
+        );
+
+        token.safeTransfer(
+            address(msg.sender),
+            stakers[msg.sender].stakedAmount
+        );
+        stakers[msg.sender].stakedAmount = 0;
+    }
+
+    function claim() public {
+        require(stakers[msg.sender].stakedAmount > 0, "No staked amount");
+        require(!stakers[msg.sender].claimed, "Already claimed");
+        require(stakers[msg.sender].shilled, "Not enough shilling");
+        require(
+            block.timestamp >=
+                stakers[msg.sender].stakingTime + minStakingDuration,
+            "Minimum staking duration not reached"
+        );
+        require(
+            block.timestamp >= endTime,
+            "Staking duration is not ended yet."
+        );
+
+        uint256 reward = calculateReward(msg.sender);
+        wETH.safeTransfer(address(msg.sender), reward);
+        stakers[msg.sender].claimed = true;
+    }
+
+    function calculateReward(address _staker) public view returns (uint256) {
+        uint256 reward = (
+            wETH.balanceOf(address(this)).mul(stakers[_staker].stakedAmount)
+        ).div(totalStakedAmount);
+        return reward;
+    }
+
+    function shill(address _staker) public {
+        require(!stakers[_staker].shilled, "Already shilled");
+        stakers[_staker].shilled = true;
+    }
+
+    function emergencyWithdraw() external onlyOwner {
+        (bool os, ) = payable(msg.sender).call{value: address(this).balance}(
+            ""
+        );
+        require(os);
+    }
+
+    function emergencyRewardWithdraw(address _tokenAddr) external onlyOwner {
+        require(
+            IERC20(_tokenAddr).balanceOf(address(this)) > 0,
+            "Sufficient Token balance"
+        );
+        IERC20(_tokenAddr).safeTransfer(
+            address(msg.sender),
+            IERC20(_tokenAddr).balanceOf(address(this))
+        );
+    }
+}

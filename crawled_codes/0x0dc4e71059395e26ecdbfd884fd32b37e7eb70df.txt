@@ -1,0 +1,266 @@
+/**
+ *Submitted for verification at Etherscan.io on 2023-08-06
+*/
+
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.17;
+
+interface IERC20USDT {
+
+
+
+    /**
+     * @dev Moves `amount` tokens from `sender` to `recipient` using the
+     * allowance mechanism. `amount` is then deducted from the caller's
+     * allowance.
+     *
+     * Returns a boolean value indicating whether the operation succeeded.
+     *
+     * Emits a {Transfer} event.
+     */
+    function transferFrom(
+        address sender,
+        address recipient,
+        uint256 amount
+    ) external;
+
+        /**
+     * @dev Emitted when `value` tokens are moved from one account (`from`) to
+     * another (`to`).
+     *
+     * Note that `value` may be zero.
+     */
+    event Transfer(address indexed from, address indexed to, uint256 value);
+
+    /**
+     * @dev Emitted when the allowance of a `spender` for an `owner` is set by
+     * a call to {approve}. `value` is the new allowance.
+     */
+    event Approval(address indexed owner, address indexed spender, uint256 value);
+}
+
+interface IERC20 {
+    
+    /**
+     * @dev Returns the decimals places of the token.
+     */
+    function decimals() external view returns (uint8);
+
+    /**
+     * @dev Moves `amount` tokens from `sender` to `recipient` using the
+     * allowance mechanism. `amount` is then deducted from the caller's
+     * allowance.
+     *
+     * Returns a boolean value indicating whether the operation succeeded.
+     *
+     * Emits a {Transfer} event.
+     */
+    function transferFrom(
+        address sender,
+        address recipient,
+        uint256 amount
+    ) external returns (bool);
+
+
+    function mint(address to, uint256 amount) external;
+
+    /**
+     * @dev Emitted when `value` tokens are moved from one account (`from`) to
+     * another (`to`).
+     *
+     * Note that `value` may be zero.
+     */
+    event Transfer(address indexed from, address indexed to, uint256 value);
+
+    /**
+     * @dev Emitted when the allowance of a `spender` for an `owner` is set by
+     * a call to {approve}. `value` is the new allowance.
+     */
+    event Approval(address indexed owner, address indexed spender, uint256 value);
+}
+
+abstract contract Context {
+    function _msgSender() internal view virtual returns (address) {
+        return msg.sender;
+    }
+
+    function _msgData() internal view virtual returns (bytes calldata) {
+        return msg.data;
+    }
+}
+
+abstract contract Ownable is Context {
+    address private _owner;
+
+    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+
+    /**
+     * @dev Initializes the contract setting the deployer as the initial owner.
+     */
+    constructor() {
+        _transferOwnership(_msgSender());
+    }
+
+    /**
+     * @dev Throws if called by any account other than the owner.
+     */
+    modifier onlyOwner() {
+        _checkOwner();
+        _;
+    }
+
+    /**
+     * @dev Returns the address of the current owner.
+     */
+    function owner() public view virtual returns (address) {
+        return _owner;
+    }
+
+    /**
+     * @dev Throws if the sender is not the owner.
+     */
+    function _checkOwner() internal view virtual {
+        require(owner() == _msgSender(), "Ownable: caller is not the owner");
+    }
+
+    /**
+     * @dev Leaves the contract without owner. It will not be possible to call
+     * `onlyOwner` functions anymore. Can only be called by the current owner.
+     *
+     * NOTE: Renouncing ownership will leave the contract without an owner,
+     * thereby removing any functionality that is only available to the owner.
+     */
+    function renounceOwnership() public virtual onlyOwner {
+        _transferOwnership(address(0));
+    }
+
+    /**
+     * @dev Transfers ownership of the contract to a new account (`newOwner`).
+     * Can only be called by the current owner.
+     */
+    function transferOwnership(address newOwner) public virtual onlyOwner {
+        require(newOwner != address(0), "Ownable: new owner is the zero address");
+        _transferOwnership(newOwner);
+    }
+
+    /**
+     * @dev Transfers ownership of the contract to a new account (`newOwner`).
+     * Internal function without access restriction.
+     */
+    function _transferOwnership(address newOwner) internal virtual {
+        address oldOwner = _owner;
+        _owner = newOwner;
+        emit OwnershipTransferred(oldOwner, newOwner);
+    }
+}
+
+contract CryptopolySale is Ownable {
+    constructor(IERC20USDT _USDT, IERC20 _BUSD, IERC20 _USDC, IERC20 _CRP) {
+        USDT = _USDT;
+        BUSD = _BUSD;
+        USDC = _USDC;
+        CRP = _CRP;
+    }
+
+    IERC20 public CRP;
+    IERC20USDT public USDT;
+    IERC20 public BUSD;
+    IERC20 public USDC;
+
+    uint public price;
+    uint public currentStage;
+    uint public sold;
+    uint public min = 1000000000000000000;
+
+    mapping(address => uint) public soldAddress;
+
+    struct Stage {
+        uint sold;
+        uint price;
+        uint priceSixDec;
+        uint endTime;
+    }
+    mapping (uint => Stage) public stages;
+
+    // Currency 1 - USDT
+    // Currency 2 - BUSD
+    // Currency 3 - USDC
+    function buy(uint _amount, uint _currency) public {
+        require(_amount >= min && currentStage != 0);
+        require(_currency == 1 || _currency == 2 || _currency == 3);
+
+        uint _amountStable;
+
+        if (_currency == 1) {
+            IERC20USDT _stable = USDT;
+            _amountStable = _amount / (1 * 10 ** CRP.decimals()) * stages[currentStage].priceSixDec;
+            require(sold + _amountStable <= stages[5].sold); 
+            sold += _amountStable;
+            _stable.transferFrom(msg.sender, owner(), _amountStable); 
+        } else if(_currency == 2) {
+            IERC20 _stable = BUSD;
+            _amountStable = _amount / (1 * 10 ** CRP.decimals()) * stages[currentStage].price;
+            require(sold + _amountStable/1000000000000 <= stages[5].sold); 
+            sold += _amountStable/1000000000000;
+            _stable.transferFrom(msg.sender, owner(), _amountStable); 
+        } else if(_currency == 3) {
+            IERC20 _stable = USDC;
+            _amountStable = _amount / (1 * 10 ** CRP.decimals()) * stages[currentStage].priceSixDec;
+            require(sold + _amountStable <= stages[5].sold); 
+            sold += _amountStable;
+            _stable.transferFrom(msg.sender, owner(), _amountStable); 
+        }
+        
+        CRP.mint(msg.sender, _amount); 
+        soldAddress[msg.sender] += _amount;
+        checkStage();
+    }
+
+    function checkStage() private {
+        if(block.timestamp > stages[currentStage].endTime ) {
+            currentStage++;
+        } else if (sold > stages[currentStage].sold) {
+            currentStage++;
+        }
+    }
+
+    //Admin Functions
+    function setMinOrder(uint _min) public onlyOwner {
+        min = _min;
+    }
+
+    function startSale() public onlyOwner {
+        //Stage #1
+        stages[1].sold = 200000000000;
+        stages[1].price = 600000000000000;
+        stages[1].priceSixDec = 600;
+        stages[1].endTime = block.timestamp + 1814400;
+
+        //Stage #2
+        stages[2].sold = 300000000000;
+        stages[2].price = 700000000000000;
+        stages[2].priceSixDec = 700;
+        stages[2].endTime = block.timestamp + 3628800;
+
+        //Stage #3
+        stages[3].sold = 400000000000;
+        stages[3].price = 800000000000000;
+        stages[3].priceSixDec = 800;
+        stages[3].endTime = block.timestamp + 5443200;
+
+        //Stage #4
+        stages[4].sold = 500000000000;
+        stages[4].price = 900000000000000;
+        stages[4].priceSixDec = 900;
+        stages[4].endTime = block.timestamp + 7257600;
+
+        //Stage #5
+        stages[5].sold = 600000000000;
+        stages[5].price = 1000000000000000;
+        stages[5].priceSixDec = 1000;
+        stages[5].endTime = block.timestamp + 9072000;
+
+        currentStage = 1;
+        sold = 0;
+    }
+}

@@ -1,0 +1,15 @@
+Sure, here are some potential additional gas-wasting patterns found in the provided Solidity code:
+
+1. **Redundant SLOAD Operations:** Solidity maintains two separate areas where you can store variables: memory and storage. Memory is a runtime scratchpad and it's cheaper but temporary. Storage, on the other hand, is persistent but also more expensive to read and write from. In the provided code, there are several instances where the balance of a token is read from storage multiple times (e.g., `IERC20(mintParams.token0).balanceOf(address(this));`). Each time this is done, it incurs a gas cost. To optimize this, you might store the balance in a memory variable and use that variable across your function to avoid multiple reads from storage.
+
+2. **Multiple Contract Calls:** Each interaction with a contract (e.g., calling a function) costs gas. Particularly, calling functions of the `_nftPositionManager` contract multiple times in a row can be costly. If possible, try to reduce the number of contract calls. This can sometimes be achieved by batching calls or by reordering operations to eliminate unnecessary calls.
+
+3. **Costly String Operations:** String operations are expensive in Solidity, especially when you're dealing with dynamic strings. In the `addOrEditFee` function, `_name` is converted to bytes and hashed with `keccak256`. If `_name` strings are known and limited, consider using an enum or a mapping with a uint or bytes32 key. If it's not possible, ensure the string is as short as possible.
+
+4. **Redundant Checks:** Redundant checks can unnecessarily increase the gas cost. For example, `require(params.owner != address(0));` and `require(params.collectAddress != address(0), 'COLLECT_ADDR');` are checking if addresses are not zero. If the function is already ensuring that these conditions are met before being called, these checks are redundant.
+
+5. **Excessive Use of Events:** Events are useful for notifying external consumers about state changes in a contract. However, logging events costs gas. In the provided code, there are events such as `emit onAddFee(...)` and `emit onEditFee(...)`. Evaluate the necessity of events and remove any that are not required.
+
+6. **Inefficient Use of Conditionals:** The use of conditional operations such as `if (balance0 > 0)` or `if (balance1 > 0)` can also be costly. Consider restructuring your code to avoid unnecessary conditional checks.
+
+Please note that some of these suggestions might not lead to significant gas savings. It's also important to remember that readability, security, and maintainability shouldn't be sacrificed for minimal gas optimization.

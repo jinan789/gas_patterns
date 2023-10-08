@@ -1,0 +1,40 @@
+
+\begin{itemize}
+
+\item \textbf{Pattern 1: Usage of array iteration for rewardInfo.}
+  \begin{itemize}
+  \item \textit{Discovery:} The `rewardInfo` array is iterated over multiple times in functions like `_updateReward()`, `_onReward()`, and `_pendingTokens()`. Each time we iterate through the `rewardInfo`, we are reading from storage, which is expensive in terms of gas.
+  \item \textit{Fix:} Instead of iterating over the array multiple times, we can create a mapping to store the index of the rewardInfo for each token. This way, we can directly access the rewardInfo of a particular token without iterating over the entire array.
+  \item \textit{Impact:} Implementing this fix will have the following impacts: 
+    \begin{itemize}
+      \item \textit{Readability: 4} - The use of mapping over array iteration is a common pattern in Solidity and should not significantly impact readability.
+      \item \textit{Security: 5} - The use of mapping doesn't introduce any new security risks.
+      \item \textit{Maintainability: 4} - Updates to the mapping should be done whenever a new rewardToken is added or removed, which adds a little complexity to the maintenance.
+    \end{itemize}
+  \end{itemize}
+
+\item \textbf{Pattern 2: Repeated computation of `timeElapsed` and `tokenReward`.}
+  \begin{itemize}
+  \item \textit{Discovery:} The computation of `timeElapsed` and `tokenReward` is done inside the loop in `_updateReward()` and `_pendingTokens()`. `timeElapsed` is the same for all tokens and should be computed once and stored in a variable. Similarly, `tokenReward` can also be computed once and stored in a mapping indexed by token.
+  \item \textit{Fix:} Compute `timeElapsed` before the loop starts in both `_updateReward()` and `_pendingTokens()`. For `tokenReward`, create a `mapping(IERC20 => uint256)` at the start of `_updateReward()`, compute `tokenReward` for each token once, and use it in the loop.
+  \item \textit{Impact:} Implementing this fix will have the following impacts:
+    \begin{itemize}
+      \item \textit{Readability: 4} - This change makes the code more efficient without significantly impacting its readability.
+      \item \textit{Security: 5} - The change doesn't introduce any new security risks.
+      \item \textit{Maintainability: 4} - The change slightly increases complexity due to the additional mapping, but it should not significantly impact maintainability.
+    \end{itemize}
+  \end{itemize}
+
+\item \textbf{Pattern 3: Usage of division operation.}
+  \begin{itemize}
+  \item \textit{Discovery:} The division operation in Solidity consumes more gas compared to other mathematical operations. In the provided code, division is used multiple times to calculate rewards.
+  \item \textit{Fix:} Consider using bit shifting operations if the divisor is a power of 2. For example, instead of `ACC_TOKEN_PRECISION / 2`, use `ACC_TOKEN_PRECISION >> 1`. If bit shifting isn't applicable, consider refactoring to reduce the number of division operations.
+  \item \textit{Impact:} Implementing this fix will have the following impacts:
+    \begin{itemize}
+      \item \textit{Readability: 3} - Changes to mathematical operations could reduce readability, especially for those unfamiliar with bit shifting.
+      \item \textit{Security: 5} - The change doesn't introduce any new security risks.
+      \item \textit{Maintainability: 4} - Some additional care must be taken to ensure that the mathematical operations are still correct after the changes.
+    \end{itemize}
+  \end{itemize}
+
+\end{itemize}

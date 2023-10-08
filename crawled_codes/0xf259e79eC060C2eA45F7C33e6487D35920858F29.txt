@@ -1,0 +1,526 @@
+/**
+ *Submitted for verification at Etherscan.io on 2023-08-11
+*/
+
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.17;
+
+//////////////////////////////////////////////////////////
+//    __  ___         __  _                 _   ______  //
+//   /  |/  /__ _____/ /_(_)__ ____  ___   | | / /_  /  //
+//  / /|_/ / _ `/ __/ __/ / _ `/ _ \(_-<   | |/ //_ <   //
+// /_/  /_/\_,_/_/  \__/_/\_,_/_//_/___/   |___/____/   //
+//                                                      //
+// Author: 0xInuarashi                                  //
+//////////////////////////////////////////////////////////
+
+//////////////////////////////////////////////
+//     __   _ __                _           //
+//    / /  (_) /  _______ _____(_)__ ___    //
+//   / /__/ / _ \/ __/ _ `/ __/ / -_|_-<    //
+//  /____/_/_.__/_/  \_,_/_/ /_/\__/___/    //
+//////////////////////////////////////////////
+                                    
+library Base64 {
+    string internal constant TABLE =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    function encode(bytes memory data) internal pure returns (string memory) {
+        if (data.length == 0) return "";
+        string memory table = TABLE;
+        uint256 encodedLen = 4 * ((data.length + 2) / 3);
+        string memory result = new string(encodedLen + 32);
+        assembly {
+            mstore(result, encodedLen)
+            let tablePtr := add(table, 1)
+            let dataPtr := data
+            let endPtr := add(dataPtr, mload(data))
+            let resultPtr := add(result, 32)
+            for {} lt(dataPtr, endPtr) {} {
+                dataPtr := add(dataPtr, 3)
+                let input := mload(dataPtr)
+                mstore(
+                    resultPtr,
+                    shl(248, mload(add(tablePtr, and(shr(18, input), 0x3F))))
+                )
+                resultPtr := add(resultPtr, 1)
+                mstore(
+                    resultPtr,
+                    shl(248, mload(add(tablePtr, and(shr(12, input), 0x3F))))
+                )
+                resultPtr := add(resultPtr, 1)
+                mstore(
+                    resultPtr,
+                    shl(248, mload(add(tablePtr, and(shr(6, input), 0x3F))))
+                )
+                resultPtr := add(resultPtr, 1)
+                mstore(
+                    resultPtr,
+                    shl(248, mload(add(tablePtr, and(input, 0x3F))))
+                )
+                resultPtr := add(resultPtr, 1)
+            }
+            switch mod(mload(data), 3)
+            case 1 {
+                mstore(sub(resultPtr, 2), shl(240, 0x3d3d))
+            }
+            case 2 {
+                mstore(sub(resultPtr, 1), shl(248, 0x3d))
+            }
+        }
+        return result;
+    }
+}
+
+library Strings {
+    function toString(uint256 value) internal pure 
+    returns (string memory str) { assembly {
+        let m := add(mload(0x40), 0xa0)
+        mstore(0x40, m)
+        str := sub(m, 0x20)
+        mstore(str, 0)
+
+        let end := str
+
+        for { let temp := value } 1 {} {
+            str := sub(str, 1)
+            mstore8(str, add(48, mod(temp, 10)))
+            temp := div(temp, 10)
+            if iszero(temp) { break }
+        }
+
+        let length := sub(end, str)
+        str := sub(str, 0x20)
+        mstore(str, length)
+    }}
+}
+
+library SCLib {
+    function _capsuleRNG(uint256 tokenId_, string memory keyPrefix_, uint256 length_) 
+    private pure returns (uint256) {
+        return uint256(keccak256(abi.encodePacked(
+            string(abi.encodePacked(
+                keyPrefix_, Strings.toString(tokenId_)
+            )) 
+        ))) % length_;
+    }
+
+    function _getWeaponId(uint256 tokenId_) internal pure returns (uint256) {
+        return _capsuleRNG(tokenId_, "WEAPONS", 18);
+    }
+    function _getChestId(uint256 tokenId_) internal pure returns (uint256) {
+        return _capsuleRNG(tokenId_, "CHEST", 15);
+    }
+    function _getHeadId(uint256 tokenId_) internal pure returns (uint256) {
+        return _capsuleRNG(tokenId_, "HEAD", 15);
+    }
+    function _getLegsId(uint256 tokenId_) internal pure returns (uint256) {
+        return _capsuleRNG(tokenId_, "LEGS", 15);
+    }
+    function _getVehicleId(uint256 tokenId_) internal pure returns (uint256) {
+        return _capsuleRNG(tokenId_, "VEHICLE", 15);
+    }
+    function _getArmsId(uint256 tokenId_) internal pure returns (uint256) {
+        return _capsuleRNG(tokenId_, "ARMS", 15);
+    }
+    function _getArtifactId(uint256 tokenId_) internal pure returns (uint256) {
+        return _capsuleRNG(tokenId_, "ARTIFACTS", 3);
+    }
+    function _getRingId(uint256 tokenId_) internal pure returns (uint256) {
+        return _capsuleRNG(tokenId_, "RINGS", 5);
+    }
+}
+
+
+//////////////////////////////////////////////////////////////
+//     ___                       __             _           //
+//    / _ \___ ___  ___ ___  ___/ /__ ___  ____(_)__ ___    //
+//   / // / -_) _ \/ -_) _ \/ _  / -_) _ \/ __/ / -_|_-<    //
+//  /____/\__/ .__/\__/_//_/\_,_/\__/_//_/\__/_/\__/___/    //
+/////////////_///////////////////////////////////////////////
+
+abstract contract Ownable {
+
+    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+
+    address public owner;
+
+    constructor() { 
+        owner = msg.sender; 
+    }
+    
+    modifier onlyOwner { 
+        require(owner == msg.sender, "onlyOwner not owner!");
+        _; 
+    }
+    
+    function transferOwnership(address new_) external onlyOwner {
+        address _old = owner;
+        owner = new_;
+        emit OwnershipTransferred(_old, new_);
+    }
+}
+
+
+//////////////////////////////////////////////////
+//     ____     __          ___                 //
+//    /  _/__  / /____ ____/ _/__ ________ ___  //
+//   _/ // _ \/ __/ -_) __/ _/ _ `/ __/ -_|_-<  //
+//  /___/_//_/\__/\__/_/ /_/ \_,_/\__/\__/___/  //
+//////////////////////////////////////////////////
+
+// iSC for Space Capsule Data Interface
+interface iSC {
+    function getWeapon(uint256 tokenId) external view returns (string memory);
+    function getChest(uint256 tokenId) external view returns (string memory);
+    function getHead(uint256 tokenId) external view returns (string memory);
+    function getLegs(uint256 tokenId) external view returns (string memory);
+    function getVehicle(uint256 tokenId) external view returns (string memory);
+    function getArms(uint256 tokenId) external view returns (string memory);
+    function getArtifact(uint256 tokenId) external view returns (string memory);
+    function getRing(uint256 tokenId) external view returns (string memory);
+}
+
+// iCS for Character Storage Data Interface
+interface iCS {
+    // Structs of Characters
+    struct Character {
+        uint8 race_;
+        uint8 renderType_;
+        uint16 transponderId_;
+        uint16 spaceCapsuleId_;
+        uint8 augments_;
+        uint16 basePoints_;
+        uint16 totalEquipmentBonus_;
+    }
+    struct Stats {
+        uint8 strength_; 
+        uint8 agility_; 
+        uint8 constitution_; 
+        uint8 intelligence_; 
+        uint8 spirit_; 
+    }
+    struct Equipment {
+        uint8 weaponUpgrades_;
+        uint8 chestUpgrades_;
+        uint8 headUpgrades_;
+        uint8 legsUpgrades_;
+        uint8 vehicleUpgrades_;
+        uint8 armsUpgrades_;
+        uint8 artifactUpgrades_;
+        uint8 ringUpgrades_;
+    }
+
+    // View Functions
+    function names(uint256 tokenId_) external view returns (string memory);
+    function bios(uint256 tokenId_) external view returns (string memory);
+    function characters(uint256 tokenId_) external view returns (Character memory);
+    function stats(uint256 tokenId_) external view returns (Stats memory);
+    function equipments(uint256 tokenId_) external view returns (Equipment memory);
+    function contractToRace(address contractAddress_) external view returns (uint8);
+}
+
+// iCI for Character Image Storage Data Interface
+interface iCI {
+    function getCharacterImage(uint8 race_, uint8 rank_) external view returns (string memory);
+    function getCharacterImage2(uint8 race_, uint8 rank_) external view returns (string memory); // NOTE: ADD THIS!!!!
+    function raceToRaceName(uint8 race_) external view returns (string memory); 
+}
+
+// iCC for Character Controller Data Interface 
+interface iCC {
+    function getCharacterYieldRate(uint256 characterId_) external view returns (uint256);
+    function getItemRarity(uint16 spaceCapsuleId_, string memory keyPrefix_) external view returns (uint8);
+    function queryBaseEquipmentTier(uint8 rarity_) external view returns (uint8);
+}
+
+// iCR (Character Registry) for Helmet Change
+interface iCR {
+    function characterToHelmetOff(uint256 tokenId_) external view returns (bool);
+}
+
+// iMarsRulerRegistry for Ruler Registry (Fully Augmented)
+interface iMarsRulerRegistry {
+
+    struct GearConfig {
+        bool hasConfig;
+        uint8 weaponType;
+        uint8 chestType;
+        uint8 headType;
+        uint8 legsType;
+        uint8 vehicleType;
+        uint8 armsType;
+        uint8 artifactType;
+        uint8 ringType;
+    }
+
+    function characterToGearConfig(uint256 tokenId_) external view
+    returns (GearConfig memory);
+}
+
+// iModelStorage for Asset Storages
+interface iModelStorage {
+    function getModel(uint256 modelId_) external view returns (string memory);
+}
+
+
+
+//////////////////////////////////////////////
+//   _____          __               __     //
+//  / ___/__  ___  / /________ _____/ /_    //
+// / /__/ _ \/ _ \/ __/ __/ _ `/ __/ __/    //
+// \___/\___/_//_/\__/_/  \_,_/\__/\__/     //
+//////////////////////////////////////////////
+
+contract MTMCharactersRendererV3OnChain is Ownable {
+
+    //////////////////////
+    ///// Interfaces /////
+    //////////////////////
+
+    // Storage Interfaces
+    iCS public CS; // Character Storage
+    iCR public CR; // Character Registry (Helmet)
+    iMarsRulerRegistry public MRR; // Mars Ruler Registry
+
+    // On Chain Data URI Generator
+    iModelStorage public Artifacts  ;
+    iModelStorage public Weapons    ;
+    iModelStorage public Vehicle1   ;
+    iModelStorage public Vehicle2   ;
+    iModelStorage public RaceHead   ;
+    iModelStorage public RaceBody   ;
+    iModelStorage public RaceArms   ;
+    iModelStorage public MaleHead   ;
+    iModelStorage public MaleChest  ;
+    iModelStorage public MaleArms   ;
+    iModelStorage public FemaleHead ;
+    iModelStorage public FemaleChest;
+    iModelStorage public FemaleArms ;
+
+    function O_setInterfaceContracts(address cs_, address cr_, address mrr_)
+     external onlyOwner {
+        CS = iCS(cs_); 
+        CR = iCR(cr_);
+        MRR = iMarsRulerRegistry(mrr_);
+    }
+
+    function O_setModels(address[13] calldata modelAddresses_) external onlyOwner {
+        Artifacts   = iModelStorage(modelAddresses_[0] );
+        Weapons     = iModelStorage(modelAddresses_[1] );
+        Vehicle1    = iModelStorage(modelAddresses_[2] );
+        Vehicle2    = iModelStorage(modelAddresses_[3] );
+        RaceHead    = iModelStorage(modelAddresses_[4] );
+        RaceBody    = iModelStorage(modelAddresses_[5] );
+        RaceArms    = iModelStorage(modelAddresses_[6] );
+        MaleHead    = iModelStorage(modelAddresses_[7] );
+        MaleChest   = iModelStorage(modelAddresses_[8] );
+        MaleArms    = iModelStorage(modelAddresses_[9] );
+        FemaleHead  = iModelStorage(modelAddresses_[10]);
+        FemaleChest = iModelStorage(modelAddresses_[11]);
+        FemaleArms  = iModelStorage(modelAddresses_[12]);
+    }
+
+    ///////////////////////
+    ///// Model Query ///// 
+    ///////////////////////
+
+    // Race
+    function _getRaceHeadB64(uint8 gearId_) private view returns (string memory) {
+        return RaceHead.getModel(gearId_);
+    }
+    function _getRaceBodyB64(uint8 gearId_) private view returns (string memory) {
+        return RaceBody.getModel(gearId_);
+    }
+    function _getRaceArmsB64(uint8 gearId_) private view returns (string memory) {
+        return RaceArms.getModel(gearId_);
+    }
+
+    // Condition Agnostic Accessories
+    function _getWeaponB64(uint8 gearId_) private view returns (string memory) {
+        return Weapons.getModel(gearId_);
+    }
+    function _getArtifactB64(uint8 gearId_) private view returns (string memory) {
+        return Artifacts.getModel(gearId_);
+    }
+    function _getVehicleB64(uint8 gearId_) private view returns (string memory) {
+        if (gearId_ < 11) {
+            return Vehicle1.getModel(gearId_); // 1-10
+        }
+        else {
+            return Vehicle2.getModel(gearId_); // 11+
+        }    
+    }
+
+    // Condition Dependant Accessories
+    function _getHeadB64(uint8 gearId_, uint8 race_) private view 
+    returns (string memory) {
+        if (race_ == 2 && gearId_ < 10) return FemaleHead.getModel(gearId_);
+        return MaleHead.getModel(gearId_);
+    }
+    function _getChestB64(uint8 gearId_, uint8 race_) private view 
+    returns (string memory) {
+        if (race_ == 2) return FemaleChest.getModel(gearId_);
+        return MaleChest.getModel(gearId_);
+    }
+    function _getArmsB64(uint8 gearId_, uint8 race_) private view
+    returns (string memory) {
+        if (race_ == 2) return FemaleArms.getModel(gearId_);
+        return MaleArms.getModel(gearId_);
+    }
+
+    ////////////////////////
+    ///// Model Piping ///// 
+    ////////////////////////
+
+    struct Model {
+        uint8 vehicleId;
+        uint8 weaponId;
+        uint8 raceHeadId;
+        uint8 raceBodyId;
+        uint8 raceArmsId;
+        uint8 armsId;
+        uint8 chestId;
+        uint8 artifactId;
+        uint8 headId;
+    }
+
+    function _getModelParams(uint256 tokenId_) public view returns (Model memory) {
+        // Prepare the delivery Model
+        Model memory _Model;
+        
+        // Grab the necessary data for TokenId
+        iMarsRulerRegistry.GearConfig memory _RulerGear = 
+            MRR.characterToGearConfig(tokenId_);
+
+        iCS.Character memory _Character = CS.characters(tokenId_);
+        uint256 _spaceCapsuleId = _Character.spaceCapsuleId_;
+
+        bool _HelmetOff = CR.characterToHelmetOff(tokenId_);
+
+        // The model is a MALE
+        if (_Character.race_ == 1 ||
+            _Character.race_ == 3 ||
+            _Character.race_ == 5) {
+
+            // If the helmet is off, use the race head
+            _Model.raceHeadId = _HelmetOff ? (_Character.race_ + 100) : 1;
+
+            _Model.raceBodyId = 1;
+            _Model.raceArmsId = 1;
+        }
+
+        // The model is a FEMALE
+        else if (_Character.race_ == 2 ||
+            _Character.race_ == 4 ||
+            _Character.race_ == 6) {
+
+            // If the helmet is off, use the race head
+            _Model.raceHeadId = _HelmetOff ? (_Character.race_ + 100) : 2;
+
+            _Model.raceBodyId = 2;
+            _Model.raceArmsId = 2;
+        }
+
+        // The model is not MALE or FEMALE
+        else {
+            _Model.raceHeadId = _Character.race_;
+            _Model.raceBodyId = _Character.race_;
+            _Model.raceArmsId = _Character.race_;
+        }
+
+        // Check if RulerGear exists config
+        if (_RulerGear.hasConfig) {
+            _Model.vehicleId    = _RulerGear.vehicleType;
+            _Model.weaponId     = _RulerGear.weaponType;
+            _Model.armsId       = _RulerGear.armsType;
+            _Model.chestId      = _RulerGear.chestType;
+            _Model.artifactId   = _RulerGear.artifactType;
+            _Model.headId       = _RulerGear.headType;
+            // Ring doesn't exist on the image
+        }
+
+        // If RulerGear does not exists config
+        else {
+            _Model.vehicleId    = uint8(SCLib._getVehicleId (_spaceCapsuleId));
+            _Model.weaponId     = uint8(SCLib._getWeaponId  (_spaceCapsuleId));
+            _Model.armsId       = uint8(SCLib._getArmsId    (_spaceCapsuleId));
+            _Model.chestId      = uint8(SCLib._getChestId   (_spaceCapsuleId));
+            _Model.artifactId   = uint8(SCLib._getArtifactId(_spaceCapsuleId));
+            _Model.headId       = uint8(SCLib._getHeadId    (_spaceCapsuleId));
+        }
+
+        // Now, if _HelmetOff is true, or the race is > 6,
+        // override the helmet (head) slot
+        if (_HelmetOff || _Character.race_ > 6) _Model.headId = 99;
+
+        // Return the model
+        return _Model;
+    }
+
+    /////////////////////////
+    ///// SVG Constants ///// 
+    /////////////////////////
+    string private constant _svgHeader = "<svg id='martians' width='100%' height='100%' version='1.1' viewBox='0 0 64 64' xmlns='http://www.w3.org/2000/svg' xmlns:xlink='http://www.w3.org/1999/xlink'>";
+    string private constant _svgFooter = "<style>#martians{shape-rendering: crispedges; image-rendering: -webkit-crisp-edges; image-rendering: -moz-crisp-edges; image-rendering: crisp-edges; image-rendering: pixelated; -ms-interpolation-mode: nearest-neighbor;}</style></svg>";
+
+    function _imageWrapper(string memory uri_) private pure 
+    returns (string memory) {
+        string memory _wrapper = string(abi.encodePacked(
+            "<image x='0' y='0' width='64' height='64' image-rendering='pixelated' preserveAspectRatio='xMidYMid' href='data:image/png;base64,",
+            uri_,
+            "'/>"
+        ));
+        return _wrapper;
+    }
+
+    //////////////////////////////
+    ///// Model Construction /////
+    //////////////////////////////
+
+    /*
+        The layering is as follows:
+            Vehicle
+            Weapon
+            Race Body
+            Race Arms
+            Equipment Arms
+            Equipment Body
+            Artifact
+            Race Head
+            Equipment Head
+    */
+
+    function renderMartian(uint256 tokenId_) public view returns (string memory) {
+        // Load the Model
+        Model memory _Model = _getModelParams(tokenId_);
+
+        // Render the Model
+        string memory _svg = string(abi.encodePacked(
+            _svgHeader,
+            _imageWrapper(_getVehicleB64(_Model.vehicleId)),
+            _imageWrapper(_getWeaponB64(_Model.weaponId)),
+            _imageWrapper(_getRaceBodyB64(_Model.raceBodyId)),
+            _imageWrapper(_getRaceArmsB64(_Model.raceArmsId)),
+            // Male vs Female Logic. We use raceBodyId as race model
+            _imageWrapper(_getArmsB64(_Model.armsId, _Model.raceBodyId)),
+            _imageWrapper(_getChestB64(_Model.chestId, _Model.raceBodyId))
+        ));
+
+        _svg = string(abi.encodePacked(
+            _svg,
+            _imageWrapper(_getArtifactB64(_Model.artifactId)),
+            _imageWrapper(_getRaceHeadB64(_Model.raceHeadId)),
+            // Helmet, Off, On, Etc ID
+            _imageWrapper(_getHeadB64(_Model.headId, _Model.raceBodyId)),
+            "</svg>"
+        ));
+
+        return _svg;
+    }
+
+    function drawCharacter(uint256 tokenId_) public view returns (string memory) {
+        return Base64.encode( bytes(string(abi.encodePacked( 
+            renderMartian(tokenId_)) 
+        )));
+    }
+}

@@ -1,0 +1,58 @@
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity 0.8.19;
+
+import "openzeppelin/contracts/security/ReentrancyGuard.sol";
+
+contract Take10Light is ReentrancyGuard {
+    address public admin;
+
+    bool public bettingEnabled = true;
+    bool public claimable = false;
+    uint256 public minBet = 0.001 ether;
+    mapping(address => uint256) public winners;
+
+    event CardPlayed(address indexed player, uint256 indexed card, uint256 indexed value);
+
+    constructor () {
+        admin = msg.sender;
+    }
+
+    modifier onlyAdmin() {
+        require(msg.sender == admin, "Only admin can call this function.");
+        _;
+    }
+
+    // Closes this card for betting
+    function closeBetting() public onlyAdmin {
+        bettingEnabled = false;
+    }
+
+    function setWinners(address[] memory _winners, uint256[] memory _winnings) public onlyAdmin {
+        require(!bettingEnabled, "Betting is still open.");
+        require(_winners.length == _winnings.length, "Winners and counts must be the same length.");
+
+        for (uint i = 0; i < _winners.length; i++) {
+            winners[_winners[i]] += _winnings[i];
+        }
+
+        claimable = true;
+    }
+
+    function claimWin() public nonReentrant {
+        require(claimable, "Winning is not claimable yet.");
+        require(!bettingEnabled, "Betting is still open.");
+
+        uint256 winnings = winners[msg.sender];
+        require(winnings > 0, "You have no winnings to claim.");
+
+        winners[msg.sender] = 0;
+        payable(msg.sender).transfer(winnings);
+    }
+
+    function play(uint256 card) public payable {
+        emit CardPlayed(msg.sender, card, msg.value);
+    }
+
+    fallback() external payable {}
+
+}

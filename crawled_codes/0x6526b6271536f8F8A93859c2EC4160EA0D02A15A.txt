@@ -1,0 +1,73 @@
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.18;
+import "../GenericUsdOracle.sol";
+import "../../concentrator/contracts/vendor0.8/uniswap/TickMath.sol";
+import "../../concentrator/contracts/vendor0.8/uniswap/FullMath.sol";
+
+interface IUniswapPool {
+    /// @notice Returns the cumulative tick and liquidity as of each timestamp `secondsAgo` from the current block
+    ///         timestamp
+    /// @dev To get a time weighted average tick or liquidity-in-range, you must call this with two values,
+    ///      one representing
+    /// the beginning of the period and another for the end of the period. E.g., to get the last hour
+    /// time-weighted average tick,
+    /// you must call it with secondsAgos = [3600, 0].
+    /// @dev The time weighted average tick represents the geometric time weighted average price of the pool, in
+    /// log base sqrt(1.0001) of token1 / token0. The TickMath library can be used to go from a tick value to a ratio.
+    /// @param secondsAgos From how long ago each cumulative tick and liquidity value should be returned
+    /// @return tickCumulatives Cumulative tick values as of each `secondsAgos` from the current block timestamp
+    /// @return secondsPerLiquidityCumulativeX128s Cumulative seconds per liquidity-in-range value as of each
+    /// `secondsAgos` from the current block timestamp
+    function observe(
+        uint32[] calldata secondsAgos
+    )
+        external
+        view
+        returns (
+            int56[] memory tickCumulatives,
+            uint160[] memory secondsPerLiquidityCumulativeX128s
+        );
+}
+
+contract WagmiUsdOracle is GenericUsdOracle {
+    /// @dev should be using an implementation of LPChainlinkOracle
+    int32 public constant PERIOD = 10 minutes;
+    uint256 public constant MAX_AGE = 300 minutes;
+    IUniswapPool public constant pool = IUniswapPool(0x36bcF57291a291a6E0E0bFF7B12B69B556BCd9ed);
+    // amount of ice in 1 wagmi
+    uint256 public constant iceToWagmi = 14492753623188405;
+
+    constructor(
+        address _token
+    ) GenericUsdOracle(0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419, _token) {}
+
+    /// @notice Returns 1 USD price in LP denominated in USD
+    /// @dev lpOracle.latestAnswer() returns the price of 1 LP in AVAX multipled by Avax Price.
+    /// It's then inverted so it gives how many LP can 1 USD buy.
+    function _get() internal view override returns (uint256) {
+        uint32[] memory secondsAgo = new uint32[](2);
+        secondsAgo[0] = uint32(PERIOD);
+        secondsAgo[1] = 0;
+        (int56[] memory tickCumulatives, ) = pool.observe(secondsAgo);
+        int56 tickCumulativesDelta = tickCumulatives[1] - tickCumulatives[0];
+        int24 avarageTick = int24(tickCumulativesDelta / PERIOD);
+        if (tickCumulativesDelta < 0 && (tickCumulativesDelta % PERIOD != 0)) avarageTick--;
+        uint160 sqrtPriceX96 = TickMath.getSqrtRatioAtTick(avarageTick);
+        uint256 wagmiEthPrice;
+        if (sqrtPriceX96 <= type(uint128).max) {
+            uint256 ratioX192 = uint256(sqrtPriceX96) * sqrtPriceX96;
+            wagmiEthPrice = FullMath.mulDiv(1 << 192, iceToWagmi, ratioX192);
+        } else {
+            uint256 ratioX128 = FullMath.mulDiv(sqrtPriceX96, sqrtPriceX96, 1 << 64);
+            wagmiEthPrice = FullMath.mulDiv(1 << 128, iceToWagmi, ratioX128);
+        }
+
+        uint256 ethPrice = super._get();
+        return FullMath.mulDiv(wagmiEthPrice, uint256(ethPrice), 10 ** decimals());
+    }
+
+    function _checkDataFreshness(uint256 updatedAt) internal view override returns (bool, uint256) {
+        uint256 age = block.timestamp - updatedAt;
+        return (age < MAX_AGE, age);
+    }
+}

@@ -1,0 +1,177 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.21;
+
+import "@openzeppelin/[email protected]/token/ERC721/ERC721.sol";
+import "@openzeppelin/[email protected]/access/Ownable.sol";
+import "../DefaultOperatorFilterer.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+
+interface OLDCONTRACT {
+	function totalSupply() external view returns (uint256);
+	function ownerOf(uint256 _tokenId) external view returns (address);
+}
+
+contract Totemheads is ERC721, DefaultOperatorFilterer, Ownable, ReentrancyGuard {
+    using Strings for uint256;
+    bool paused = true;
+    bool presaleAirdropComplete = false;
+    uint256 internal maxSupply = 6969;
+    uint256 internal publicSupply = 6900; // (24 x 1/1's and 45 x promo)
+    uint256 internal nextTokenId = 1;
+    uint256 mintCost = 0.06 ether;
+    string baseURI = "https://lordcalder.com/totemheads/final/";
+	address BROKENDEPLOYMENT = 0x015B7aA92C5448B2062eAE4e2e50020180413a74;
+    address theDev = 0xa0270756B3a3E18AfA74dB7812367aF9E5e79BF3;
+    address theArt = 0x05a78085EBd9a5a4E6E94a5167480E106C1B6028;
+    
+    address internal _owner;
+
+    constructor() ERC721("TotemheadsNFTs", "TotemheadsNFTs")  {
+        _owner = msg.sender;
+        initiateAirDrop();
+    }
+
+    modifier callerIsUser() {
+        require(tx.origin == msg.sender, "Totemheads :: Cannot be called by contracts");
+        _;
+    }
+
+    function setCost(uint256 _cost) public onlyOwner {
+        mintCost = _cost;
+    }
+
+    function setTheDev(address _theDev) public onlyOwner {
+        theDev = _theDev;
+    }
+
+    function setTheArtist(address _theArt) public onlyOwner {
+        theArt = _theArt;
+    }
+
+    function totalSupply() public view returns (uint256) {
+        return nextTokenId-1;
+    }
+
+    function getMaxSupply() public view returns (uint256) {
+        return maxSupply;
+    }
+     
+    function getPublicMintSupply() public view returns (uint256) {
+        return publicSupply;
+    }
+
+    function _baseURI() internal view override returns (string memory) {
+        return baseURI;
+    }
+
+    function setBaseURI(string memory _newBaseURI) public onlyOwner {
+        baseURI = _newBaseURI;
+    }
+
+    function isPaused() public view returns (bool) {
+        return paused;
+    }
+
+    function togglePaused() public onlyOwner {
+        paused = !paused;
+    }
+
+    function mintPrice() public view returns (uint256) {
+        return mintCost;
+    }
+
+    function initiateAirDrop() public onlyOwner {
+        require(paused,"Contract must be paused");
+        require(presaleAirdropComplete == false, "Presale Airdrop already completed");
+		uint256 theTokenIds = OLDCONTRACT(BROKENDEPLOYMENT).totalSupply();
+		for(uint256 t=1; t <= theTokenIds; t++) {
+            _safeMint(OLDCONTRACT(BROKENDEPLOYMENT).ownerOf(t), t);
+            nextTokenId += 1;
+		}
+        presaleAirdropComplete = true;
+        paused = false;
+    }
+
+    function mint(address sendTo, uint256 howMany) public payable callerIsUser nonReentrant {
+		require(howMany > 0, "Cannot mint 0" );
+        if(msg.sender != _owner) {
+            require(paused == false,"Public mint is not live");
+    		require((totalSupply() + howMany) <= getPublicMintSupply(), "Cannot mint more than are available" );
+            require(msg.value == (howMany * mintCost), "Not enough ETH");
+            sendTo = msg.sender;
+        } else {
+    		require((totalSupply() + howMany) <= getMaxSupply(), "Cannot mint more than are available" );
+        }
+		for (uint256 i = 0; i < howMany; ++i) {
+            _safeMint(sendTo, nextTokenId);
+            nextTokenId += 1;
+		}
+    }
+
+    
+    function withdraw() public payable onlyOwner nonReentrant {
+        uint256 balance = address(this).balance;
+        (bool devShare, ) = payable(theDev).call{value: balance * 45 / 100}('Developer');
+        require(devShare);
+        (bool artShare, ) = payable(theArt).call{value: balance * 45 / 100}('Artist');
+        require(artShare);
+        (bool marketing, ) = payable(owner()).call{value: address(this).balance}('Owner');
+        require(marketing);
+    }
+
+    function withdrawAll() public payable onlyOwner {
+        payable(msg.sender).transfer(address(this).balance);
+
+    }
+
+    // The following functions are overrides required by Solidity.
+
+    function _burn(uint256 tokenId) internal override(ERC721) {
+        super._burn(tokenId);
+    }
+
+    function tokenURI(uint256 _tokenId)
+        public
+        view
+        virtual
+        override(ERC721)
+        returns (string memory)
+    {
+        require(_exists(_tokenId), "ERC721Metadata: Nonexistent token");
+        return string(abi.encodePacked(_baseURI(), (_tokenId).toString(), ".json"));
+    }
+
+    function supportsInterface(bytes4 interfaceId)
+        public
+        view
+        override(ERC721)
+        returns (bool)
+    {
+        return super.supportsInterface(interfaceId);
+    }
+
+    function setApprovalForAll(address operator, bool approved) public override onlyAllowedOperatorApproval(operator) {
+        super.setApprovalForAll(operator, approved);
+    }
+
+    function approve(address operator, uint256 tokenId) public override onlyAllowedOperatorApproval(operator) {
+        super.approve(operator, tokenId);
+    }
+
+    function transferFrom(address from, address to, uint256 tokenId) public override onlyAllowedOperator(from) {
+        super.transferFrom(from, to, tokenId);
+    }
+
+    function safeTransferFrom(address from, address to, uint256 tokenId) public override onlyAllowedOperator(from) {
+        super.safeTransferFrom(from, to, tokenId);
+    }
+
+    function safeTransferFrom(address from, address to, uint256 tokenId, bytes memory data)
+        public
+        override
+        onlyAllowedOperator(from)
+    {
+        super.safeTransferFrom(from, to, tokenId, data);
+    }
+
+}

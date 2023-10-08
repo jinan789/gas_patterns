@@ -1,0 +1,48 @@
+// SPDX-License-Identifier: Apache-2.0
+
+pragma solidity ^0.8.21;
+
+import "../../implementations/premint/RMRKEquippablePreMintSoulboundMP.sol";
+import "../../interfaces/IRMRKRegistry.sol";
+import "./IRMRKPreMintFactory.sol";
+
+contract RMRKEquippablePreMintSoulboundFactory is IRMRKPreMintFactory {
+    IRMRKRegistry private _rmrkRegistry;
+
+    constructor(address rmrkRegistry) {
+        _rmrkRegistry = IRMRKRegistry(rmrkRegistry);
+    }
+
+    function deployRMRKCollection(
+        string memory name,
+        string memory symbol,
+        string memory collectionMetadata,
+        uint256 maxSupply,
+        address royaltyRecipient,
+        uint16 royaltyPercentageBps
+    ) external {
+        RMRKEquippablePreMintSoulboundMP equippableContract = new RMRKEquippablePreMintSoulboundMP(
+                name,
+                symbol,
+                collectionMetadata,
+                maxSupply,
+                royaltyRecipient,
+                royaltyPercentageBps
+            );
+
+        equippableContract.manageContributor(
+            _rmrkRegistry.getMetaFactoryAddress(),
+            true
+        );
+        equippableContract.transferOwnership(msg.sender);
+
+        _rmrkRegistry.addCollectionFromFactories(
+            address(equippableContract),
+            msg.sender,
+            maxSupply,
+            IRMRKRegistry.LegoCombination.Equippable,
+            IRMRKRegistry.MintingType.RMRKPreMint,
+            true
+        );
+    }
+}

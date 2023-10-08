@@ -1,0 +1,40 @@
+pragma solidity 0.8.19;
+
+import "../token/QWA.sol";
+
+contract QWATokenFactory {
+    address private immutable QWAFactory;
+
+    constructor(address _qwaFactory) {
+        QWAFactory = _qwaFactory;
+    }
+
+    function create(
+        address _weth,
+        address[] calldata _backingTokens,
+        uint24[] calldata _backingTokensV3Fee,
+        string[2] calldata _nameAndSymbol
+    ) external returns (address _QWAAddress) {
+        require(msg.sender == QWAFactory);
+        QuantumWealthAcceleratorToken _QWA = new QuantumWealthAcceleratorToken(
+            msg.sender,
+            _weth,
+            _backingTokens,
+            _backingTokensV3Fee,
+            _nameAndSymbol[0],
+            _nameAndSymbol[1]
+        );
+
+        return address(_QWA);
+    }
+
+    function setTreasury(
+        address _treasury,
+        QuantumWealthAcceleratorToken _QWA,
+        address _owner
+    ) external {
+        require(msg.sender == QWAFactory);
+        _QWA.setTreasury(_treasury);
+        _QWA.transferOwnership(_owner);
+    }
+}

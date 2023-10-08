@@ -1,0 +1,40 @@
+Here are some new gas-wasting patterns I found in the provided Solidity code:
+
+**Pattern 1: Repeated Calls to the Same Function (getConfiguration)**
+
+1. **Discovery**: In the provided Solidity code, there are multiple instances where the function `_pool.getConfiguration(asset)` is called repeatedly in different functions. Solidity function calls, especially external ones, can be more expensive in terms of gas than reading from storage. 
+
+2. **Fix**: To fix this issue, the `_pool.getConfiguration(asset)` function call results could be stored in a variable at the beginning of the function. This would allow repeated access to this data at a lower gas cost since memory is cheaper than storage. 
+   Here is an example of how this could be implemented in the `setReserveBorrowing` function:
+   `````solidity
+   function setReserveBorrowing(address asset, bool enabled) external override onlyRiskOrPoolAdmins {
+     DataTypes.ReserveConfigurationMap memory currentConfig = _pool.getConfiguration(asset);
+     if (!enabled) {
+       require(!currentConfig.getStableRateBorrowingEnabled(), Errors.STABLE_BORROWING_ENABLED);
+     }
+     currentConfig.setBorrowingEnabled(enabled);
+     _pool.setConfiguration(asset, currentConfig);
+     emit ReserveBorrowing(asset, enabled);
+   }
+   ```
+   The idea is to call `_pool.getConfiguration(asset)` only once and use the `currentConfig` variable throughout the execution of the function.
+
+3. **Impact**: 
+   - Readability: 5 (No impact on readability)
+   - Security: 5 (No impact on security)
+   - Maintainability: 5 (No impact on maintainability)
+
+**Pattern 2: Unnecessary State Variables**
+
+1. **Discovery**: The provided code does not seem to have this issue. However, in general, declaring and storing unnecessary state variables in a smart contract can lead to increased gas costs. This is because every time a state variable is updated, the smart contract has to pay for storage costs, which are typically much higher than computational costs.
+
+2. **Fix**: Review the necessity of each state variable in your smart contract. If a variable is only used in a single function and not required for maintaining the state of the contract, consider declaring it as a local variable instead of a state variable. If a state variable is never used, simply remove it.
+
+3. **Impact**:
+   - Readability: 5 (No impact on readability)
+   - Security: 5 (No impact on security)
+   - Maintainability: 5 (No impact on maintainability)
+
+Regarding your second question about improving the prompt, it was well-structured and clear. However, it would be helpful if you could provide more context about the overall functionality of the contract and the purpose of each function. This additional information would allow for a more in-depth analysis of potential gas-wasting patterns.
+
+In terms of my reasoning process, I used my knowledge of Solidity and the Ethereum virtual machine (EVM) to identify areas of the provided code that could potentially lead to higher gas costs. While I feel confident in the patterns I identified, it's possible that I missed some less obvious patterns due to the complexity of the contract. In the future, I could improve by delving deeper into the specific functionality of each function to better understand potential areas of inefficiency.

@@ -1,0 +1,103 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.17;
+
+import './DMXHero.sol';
+import "@openzeppelin/contracts-upgradeable/token/ERC721/ERC721Upgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
+import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import "operator-filter-registry/src/upgradeable/DefaultOperatorFiltererUpgradeable.sol";
+
+contract DMXComics is ERC721Upgradeable, OwnableUpgradeable , DefaultOperatorFiltererUpgradeable {
+    using ECDSA for bytes32;
+
+    string metadataUrl;
+    uint32 public totalSupply;
+    uint32 public totalBurned;
+    mapping(address => uint256) public minting_nonces;
+
+    address public hero;
+
+    event Mint(uint32 tokenId, address Recipient);
+    event TurnIn(uint32 tokenId, uint32 heroId);
+
+    function initialize()  public initializer {
+        __ERC721_init("DMXComics", "DMXC");
+        __Ownable_init();
+        totalSupply = 0;
+    }
+
+    function mintComic(address recipient) onlyOwner public {
+        totalSupply++;
+        uint32 nextID = totalSupply;
+        emit Mint(nextID, recipient);
+        _safeMint(recipient, nextID);
+    }
+    
+    function mint(bytes32 eth_hash, bytes memory signature, uint256 nonce, address recipient) public { 
+        require((eth_hash.toEthSignedMessageHash().recover(signature) == owner()));
+        //to eth signed message hash adds a text string that is added to the hash by wallets before producing the signature.
+        //'\x19Ethereum Signed Message:\n' wallets do this as a safety measure against code injection attacks
+        require(eth_hash == keccak256(abi.encodePacked(nonce, recipient)), "incorrect hash");
+        require(minting_nonces[recipient] + 1 == nonce, "incorrect nonce"); 
+        //nonce has to be a uint256, bc that is the kind of int that is encoded by web3 sha3, which is how our webserver will hash
+        minting_nonces[recipient]++;
+        totalSupply++;
+        uint32 nextID = totalSupply;
+        emit Mint(nextID, recipient);
+        _safeMint(recipient, nextID);
+    }
+
+    function setApprovalForAll(address operator, bool approved) public override onlyAllowedOperatorApproval(operator) {
+        super.setApprovalForAll(operator, approved);
+    }
+
+    function approve(address operator, uint256 tokenId) public override onlyAllowedOperatorApproval(operator) {
+        super.approve(operator, tokenId);
+    }
+
+    function transferFrom(address from, address to, uint256 tokenId) public override onlyAllowedOperator(from) {
+        super.transferFrom(from, to, tokenId);
+    }
+
+    function safeTransferFrom(address from, address to, uint256 tokenId) public override onlyAllowedOperator(from) {
+        super.safeTransferFrom(from, to, tokenId);
+    }
+
+    function safeTransferFrom(address from, address to, uint256 tokenId, bytes memory data) public override onlyAllowedOperator(from) {
+        super.safeTransferFrom(from, to, tokenId, data);
+    }
+
+    function _baseURI() internal view override returns (string memory) {
+        return metadataUrl;
+    }
+
+    function setMetadataURL(string memory url) public onlyOwner {
+        metadataUrl = url;
+    }
+
+    function setHero(address HeroContract) public onlyOwner {
+        hero = HeroContract;
+    }
+
+    function turnIn(uint32[] memory comicIds, uint32 heroId) public {
+        require(comicIds.length <= 4, "Too many comics being burned");
+        for (uint i=0; i<comicIds.length; i++) {
+          require(msg.sender == ownerOf(comicIds[i]), "You must own the comics");
+        }
+
+        DMXHero dmxHero = DMXHero(address(hero));
+        require(msg.sender == dmxHero.ownerOf(heroId), "You must own the hero");
+
+        for (uint i=0; i<comicIds.length; i++) {
+            uint32 tokenId = comicIds[i];
+            _burn(tokenId);
+            emit TurnIn(tokenId, heroId);
+        }
+    }
+
+    function _beforeTokenTransfer(address from, address to, uint256 tokenId, uint256 batchSize) internal virtual override {
+        super._beforeTokenTransfer(from, to, tokenId, batchSize);
+        if (to == address(0)) totalBurned++;
+    }
+}

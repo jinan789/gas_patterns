@@ -1,0 +1,60 @@
+// SPDX-License-Identifier: MIT
+
+pragma solidity ^0.8.0;
+
+/// @title: Pedacito de cielo \ By \ Worm \ Sonder \ La Plaga \ Masnah
+/// @author: manifold.xyz
+
+import "./manifold/ERC721Creator.sol";
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//                                                                                                                                //
+//                                                                                                                                //
+//    /j/)|[?1-\}/;I:,,,!>llI-(/xf(_\/t[}1])1]f1ftxr                                                                              //
+//    \WELCOME TO DECENTRALIZED MURALISM[?<]}---~"^``"^^``:}(}{(/)il+}]?(\fc#*#*vxxunx{{?}__1{?{j){|{\|\|{}+t|({|{]fffxxjtxn      //
+//    >+}t{f{t}f+11[_[}[}]}}{~>_;+[?-]][[1|/)\{_>i-}<?1]1{-|r+[}ii~}>~-]<<]]{}zMzz*W*rf)[>1ff(1tf1)\]?[j/|f}<~+tt(1+}{{{/#WzMM    //
+//    (||t))>!<+){{(jff(1|)}|?}1|fjr|}{}|\tv|_;"[({x~+?((|\f\jx1}|>!-tj))1fu1+[                                                   //
+//    SONDER\LAPLAGA\WORM/MASNAH/~~<i+[t[-[+~1({/n{}1//_}1~jfxfrnt_/f)||{[[~[[))f\/jj\1}}?}[}/(rr+?(                              //
+//    ";+;,,:+}(|(-_?[[[}{(\\tfjjjjf\|(1(|)(\({[)|\t/|1)(1}t1+;;?~+-_?))||jjf|?{??{++u(((}1\)?[(rvrt?>}:l</[1/]}?_?{1]|?{1}}}{    //
+//    2023-COMUNA13-MEDELLIN}}{1\|\f/ffjj(|?_-~?i[?n}?~_[[{->]l|/)]+l<i~~)}][[)|(|f                                               //
+//    >I:!I":1_,"",::::,I!;^""""""""""""-cvuxxnuuuunuunnnnnxxx)^^^^^^^^^^"""""""",,,-[}1+,:I(+*x\11)\f/\}fxvn)~~<i[]/f[?}[)/((    //
+//    {+::,""~1{-]}{{{{{[+:""""""""""{{{jcvvunxuuuvuuuuuvunuun\:,,^^^^^^^^^^^^^^^^^:\uvr}_,;]rt1-)))u*zvnnf1?[/{]<{[|xnnr|jx(/    //
+//    ]{+{{{?~}{{{+}{{1{11_,","",;::;zccccvunxxnnuvvvvuvcvvvvuvuv(^^^^"^^^"^^^"^^^^,}{(\ft}{{1{)?}[[(xuzv|-+>}ftf{|/xnf1{))1\t    //
+//    "!{{{{{{1{{{i,;l>~~i,"",,"+cccvvvvvcvuuuuvuvvvvvvvvcvvcvvvvj[[?,^^^^^^^^^^^"^^-)/fj}i;"I11\)})1{rcj]|((|ttxjt\|}j_-<+1()    //
+//    ""l{{{{l,;{1{<,",""""",>{}tvvccccvcvzccvvcvvvvvvuuvvcvvvvvvvuvv>,,"^"^^^^^^^^^^!j1(]?~?)/t(|[1|{1j|11jx[|cur~~-;/;\\jrfx    //
+//    """+11[",!}{+<[?~l,""""}zcvcvczccczczzczzcczccvcvuvvvvcvvvvvvuvvvv),,"""""""^^^:11{1<i({jxt\|}1{u#W*zvxf/juvuvcuujnuujfr    //
+//    ,"">11<"!]+>~+,i?{{~"""{zvvcvccccccvcvcccccccvvvcvvvvvcvvvvvuvvvvu)!!i!;;;,,:,":\}-]!<]/ncjjjf|(|tnvrjtjrj/jjujxrucnxuuv    //
+//    ><~?{1;>;",""":"",;l,^^-cvccccczzzvfttt/tuccu111}}{{{11)((|nvuvvvv\_+il;I;I;,,,:i+]?1jtnxcznuxt|\))\\\f\jjff\fnjrrtxuvj\    //
+//    """":]:,"""""""""^^^^^^~cccccczccc/""""""/vzr"""",,"",,,"""{uvvvvvuuv1!:;;II;:",;)fjrjjnnuunuuxtt\ffxjrxxjtjxunnnnrnf(jc    //
+//    """"":""""^""^^^"^^^itfxzcccccv}__~IIII;I]??_,,""",,";II;;:)uvvccvuvv1!lI!!l!l,,!rvnvzzcvvunrxjtrjtfxrrnjtrxxnxnxuu(tzvv    //
+//    "",:"^^^^"^^^^^^^^^^_czzzccccvr:"",][]]]]I""""",,"",,[}??[-tcccccvuvv)!!i!iii!l"lxz#M&8Mzznxnrf/jft\rfj/jjuxvcnvv\t*zc*c    //
+//    i]I!"^^:l";;"^^^^"^^_cccvcccccul"",nnn?__l"",""""",,,nnx]+~\cccvvcvvv1!lli!;;l!:>fuuvvc*#*#vvxvrrj|)fjjxvuvucznj\cM**Mzj    //
+//    ,,+I,:;,lliI!,^^^^^^+zczvcccczv!"",unx-><;,,",,,",,,,vvv->~fcvvuuuvvc],,,,,,:l!l>fcz*cunuv#*vcvj)jrfux/rxuzzcn|vWWWMWMuf    //
+//    ::>:,,:ii:"^^^^^^^^^_zczczzvccni""""",,",,,,,,,,,,,,,,,""""\vvvuunnvc+:,:I!!!!!!i\zcczzvx|)nrvcu#t))f/fuzvzc\t*WW&8W&#uj    //
+//    i>!:::;i;,i^^^^^^lfjuzzzzzzcvvn>""",,,,,,,,,,,,,,,,,,,,,",,tzzcvvuvvc?!l!!!!!!lli|*uM*rr))uxucnfvvnnr\(zM*t/#*#M##&8&Wvj    //
+//    >:!I::li::;l"^^^^l*zcz*****zccv~,,,,,,,,,,,,,,,,,,,,,,,,,,,xcvvvvzccc-!I;!!!!i!l!/#M*t()~nnnvrjjjnvvnr;1(|unx***M#&8&W*f    //
+//    :;",I::Il:,l;,:"";*z**#*zz***cc?,,,,,,,,,,,,,iz*zi,,,,,,,,,vzvvuvcccc~:I!i!iii!:!t*vfjr){fzuutjnxvz*vv;{xcu*MMWMM8M&MW*f    //
+//    :::I>;::l::::I,^^"***##**czzzcc[",,,,,,,,,,,,;111;,,,,,,,,,nzzzcczccz|[]~!iiii!"!|zzu//xuzzujjuvvnjfuf?zMz*#WMWcWMW*W*8u    //
+//    !>+lI<!Ii-l::<,,^^*#*#z**zzzzcz{",,,,,,,,,,,,,,,,,,,,,,;I;!**zccvvcccccc[!!!i!,^;(cvnrj|rxftt\tvnjnuuj)nz*vuv#zzM*Mz*#M#    //
+//    :;l!::l;:>;,,,,rxjMWM####M****Mx}}?,,,,,,,1)))1111{{+,,)#z***zz*zcz**zcc[!iii;^^;1rnvcunf|[}+<(fnf(fz*n|rvcnucuccz**#MMM    //
+//    :::il,;!::;;:::nccz*#####Mzz*MMMMMr",,,,,,1{1{}{{{{{_,,1***#******xnuvun}iii:^^^,jzuxxrrj{;:>+[1)-_)uu|vr\zcuccz##*z**cz    //
+//    :::"!;;iI-;:_?_<::,^^^^"<##*z##MMMu,,,,,,,,,,,,,,,,,,,,(###******r><<>>>iI:"""^^If%B&#M(;^^";+Ii-{}/xr{vzxj*zc**zz**&#W#    //
+//    :;<]_i~:,_{;~[?]<,"^^^"I;}()(\\xMM*,,,;{1-,,,,,,,,,,]||\___-??-?]+II;;:Il:I"^^^^-/W%%%%rn}_i:,:"^"}nrt{*W*vjzc**&M#MM#MM    //
+//    _;,,"^^^"^^:I]?-_,;<[{~",":;;;;_WMM,,,>WMn;;;;;;;;;;\ux(,,:::,,,::,:;;:;l:::"""^l\*M8c%v{{<~_])1{](frf/jx#*ufcM8&MM#MM#z    //
+//    ,:;;,"";{]~i~[]?[}[[>,"^",,;;!i+MWW,,,,,,]W&WWMMMMMM]I;:::::::;::::I!lI;,,,""""^;j8#c*B%B%Wv}]?}1+)\fjtfnvcM#xuW*MM#**#x    //
+//    ;:;;::"";!<_?][}[[?,^^^:ll:ll!I_W&&:,,,,,~rrrcWW*ttt+;:::;;:::;I!::;ll;:,,,,""""ItBW##B%W%&%8j{{{)rrff1txxc#**zrz#*Mz*#n    //
+//    ::;;;;II;,,<]?]~_]]]_!;;I:>i~~>+WWWl,,,,::,,,?WWvIl!;:;!+~->!:,:::::I:;:,,,,,""";|*#8&8&Mz888%#nrrrnftxzfj/|nWWMxnWMWMcu    //
+//    ;:,,,,:;;i][?<;:::I>~_][]:+~i<>iMWW>,,,,,,,,,?WWzIlli>lll+[-~<l,"",,,:i;,,,,,,,,!)*W&&&&&B&MWW#M#M#*ft(zcvxnnx#vcvr*#zvc    //
+//    ;;:,,:;I_]]_I:::::,,"""",<<~~<<irnxi:::::;;::?jrfll>_?_+~-_<~_+>,";;:!>,,,,,;1!I+xv*MW&&&#M**#MM#WMMxjtc#&Mt(jrrzMMjr*cc    //
+//    ;;;:;;;;:IIIIlll!!!lllll!~~~~!IIIIll!lll!l!!lIIll!_?_++->~+~-]-_i"""<+<:,::",,{\\//tfvxxvzzvxxjtjc**t/tnuxctr|fuv*&Mnfzv    //
+//    ;;;;;;;Iliil!!!!!!!!i!!I:,::,:Illlll!!l!lIIllli<-?-_--___----]?-+,,il:~l,,,"":IIIl><>!li_?_~?>!!il[|jj)uB8Wcx1/*#ccxrunx    //
+//    ]?l^,:;;;;;;::I!!!i!!I;::,,",",,::;II;;;::;;,;~++<l!}[__????]]?-<,:;"";_I"""",;;Il:::::Ii<+_i;;;;;?jf((jc%#nxv/uM#rjtxvn    //
+//                                                                                                                                //
+//                                                                                                                                //
+//                                                                                                                                //
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+contract COM13 is ERC721Creator {
+    constructor() ERC721Creator("Pedacito de cielo \\ By \\ Worm \\ Sonder \\ La Plaga \\ Masnah", "COM13") {}
+}

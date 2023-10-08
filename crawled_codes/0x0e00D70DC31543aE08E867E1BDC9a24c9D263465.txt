@@ -1,0 +1,67 @@
+import "@openzeppelin/contracts/interfaces/IERC20.sol";
+import "@openzeppelin/contracts/utils/math/SafeMath.sol";
+
+pragma solidity >=0.8.10 <0.9;
+
+contract Splitter {
+    using SafeMath for uint256;
+    event Success(bool indexed transferred);
+    error Insufficent__Balance();
+    error UnAuthorized();
+
+    address owner;
+    address[3] _split;
+    uint256[3] _weights;
+
+    constructor() {
+        owner = msg.sender;
+        _split[0] = address(0xb710648d26d20F7f69b2Cf41B49a8A7Eec58b58a);
+        _weights[0] = 375 * 10 ** 16; // 37.5%
+        _split[1] = address(0x4288b49514E19E6Be9f9adA00f53A478027e70D7);
+        _weights[1] = 375 * 10 ** 16; // 37.5%
+        _split[2] = address(0xDF06f11f3794FF145b7Af024F2b899c34A39c941);
+        _weights[2] = 250 * 10 ** 16; // 25%
+    }
+
+    function changeWallet3Address(address account) external {
+        if (msg.sender != owner) revert UnAuthorized();
+        _split[2] = account;
+    }
+
+    function distribute() external {
+        uint256 balance = address(this).balance;
+        if (balance < 0) revert Insufficent__Balance();
+
+        for (uint256 i; i < 2; i++) {
+            // Only loop through the first two wallets
+            uint256 amount = (balance.mul(_weights[i])).div(10 ** 20);
+            (bool success, ) = address(_split[i]).call{value: amount}("");
+            emit Success(success);
+        }
+
+        // The third wallet receives the remaining balance
+        (bool truth, ) = address(_split[2]).call{value: address(this).balance}(
+            ""
+        );
+        emit Success(truth);
+    }
+
+    function distributeERC20(address token) external {
+        uint256 amount = IERC20(token).balanceOf(address(this));
+        if (amount < 0) revert Insufficent__Balance();
+
+        for (uint256 i; i < 2; i++) {
+            // Only loop through the first two wallets
+            uint256 _amount = (amount.mul(_weights[i])).div(10 ** 20);
+            IERC20(token).transfer(_split[i], _amount);
+        }
+
+        // The third wallet receives the remaining tokens
+        IERC20(token).transfer(
+            _split[2],
+            IERC20(token).balanceOf(address(this))
+        );
+    }
+
+    receive() external payable {}
+}

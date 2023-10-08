@@ -1,0 +1,33 @@
+Here are some additional potential gas-wasting patterns that I have identified in your code:
+
+1. **Expensive External Calls Inside Functions**: Each external call in Solidity (i.e., calls to other contracts) have a gas cost. This includes the `safeTransfer` and `safeTransferFrom` methods of the `TransferHelper` contract. If these methods are used frequently in the contract, they can consume a significant amount of gas. Consider reducing the number of external calls where possible.
+
+   *How did I find this pattern?* - I noticed the repeated use of `TransferHelper.safeTransfer` and `TransferHelper.safeTransferFrom` in your contract. This is a common pattern in many contracts, but it's good to be aware of the associated gas costs.
+
+   *What should I do to fix it?* - Where possible, try to batch transactions together. For example, if there are multiple transfers happening in sequence, consider using a batch transfer function if one is available in the `TransferHelper` contract.
+
+2. **Repeatedly Checking the Balance of the Same Address**: The `require(voteToken.balanceOf(msg.sender) >= _amount, "balance is not enough");` line appears in multiple functions. Each call to `balanceOf` is a read operation that consumes gas. 
+
+   *How did I find this pattern?* - I noticed that `balanceOf` is called multiple times in your contract. This operation is necessary to ensure that the sender has enough tokens, but its repetition can consume gas.
+
+   *What should I do to fix it?* - Consider caching the balance in a local variable if it is being checked multiple times within the same function. This way, you only need to call `balanceOf` once and can then refer to the stored value.
+
+3. **Using String as Function Parameter**: The use of string as a function parameter could be expensive in terms of gas, especially when the strings are long. In your contract, the `_tick` parameter is used in several functions.
+
+   *How did I find this pattern?* - I observed the use of string parameters in your contract's functions.
+
+   *What should I do to fix it?* - Use shorter data types, such as `bytes32`, to represent string data if possible. However, this may not be applicable if the string length is not predictable or if it's necessary to work with strings for other reasons.
+
+4. **Repetitive `require` Statements**: This contract contains numerous `require` statements to enforce certain conditions. While `require` statements are essential for ensuring contract safety, too many can become expensive, as each `require` consumes gas.
+
+   *How did I find this pattern?* - I noticed the frequent use of `require` statements in your code.
+
+   *What should I do to fix it?* - Consider restructuring your code to check for multiple conditions in a single `require` statement, if possible. This may not always be feasible due to the different error messages required for each condition, but it might be worth considering in some cases.
+
+5. **Using Arrays for Storage**: The use of arrays, like `tickArray`, can be expensive in terms of gas, especially when their size grows. Operations like `push` can become particularly costly.
+
+   *How did I find this pattern?* - I observed the use of `tickArray` in your contract.
+
+   *What should I do to fix it?* - Consider using a mapping instead of an array if the order of the elements is not important. For instance, `mapping(uint => string) public tickMapping;` and maintain a separate counter for the keys.
+
+Please note that these patterns are not necessarily "bad". They are simply trade-offs that need to be considered. It's often the case that readability, safety, and functionality are more important than optimizing for gas costs. Therefore, you should only apply these optimizations if they make sense for your specific use-case and do not compromise other aspects of your contract.

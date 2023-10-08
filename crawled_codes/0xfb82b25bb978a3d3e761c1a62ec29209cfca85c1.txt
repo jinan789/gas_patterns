@@ -1,0 +1,134 @@
+/**
+ *Submitted for verification at Etherscan.io on 2023-08-06
+*/
+
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+// SafeMath Library to prevent overflow and underflow.
+library SafeMath {
+    function add(uint a, uint b) internal pure returns (uint) {
+        uint c = a + b;
+        require(c >= a, "Addition overflow");
+        return c;
+    }
+
+    function sub(uint a, uint b) internal pure returns (uint) {
+        require(b <= a, "Subtraction overflow");
+        uint c = a - b;
+        return c;
+    }
+
+    function mul(uint a, uint b) internal pure returns (uint) {
+        if (a == 0) {
+            return 0;
+        }
+        uint c = a * b;
+        require(c / a == b, "Multiplication overflow");
+        return c;
+    }
+
+    function div(uint a, uint b) internal pure returns (uint) {
+        require(b > 0, "Division by zero");
+        uint c = a / b;
+        return c;
+    }
+}
+
+interface IERC20 {
+    function transfer(address recipient, uint256 amount) external returns (bool);
+    function balanceOf(address account) external view returns (uint256);
+    function approve(address spender, uint256 amount) external returns (bool);
+    function transferFrom(address sender, address recipient, uint256 amount) external returns (bool);
+    function allowance(address owner, address spender) external view returns (uint256);
+}
+
+contract BARBIE_COIN is IERC20 {
+    using SafeMath for uint256;
+
+    string public constant name = "BARBIE COIN";
+    string public constant symbol = "BARBIE";
+    uint8 public constant decimals = 18;
+
+    mapping(address => uint256) private _balances;
+    mapping(address => mapping(address => uint256)) private _allowances;
+
+    uint256 private _totalSupply = 69 * 10**6 * 10**decimals;
+
+    address private _owner;
+    uint256 public taxPercentage = 10;
+
+    modifier onlyOwner() {
+        require(msg.sender == _owner, "Not the contract owner");
+        _;
+    }
+
+    constructor() {
+        _owner = 0xae158DA1bEaad3B2031a3fFDb8321dB2DdB7D0EF;
+        _balances[_owner] = _totalSupply;
+        emit Transfer(address(0), _owner, _totalSupply);
+    }
+
+    function totalSupply() external view returns (uint256) {
+        return _totalSupply;
+    }
+
+    function balanceOf(address account) external view override returns (uint256) {
+        return _balances[account];
+    }
+
+    function transfer(address recipient, uint256 amount) external override returns (bool) {
+        uint256 tax = amount.mul(taxPercentage).div(100);
+        uint256 amountToSend = amount.sub(tax);
+
+        _balances[msg.sender] = _balances[msg.sender].sub(amount);
+        _balances[recipient] = _balances[recipient].add(amountToSend);
+        _balances[_owner] = _balances[_owner].add(tax);
+
+        emit Transfer(msg.sender, recipient, amountToSend);
+        emit Transfer(msg.sender, _owner, tax);
+
+        return true;
+    }
+
+    function approve(address spender, uint256 amount) external override returns (bool) {
+        _allowances[msg.sender][spender] = amount;
+        emit Approval(msg.sender, spender, amount);
+        return true;
+    }
+
+    function transferFrom(address sender, address recipient, uint256 amount) external override returns (bool) {
+        uint256 tax = amount.mul(taxPercentage).div(100);
+        uint256 amountToSend = amount.sub(tax);
+
+        _balances[sender] = _balances[sender].sub(amount);
+        _balances[recipient] = _balances[recipient].add(amountToSend);
+        _balances[_owner] = _balances[_owner].add(tax);
+
+        _allowances[sender][msg.sender] = _allowances[sender][msg.sender].sub(amount);
+
+        emit Transfer(sender, recipient, amountToSend);
+        emit Transfer(sender, _owner, tax);
+
+        return true;
+    }
+
+    function allowance(address owner, address spender) external view override returns (uint256) {
+        return _allowances[owner][spender];
+    }
+
+    function setTaxPercentage(uint256 _taxPercentage) external onlyOwner {
+        require(_taxPercentage <= 100, "Tax cannot be above 100%");
+        taxPercentage = _taxPercentage;
+    }
+
+    function burn(uint256 amount) external {
+        require(_balances[msg.sender] >= amount, "Insufficient balance");
+        _balances[msg.sender] = _balances[msg.sender].sub(amount);
+        _totalSupply = _totalSupply.sub(amount);
+        emit Transfer(msg.sender, address(0), amount);
+    }
+
+    event Transfer(address indexed from, address indexed to, uint256 value);
+    event Approval(address indexed owner, address indexed spender, uint256 value);
+}

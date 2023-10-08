@@ -1,0 +1,69 @@
+**Gas-Wasting Pattern 1: Unnecessary Storage Operations**
+
+```latex
+\textbf{Pattern:} 
+\begin{itemize}
+    \item The code frequently accesses the \texttt{stageMap} mapping for both reads and writes. Each storage operation in Solidity consumes a significant amount of gas.
+\end{itemize}
+```
+
+1. **How did you find this pattern?**
+   I noticed that the `stageMap` mapping is being accessed several times within the `_setStages` function. Every time you access or mutate a state variable, it costs gas. The more frequently you access these variables, the more gas is consumed. 
+
+2. **What should I do to fix the found gas-wasting patterns?**
+   - Use local variables for temporary data manipulation and only update the storage at the end of the function. 
+   - Make sure to update the storage only when necessary.
+
+```latex
+\textbf{Steps:}
+\begin{itemize}
+    \item Create a local variable of type \texttt{StageData}, e.g. \texttt{StageData memory tempStage}.
+    \item Replace all instances of \texttt{stageMap[i]} within the loop with \texttt{tempStage}.
+    \item At the end of the loop, assign \texttt{tempStage} back to \texttt{stageMap[i]}.
+\end{itemize}
+```
+
+3. **Rating:**
+    - **Readability:** 5 (It doesn't significantly affect readability.)
+    - **Security:** 5 (No security implication here.)
+    - **Maintainability:** 4 (It might require additional care to ensure all necessary data is stored back to the state variable.)
+
+**Gas-Wasting Pattern 2: Repeated Computation**
+
+```latex
+\textbf{Pattern:} 
+\begin{itemize}
+    \item The condition \texttt{previousStageEndTime >= block.timestamp} is computed multiple times. Repeated computation of the same condition also leads to gas wastage.
+\end{itemize}
+```
+
+1. **How did you find this pattern?**
+   I noticed that the same condition `previousStageEndTime >= block.timestamp` is being checked multiple times within the loop in the `_setStages` function. This is a waste of computational resources as the result will not change within a single transaction.
+
+2. **What should I do to fix the found gas-wasting patterns?**
+   - Compute the condition once and store the result in a local variable.
+   - Use this local variable for the condition checks.
+
+```latex
+\textbf{Steps:} 
+\begin{itemize}
+    \item Outside the loop, declare a boolean variable, e.g. \texttt{bool isPreviousStageActive}.
+    \item Assign the result of \texttt{previousStageEndTime >= block.timestamp} to \texttt{isPreviousStageActive} just after the value of \texttt{previousStageEndTime} is retrieved.
+    \item Replace the condition \texttt{previousStageEndTime >= block.timestamp} with \texttt{isPreviousStageActive} in the rest of the code.
+\end{itemize}
+```
+
+3. **Rating:**
+    - **Readability:** 5 (It doesn't significantly affect readability.)
+    - **Security:** 5 (No security implications here.)
+    - **Maintainability:** 3 (While this change is beneficial for gas usage, developers need to be cautious that the condition result is computed before the loop and might not reflect changes within the loop.)
+
+**Reflections on the Task and the Reasoning Process**
+
+The task was clear and provided sufficient context to understand and analyze the given Solidity code. However, to improve next time, it would be beneficial to provide additional context about the overall contract, such as what the `StageData` struct contains, what `stageMap` mapping represents, and what the `_setStages` function is supposed to achieve. This would help to understand the broader context and might reveal more gas-optimization opportunities.
+
+Regarding the reasoning process, it's important to remember that Solidity has unique characteristics and behaviors, especially related to gas usage. Therefore, understanding these characteristics is crucial. When analyzing the code, I looked for common gas-inefficiencies such as frequent storage operations and redundant computations.
+
+To improve next time, I could potentially leverage tools that automatically analyze gas usage in Solidity contracts. These tools can provide useful insights and identify areas that might be overlooked during manual review. For this task, I manually reviewed the code to identify gas-wasting patterns, which is more prone to human error.
+
+Finally, it's also important to remember that gas optimization is just one aspect of smart contract development. Other factors such as security, readability, and maintainability should not be compromised in the pursuit of gas optimization.

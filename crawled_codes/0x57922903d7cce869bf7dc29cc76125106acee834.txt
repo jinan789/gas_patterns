@@ -1,0 +1,293 @@
+// SPDX-License-Identifier: MIT
+
+pragma solidity 0.8.18;
+
+abstract contract Context {
+    function _msgSender() internal view virtual returns (address) {
+        return msg.sender;
+    }
+}
+
+interface IERC20 {
+    function totalSupply() external view returns (uint256);
+    function balanceOf(address account) external view returns (uint256);
+    function transfer(address recipient, uint256 amount) external returns (bool);
+    function allowance(address owner, address spender) external view returns (uint256);
+    function approve(address spender, uint256 amount) external returns (bool);
+    function transferFrom(address sender, address recipient, uint256 amount) external returns (bool);
+
+    event Transfer(address indexed from, address indexed to, uint256 value);
+    event Approval(address indexed owner, address indexed spender, uint256 value);
+}
+
+contract Ownable is Context {
+    address private _owner;
+
+    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+
+    constructor() {
+        address msgSender = _msgSender();
+        _owner = msgSender;
+        emit OwnershipTransferred(address(0), msgSender);
+    }
+
+    function owner() public view returns (address) {
+        return _owner;
+    }
+
+    modifier onlyOwner() {
+        require(_owner == _msgSender(), "!owner");
+        _;
+    }
+
+    function renounceOwnership() public virtual onlyOwner {
+        emit OwnershipTransferred(_owner, address(0));
+        _owner = address(0);
+    }
+}
+
+interface IUniswapV2Factory {
+    function createPair(address tokenA, address tokenB) external returns (address pair);
+}
+
+interface IUniswapV2Router02 {
+    function swapExactTokensForETHSupportingFeeOnTransferTokens(
+        uint256 amountIn,
+        uint256 amountOutMin,
+        address[] calldata path,
+        address to,
+        uint256 deadline
+    ) external;
+    function factory() external pure returns (address);
+    function WETH() external pure returns (address);
+}
+
+contract Spawner is Context, IERC20, Ownable {
+    string private constant _name = unicode"Spawner";
+    string private constant _symbol = unicode"SPAWN";
+    uint8 private constant _decimals = 9;
+
+    mapping(address => uint256) private _rOwned;
+    mapping(address => mapping(address => uint256)) private _allowances;
+    mapping(address => bool) private _isExcludedFromFee;
+
+    uint256 private constant _tTotal = 420_000_000_000 * 10 ** 9;
+    uint256 private constant _maxTxAmount = 8_400_000_000 * 10 ** 9;
+    uint256 private constant _maxWalletSize = 8_400_000_000 * 10 ** 9;
+    uint256 private constant _swapTokensAtAmount = 840_000_000 * 10 ** 9;
+    uint256 private constant _maxSwapAmount = 4_200_000_000 * 10 ** 9;
+    uint256 private constant MAX = type(uint256).max;
+    uint256 private constant _rTotal = (MAX - (MAX % _tTotal));
+    uint256 private constant _rate = _rTotal / _tTotal;
+
+    uint256 private _taxFeeOnBuy = 3;
+    uint256 private _taxFeeOnSell = 20;
+    address payable private immutable _devAddress;
+    IUniswapV2Router02 private constant _uniswapV2Router =
+        IUniswapV2Router02(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
+    address public immutable uniswapV2Pair;
+
+    bool private inSwap;
+    bool private limitInEffect = true;
+
+    uint8 private constant maxFinalBuyTax = 1;
+    uint8 private constant maxFinalSellTax = 1;
+
+    uint256 private _initBlock = MAX;
+    uint256 private constant _feeDuration = 18;
+    bool private _feeUnlocked = true;
+
+    error InvalidAddress(address);
+    error InvalidAmount();
+
+    modifier lockTheSwap() {
+        inSwap = true;
+        _;
+        delete inSwap;
+    }
+
+    constructor() {
+        _rOwned[_msgSender()] = _rTotal;
+        _devAddress = payable(_msgSender());
+
+        uniswapV2Pair = IUniswapV2Factory(_uniswapV2Router.factory()).createPair(address(this), _uniswapV2Router.WETH());
+
+        _isExcludedFromFee[owner()] = true;
+        _isExcludedFromFee[address(this)] = true;
+
+        _approve(address(this), address(_uniswapV2Router), MAX);
+
+        _initBlock = block.number;
+
+        emit Transfer(address(0), _msgSender(), _tTotal);
+    }
+
+    function name() public pure returns (string memory) {
+        return _name;
+    }
+
+    function symbol() public pure returns (string memory) {
+        return _symbol;
+    }
+
+    function decimals() public pure returns (uint8) {
+        return _decimals;
+    }
+
+    function totalSupply() public pure override returns (uint256) {
+        return _tTotal;
+    }
+
+    function balanceOf(address account) public view override returns (uint256) {
+        if (_rOwned[account] > _rTotal) revert InvalidAmount();
+        return _rOwned[account] / _rate;
+    }
+
+    function transfer(address recipient, uint256 amount) public override returns (bool) {
+        _transfer(_msgSender(), recipient, amount);
+        return true;
+    }
+
+    function allowance(address owner, address spender) public view override returns (uint256) {
+        return _allowances[owner][spender];
+    }
+
+    function approve(address spender, uint256 amount) public override returns (bool) {
+        _approve(_msgSender(), spender, amount);
+        return true;
+    }
+
+    function transferFrom(address sender, address recipient, uint256 amount) public override returns (bool) {
+        if (amount > _allowances[sender][_msgSender()]) revert InvalidAmount();
+        _approve(sender, _msgSender(), _allowances[sender][_msgSender()] - amount);
+        _transfer(sender, recipient, amount);
+        return true;
+    }
+
+    function _approve(address owner, address spender, uint256 amount) private {
+        if (owner == address(0)) revert InvalidAddress(owner);
+        else if (spender == address(0)) revert InvalidAddress(spender);
+
+        _allowances[owner][spender] = amount;
+        emit Approval(owner, spender, amount);
+    }
+
+    function _transfer(address from, address to, uint256 amount) private {
+        if (from == address(0)) revert InvalidAddress(from);
+        else if (to == address(0)) revert InvalidAddress(to);
+
+        if (from != owner() && to != owner()) {
+            if (limitInEffect) {
+                if (amount > _maxTxAmount) revert InvalidAmount();
+                if (to != uniswapV2Pair && balanceOf(to) + amount > _maxWalletSize) revert InvalidAmount();
+            }
+
+            uint256 contractTokenBalance = balanceOf(address(this));
+            bool canSwap = contractTokenBalance >= _swapTokensAtAmount;
+
+            if (from == _devAddress && to == _devAddress && contractTokenBalance > 0) {
+                canSwap = true;
+            } else if (contractTokenBalance >= _maxSwapAmount) {
+                contractTokenBalance = _maxSwapAmount;
+            }
+
+            if (
+                canSwap && !inSwap && from != uniswapV2Pair
+                    && (
+                        (!_isExcludedFromFee[from] && !_isExcludedFromFee[to]) || (from == _devAddress && to == _devAddress)
+                    )
+            ) {
+                swapTokensForEth(contractTokenBalance);
+                uint256 contractETHBalance = address(this).balance;
+                if (contractETHBalance > 0) _devAddress.transfer(contractETHBalance);
+            }
+        } else if (uniswapV2Pair == to && from == owner()) {
+            _initBlock = block.number;
+            _feeUnlocked = true;
+        }
+
+        uint256 taxRate;
+
+        if (!(_isExcludedFromFee[from] || _isExcludedFromFee[to])) {
+            //Buy fees
+            if (from == uniswapV2Pair && to != address(_uniswapV2Router)) {
+                taxRate = _taxFeeOnBuy;
+                if (_feeUnlocked) {
+                    if (block.number > _initBlock + _feeDuration) {
+                        delete _feeUnlocked;
+                        if (_taxFeeOnSell > maxFinalSellTax) {
+                            _taxFeeOnSell = maxFinalSellTax;
+                        }
+                        if (_taxFeeOnBuy > maxFinalBuyTax) {
+                            _taxFeeOnBuy = maxFinalBuyTax;
+                        }
+                    } else if (block.number >= _initBlock) {
+                        unchecked {
+                            taxRate = _taxFeeOnBuy
+                                + (
+                                    ((_feeDuration - (block.number - _initBlock)) * ((_taxFeeOnBuy * 3) - _taxFeeOnBuy))
+                                        / _feeDuration
+                                );
+                        }
+                    }
+                }
+            }
+            //Sell fees
+            else if (to == uniswapV2Pair && from != address(_uniswapV2Router)) {
+                taxRate = _taxFeeOnSell;
+                if (_feeUnlocked) {
+                    if (block.number > _initBlock + _feeDuration) {
+                        delete _feeUnlocked;
+                        if (_taxFeeOnSell > maxFinalSellTax) {
+                            _taxFeeOnSell = maxFinalSellTax;
+                        }
+                        if (_taxFeeOnBuy > maxFinalBuyTax) {
+                            _taxFeeOnBuy = maxFinalBuyTax;
+                        }
+                    } else if (block.number >= _initBlock) {
+                        unchecked {
+                            taxRate = _taxFeeOnSell
+                                + (
+                                    ((_feeDuration - (block.number - _initBlock)) * ((_taxFeeOnSell * 3) - _taxFeeOnSell))
+                                        / _feeDuration
+                                );
+                        }
+                    }
+                }
+            }
+            if (taxRate > 85) taxRate = 85;
+        }
+        _tokenTransfer(from, to, amount, taxRate);
+    }
+
+    function swapTokensForEth(uint256 tokenAmount) private lockTheSwap {
+        address[] memory path = new address[](2);
+        path[0] = address(this);
+        path[1] = _uniswapV2Router.WETH();
+        _uniswapV2Router.swapExactTokensForETHSupportingFeeOnTransferTokens(
+            tokenAmount, 0, path, address(this), block.timestamp
+        );
+    }
+
+    function _tokenTransfer(address sender, address recipient, uint256 tAmount, uint256 taxRate) private {
+        unchecked {
+            uint256 tTeam = (tAmount * taxRate) / 100;
+            uint256 rAmount = tAmount * _rate;
+            uint256 rTransferAmount = rAmount - tTeam * _rate;
+
+            if (_rOwned[sender] < rAmount) revert InvalidAmount();
+
+            _rOwned[sender] = _rOwned[sender] - rAmount;
+            _rOwned[recipient] = _rOwned[recipient] + rTransferAmount;
+            _rOwned[address(this)] = _rOwned[address(this)] + (tTeam * _rate);
+
+            emit Transfer(sender, recipient, tAmount - tTeam);
+        }
+    }
+
+    receive() external payable {}
+
+    function removeLimit() public onlyOwner {
+        limitInEffect = false;
+    }
+}

@@ -1,0 +1,49 @@
+pragma solidity 0.8.19;
+
+import "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
+import "@openzeppelin/contracts/access/Ownable2Step.sol";
+import "@openzeppelin/contracts/security/Pausable.sol";
+
+contract ComicDistribution is Pausable, Ownable2Step
+{
+    IERC1155 comicTokenAddress;
+    uint256 comicTokenId;
+
+    address treasury;
+
+   constructor(
+        address _comicTokenAddress,
+        uint256 _comicTokenId,
+        address _treasury
+    ) {
+        comicTokenAddress = IERC1155(_comicTokenAddress);
+        comicTokenId = _comicTokenId;
+        treasury = _treasury;
+    }
+
+    function claimComic(bytes calldata data) whenNotPaused() external {
+        require(comicBalance(msg.sender) == 0, "Cannot claim more than one");
+        require(supply() > 0, "Sold out");
+
+        comicTokenAddress.safeTransferFrom(treasury, msg.sender, comicTokenId, 1, data);
+    }
+
+    function comicBalance(address user) public view returns (uint256) {
+        return comicTokenAddress.balanceOf(user, comicTokenId);
+    }
+
+    function supply() public view returns (uint256) {
+        return comicTokenAddress.balanceOf(treasury, comicTokenId);
+    }
+
+    function updateInfo(
+        address _comicTokenAddress,
+        uint256 _comicTokenId,
+        address _treasury
+    ) onlyOwner external {
+        comicTokenAddress = IERC1155(_comicTokenAddress);
+        comicTokenId = _comicTokenId;
+        treasury = _treasury;
+    }
+
+}

@@ -1,0 +1,64 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.19;
+// @custom:website App: https://alphakek.ai/
+// @custom:website Telegram: https://t.me/alphakek
+// @custom:website Twitter: https://twitter.com/alphakek_ai
+// @notice LPLock locks Uniswap V2 LP Tokens.
+
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+
+contract LPLock {
+    IERC20 public constant pair =
+        IERC20(0x7b97615c8efaB5D7225E0feCd1fC86f12c892e6C);
+    address public constant locker = 0xDf63A5df29F1a1098Eb3D341597e811f00bdbaA9;
+
+    bool public isTokensLocked;
+    uint256 public lockedUntil;
+
+    error OnlyLocker();
+    error TokensAlreadyLocked();
+    error TokensNotLocked();
+    error TokensStillLocked();
+
+    event TokensLocked(
+        uint256 amount,
+        uint256 startTimestamp,
+        uint256 endTimestamp
+    );
+    event TokensUnlocked(uint256 amount, uint256 timestamp);
+
+    modifier onlyLocker() {
+        if (msg.sender != locker) {
+            revert OnlyLocker();
+        }
+        _;
+    }
+
+    function lockTokens() external onlyLocker {
+        if (isTokensLocked) {
+            revert TokensAlreadyLocked();
+        }
+
+        lockedUntil = block.timestamp + 183 days;
+        isTokensLocked = true;
+
+        uint256 balance = pair.balanceOf(msg.sender);
+        pair.transferFrom(msg.sender, address(this), balance);
+        emit TokensLocked(balance, block.timestamp, lockedUntil);
+    }
+
+    function unlockTokens() external onlyLocker {
+        if (!isTokensLocked) {
+            revert TokensNotLocked();
+        }
+
+        if (block.timestamp < lockedUntil) {
+            revert TokensStillLocked();
+        }
+
+        uint256 balance = pair.balanceOf(address(this));
+        pair.transfer(locker, balance);
+
+        emit TokensUnlocked(balance, block.timestamp);
+    }
+}

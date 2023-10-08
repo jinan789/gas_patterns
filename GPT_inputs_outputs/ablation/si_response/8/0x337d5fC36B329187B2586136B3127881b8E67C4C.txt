@@ -1,0 +1,33 @@
+Here are a few additional gas-wasting patterns you could consider:
+
+1. **Multiple calls to the same function**: In your code, `_etherPrice()` and `reth.transfer()` are called multiple times. Each function call in Solidity has a gas cost, so if the result of the function does not change between calls, it can be more gas-efficient to store the result in a local variable and use that instead.
+
+    **How to find**: Look for repeated function calls in your contract, especially in the same function or transaction context.
+
+    **How to fix**: If the function does not modify contract state, calculate the result once and store it in a local variable. If the function does modify contract state, you need to be careful to ensure that your changes don't introduce bugs or security vulnerabilities.
+
+2. **Unnecessary usage of storage variables**: In your code, `depositedEther[onBehalfOf]` and `totalDepositedEther` are frequently used. If these values are often modified and used within the same function, it's more gas-efficient to use a local variable instead of modifying the storage directly.
+
+    **How to find**: Look for storage variables that are frequently used and modified in the same function.
+
+    **How to fix**: Use a local variable to store the value and only update the storage variable once at the end of the function.
+
+3. **Redundant `require` statements**: In your code, there are several `require` statements that check the same conditions. Each `require` statement consumes gas, and if the condition being checked is the same, it can be more gas-efficient to consolidate these checks into a single `require` statement.
+
+    **How to find**: Look for `require` statements with similar or identical conditions.
+
+    **How to fix**: Consolidate similar `require` statements into a single check.
+
+4. **Unoptimized arithmetic operations**: In your contract, there are several complex arithmetic operations, especially in the computation of `onBehalfOfCollateralRate` and `rvusdAmount`. These computations involve multiplication and division, which are more gas-expensive than addition and subtraction. If there are ways to simplify these computations or use less gas-expensive operations, they could result in significant gas savings.
+
+    **How to find**: Look for complex arithmetic operations, especially those involving multiplication and division.
+
+    **How to fix**: Simplify the arithmetic operations whenever possible. Consider using shift operations instead of multiplication or division by powers of 2. Be careful to avoid introducing rounding errors or other bugs.
+
+5. **Misuse of `external` and `public` function modifiers**: The `liquidation`, `setSafeCollateralRate`, `depositrETHToMint`, `withdraw`, `mint`, `superLiquidation` functions are all declared as `external`, but some of them are also called within the contract, which is less gas efficient. The `external` keyword means the function is part of the contract's interface, but it cannot be called internally within the contract (it can only be called from other contracts). When an `external` function is called internally, it's treated as a `public` function, which consumes more gas.
+
+    **How to find**: Look for `external` functions that are called within the contract.
+
+    **How to fix**: If a function needs to be called both internally and from external contracts, declare it as `public` to avoid the extra gas cost. If a function is only called within the contract, declare it as `internal`. If a function is only called from external contracts, declare it as `external`.
+
+Remember that while it's important to optimize for gas usage, you should also prioritize code readability, maintainability, and security. Make sure that your optimizations don't introduce bugs or make the code harder to understand.

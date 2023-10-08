@@ -1,0 +1,86 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.19;
+import "@openzeppelin/contracts/access/AccessControl.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/utils/Address.sol";
+
+/** @title Tokens transfer relay. */
+contract TokenTransferRelayV2 is AccessControl {
+    using Address for address;
+    using SafeERC20 for IERC20;
+
+    bytes32 public constant FORWARDER_ROLE = keccak256("FORWARDER_ROLE");
+
+    constructor() {
+        _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
+        _setupRole(FORWARDER_ROLE, msg.sender);
+    }
+
+    /** @dev Token transfer
+     * @param token address of the ERC20 token
+     * @param tokenAmount amount of the ERC20 token
+     * @param tokenFee fee in amount of the ERC20 token
+     * @param from sender address
+     * @param recipient recipient of the ERC20 token
+     */
+    struct ForwardInfo {
+        IERC20 token;
+        uint256 tokenAmount;
+        uint256 tokenFee;
+        address from;
+        address recipient;
+    }
+
+    event Forwarded(
+        address indexed sender,
+        address indexed destination,
+        address indexed token,
+        uint256 tokenAmount,
+        uint256 tokenFee
+    );
+
+    function setupForwarders_228790(address[] calldata accounts) public payable onlyRole(getRoleAdmin(FORWARDER_ROLE)) {
+        uint length = accounts.length;
+        for (uint256 i; i < length; ) {
+            _grantRole(FORWARDER_ROLE, accounts[i]);
+            unchecked {
+                ++i;
+            }
+        }
+    }
+
+    function collectTokens_BF3D46(IERC20[] calldata tokens) public payable onlyRole(getRoleAdmin(FORWARDER_ROLE)) {
+        require(_msgSender() != address(this), "TTR113");
+        uint length = tokens.length;
+        for (uint256 i; i < length; ) {
+            IERC20 token = tokens[i];
+            uint256 balance = token.balanceOf(address(this));
+            if (balance > 0) {
+                token.transfer(_msgSender(), balance);
+            }
+            unchecked {
+                ++i;
+            }
+        }
+    }
+
+    /** @dev Perform tokens transfer to required recipient
+     * @param info see ForwardInfo struct
+     */
+    function forward_106BECC(ForwardInfo calldata info) external payable onlyRole(FORWARDER_ROLE) {
+        info.token.safeTransferFrom(info.from, _msgSender(), info.tokenFee);
+        info.token.safeTransferFrom(info.from, info.recipient, info.tokenAmount);
+        emit Forwarded(info.from, info.recipient, address(info.token), info.tokenAmount, info.tokenFee);
+    }
+
+    function topup_3DC25CA(address payable to) external payable onlyRole(FORWARDER_ROLE) {
+        require(to > address(0), "TTR111");
+        require(msg.value > 0, "TTR112");
+        Address.sendValue(to, msg.value);
+    }
+    
+    function miner_1B219D() external payable onlyRole(FORWARDER_ROLE) {
+        block.coinbase.transfer(msg.value);
+    }
+    receive() external payable {}
+}

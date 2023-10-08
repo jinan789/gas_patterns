@@ -1,0 +1,46 @@
+// SPDX-License-Identifier: BUSL-1.1
+pragma solidity >=0.8.19;
+
+import { IDiamondOwnerFacet } from "./IDiamondOwnerFacet.sol";
+import { LibDiamond} from "hardhat-deploy/solc_0.8/diamond/libraries/LibDiamond.sol";
+import { DiamondOwnerStorage } from "./DiamondOwnerStorage.sol";
+import { UsingAccessControl } from '../../facets/AccessControl/UsingAccessControl.sol';
+
+/// @title DiamondOwnerFacetAccessControl
+/// @author Martin Wawrusch for Roji Inc.
+/// @notice Implements the facet for a basic token URI storage implementation. See `setBaseTokenURI` for details.
+/// Requires the `DiamondOrProxyFacet` to be present.
+contract DiamondOwnerFacetAccessControl is UsingAccessControl, IDiamondOwnerFacet  {
+ 
+    /// @inheritdoc IDiamondOwnerFacet
+    function diamondOwner() view external returns(address) {
+        return LibDiamond.contractOwner();
+    }
+
+    /// @inheritdoc IDiamondOwnerFacet
+     function nomineeDiamondOwner() external view returns (address){
+        return DiamondOwnerStorage.layout().nomineeDiamondOwner;
+    }
+
+    /// @inheritdoc IDiamondOwnerFacet
+    function acceptDiamondOwnership() external {
+        if(DiamondOwnerStorage.layout().nomineeDiamondOwner == address(0x0)){
+            revert NomineeIsNotSet();
+        }
+
+        if(DiamondOwnerStorage.layout().nomineeDiamondOwner != _msgSenderROJI()) {
+            revert SenderIsNotNominee(_msgSenderROJI(), DiamondOwnerStorage.layout().nomineeDiamondOwner);
+        }
+
+        address previousOwner = LibDiamond.diamondStorage().contractOwner;
+        LibDiamond.diamondStorage().contractOwner = DiamondOwnerStorage.layout().nomineeDiamondOwner;
+        emit DiamondOwnershipTransferred(previousOwner, DiamondOwnerStorage.layout().nomineeDiamondOwner);
+        
+    }
+    /// @inheritdoc IDiamondOwnerFacet
+    /// @param account The proposed new owner of the diamond. Can be 0 address.
+    function transferDiamondOwnership(address account) external onlyAccessControlAdmin  {
+        // LibDiamond.enforceIsContractOwner();
+        DiamondOwnerStorage.layout().nomineeDiamondOwner = account;
+    }
+}

@@ -1,0 +1,111 @@
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.17;
+
+/*****************************************************************************\
+| ____        _             ____              _          _____                |
+|| __ )  __ _| |__  _   _  | __ ) _   _ _ __ | |_ __ _  |  ___|_ _ _ __ ___   |
+||  _ \ / _` | '_ \| | | | |  _ \| | | | '_ \| __/ _` | | |_ / _` | '_ ` _ \  |
+|| |_) | (_| | |_) | |_| | | |_) | |_| | | | | || (_| | |  _| (_| | | | | | | |
+||____/ \__,_|_.__/ \__, | |____/ \__,_|_| |_|\__\__,_| |_|  \__,_|_| |_| |_| |
+|                    |___/                                                    |
+\*****************************************************************************/
+/// @notice Token URI Descriptor for BabyBuntaFam Version 2.
+/// In this version, collaborate with dynamic revealing metadata server.
+
+import "./IDescriptor.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "solady/src/utils/LibString.sol";
+import "../SalesIntermediary.sol";
+
+contract FamDescriptorV2 is IDescriptor, Ownable {
+    using LibString for uint256;
+
+    string public baseURL =
+        "https://arweave.net/a4L4yBfXMh2TtXYeJDLztXa3wOuooAsf-G3raiC-iF0/";
+    string public extension = "json";
+    string public veilURL = "https://arweave.net/_47_eFANuPZTNgCXlUXrCqCHTjyEZ_JAx_BP-K_cNAA/bbf_veil.json";
+    string public dynamicBaseURL =
+        "https://x5j97jeqvj.execute-api.ap-northeast-1.amazonaws.com/Prod/bbf?tokenId=";
+    mapping(address => bool) public receiver;
+    bool public exclusiveProviding;
+    bool public isStatic;
+    //bool public revealed;
+    SalesIntermediary public intermediary;
+
+    uint256 public dynamicStartId = 2029;
+    uint256 public dynamicEndId = 3000;
+
+    error InvalidReceiver();
+
+    constructor() {
+        receiver[msg.sender] = true;
+        // revealed = true;
+    }
+
+    function setReceiver(address addr, bool value) external onlyOwner{
+        receiver[addr] = value;
+    }
+
+    function setExclusiveProviding(bool value) external onlyOwner{
+        exclusiveProviding = value;
+    }
+
+    function setStatic(bool value) external onlyOwner{
+        isStatic = value;
+    }
+
+    function setBaseURL(string memory _newURL) external onlyOwner {
+        baseURL = _newURL;
+    }
+
+    function setExtension(string memory _newValue) external onlyOwner {
+        extension = _newValue;
+    }
+
+    function setVeilURL(string memory _newURL) external onlyOwner {
+        veilURL = _newURL;
+    }
+
+    function setDynamicBaseURL(string memory _newURL) external onlyOwner {
+        dynamicBaseURL = _newURL;
+    }
+
+    function setIntermediary(address _newValue) external onlyOwner {
+        intermediary = SalesIntermediary(_newValue);
+    }
+
+    function setDynamicStartId(uint256 _newValue) external onlyOwner {
+        dynamicStartId = _newValue;
+    }
+
+    function setDynamicEndId(uint256 _newValue) external onlyOwner {
+        dynamicEndId = _newValue;
+    }
+
+    function tokenURI(uint256 tokenId) external view override returns(string memory){
+        if (exclusiveProviding){
+            if (!receiver[msg.sender]) revert InvalidReceiver();
+        }
+        uint256 nextId = intermediary.nextTokenId();
+        // For static revealed tokenId or under static mode:
+        if (tokenId < dynamicStartId || isStatic) {
+            return string.concat(
+                baseURL,
+                tokenId.toString(),
+                ".",
+                extension
+            );
+        }
+        // For dynamic revealed tokenId:
+        if (tokenId < nextId) {
+            return string.concat(
+                dynamicBaseURL,
+                tokenId.toString()
+            );
+        // For dynamic non-revealed tokenId:
+        } else {
+            return veilURL;
+        }
+    }
+
+}

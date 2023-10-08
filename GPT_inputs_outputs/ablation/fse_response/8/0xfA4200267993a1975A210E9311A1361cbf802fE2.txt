@@ -1,0 +1,68 @@
+#### Pattern 1: Redundant SLOAD Operations
+
+1. **Reasoning Process**: In the function `getStream(uint256 streamId)`, each property of the stream is fetched separately from the `_streams` mapping. Each fetch from a contract's storage (SLOAD operation) costs 800 gas. The `_streams[streamId]` is repeatedly accessed which leads to unnecessary gas consumption.
+
+2. **Fix**: The fix would be to load the entire `_streams[streamId]` object into memory once and then access its properties from memory, which is significantly cheaper. Here's how to do it:
+    ```solidity
+    function getStream(uint256 streamId)
+      external
+      view
+      streamExists(streamId)
+      returns (
+        address sender,
+        address recipient,
+        uint256 deposit,
+        address tokenAddress,
+        uint256 startTime,
+        uint256 stopTime,
+        uint256 remainingBalance,
+        uint256 ratePerSecond
+      )
+    {
+      Stream memory s = _streams[streamId];
+      sender = s.sender;
+      recipient = s.recipient;
+      deposit = s.deposit;
+      tokenAddress = s.tokenAddress;
+      startTime = s.startTime;
+      stopTime = s.stopTime;
+      remainingBalance = s.remainingBalance;
+      ratePerSecond = s.ratePerSecond;
+    }
+    ```
+    Fetching the entire object from storage only once and then accessing its properties from memory reduces the number of expensive SLOAD operations and hence reduces the gas costs.
+
+3. **Impact Score**: Readability: 5; Security: 5; Maintainability: 5. This change does not affect the readability, security, or maintainability of the contract. It's a straightforward optimization that makes the function more efficient without changing its behavior or making it harder to understand or maintain.
+
+#### Pattern 2: Redundant Computation in `balanceOf` Function
+
+1. **Reasoning Process**: The `balanceOf` function calculates `delta` by calling `deltaOf(streamId)`, which retrieves the entire `Stream` object from storage. This is then followed by `Stream memory stream = _streams[streamId];` which again fetches the same `Stream` object. This repetitive computation and storage operation could be avoided.
+
+2. **Fix**: The fix would be to rearrange the function so that `Stream memory stream = _streams[streamId];` comes before `deltaOf(streamId)`, and pass the `stream` object to `deltaOf` function, which will avoid fetching the `Stream` object twice. Here's how to do it:
+    ```solidity
+    function deltaOf(Stream memory stream) public view returns (uint256 delta) {
+      if (block.timestamp <= stream.startTime) return 0;
+      if (block.timestamp < stream.stopTime) return block.timestamp - stream.startTime;
+      return stream.stopTime - stream.startTime;
+    }
+    function balanceOf(uint256 streamId, address who)
+      public
+      view
+      streamExists(streamId)
+      returns (uint256 balance)
+    {
+      Stream memory stream = _streams[streamId];
+      BalanceOfLocalVars memory vars;
+
+      uint256 delta = deltaOf(stream);
+      vars.recipientBalance = delta * stream.ratePerSecond;
+      ...
+    }
+    ```
+    By doing this, we avoid the redundant fetch from the storage and hence save gas.
+
+3. **Impact Score**: Readability: 5; Security: 5; Maintainability: 5. This change does not affect the readability, security, or maintainability of the contract. It is a simple rearrangement of operations that reduces gas costs without changing the functionality or making the code harder to understand or maintain.
+
+Regarding your additional requirements, your prompt was very clear and detailed, providing all the necessary context and requirements. However, in the future, it would be helpful if you also include the version of Solidity you're using. Different versions have different gas costs for certain operations, so that information can be important in a gas optimization context. 
+
+For my reasoning process, I tried to look for patterns that could be optimized to reduce the number of storage operations, which are one of the most expensive operations in terms of gas. This approach was effective in finding potential optimizations. In the future, I could also consider other aspects such as the control flow and arithmetic operations, which could lead to further optimizations.

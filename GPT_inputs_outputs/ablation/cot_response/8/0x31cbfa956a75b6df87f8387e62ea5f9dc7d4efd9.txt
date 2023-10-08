@@ -1,0 +1,29 @@
+After analyzing the provided Solidity code, I found a few new potential gas-wasting patterns that do not directly fall into the categories you listed. They are as follows:
+
+1. **Repeated external call to the same function**: In the function `_accumulateReward`, there is a repeated external call to `lmPool.lmLiquidity()`. Each external call to a function is costly in terms of gas, especially if it is to another contract. Instead, we could save the result of the first call in a local variable and reuse it.
+
+   *Solution*: Introduce a local variable to hold the value of `lmPool.lmLiquidity()` and reuse it, instead of making the external call twice. 
+
+   *Impact*: Readability: 5; Security: 5; Maintainability: 4.
+
+2. **Repeated computation of the same function**: In the function `tokenAmountsToMaximalLiquidity`, we have three calls to the function `TickMath.getSqrtRatioAtTick()`. This function, depending on its implementation, might be computationally expensive.
+
+   *Solution*: If the function `TickMath.getSqrtRatioAtTick()` is heavy on computational cost, store the result in a local variable and reuse it.
+
+   *Impact*: Readability: 5; Security: 5; Maintainability: 4.
+
+3. **Unnecessary computation in conditional branches**: In the function `tokenAmountsToMaximalLiquidity`, there are computations performed in each branch of the conditional statement that are not necessary unless that condition is met.
+
+   *Solution*: Move the computations inside the corresponding conditional branches. This way, they will only be performed if the condition is met.
+
+   *Impact*: Readability: 5; Security: 5; Maintainability: 5.
+
+4. **Overallocation of dynamic arrays**: In the function `calculateTvlByMinMaxPrices`, two dynamic arrays `minTokenAmounts` and `maxTokenAmounts` are overallocated. They are initialized with size 2 but only the first two elements are used.
+
+   *Solution*: Instead of initializing the arrays with a fixed size, use push to add elements. This reduces unnecessary allocation of storage.
+
+   *Impact*: Readability: 4; Security: 5; Maintainability: 4.
+
+To improve your prompt next time, you could provide more context about the code, such as the purpose of each function and how they are expected to be used. Also, you could provide an overview of the contract structure and its interactions with other contracts. This would allow a deeper understanding of the contract architecture and potentially reveal more gas-wasting patterns.
+
+In terms of reasoning process, I started by understanding the purpose of each function and then looked for repeated or unnecessary computations, as they are the most common gas-wasting patterns. Improvements could include a deeper understanding of the Solidity language and its gas cost model, and a more thorough review of the contract's interactions with other contracts. This could reveal more subtle gas-wasting patterns that are not immediately obvious.

@@ -1,0 +1,130 @@
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.13;
+
+import { INftCreatorVerifier, DeployLimitedEditionNftParams, DeployTimedEditionNftParams } from "src/ethereum/INftCreatorVerifier.sol";
+import { CrossDomainOrigin } from "src/shared/CrossDomainOrigin.sol";
+import { ICrossDomainMessenger } from "src/shared/ICrossDomainMessenger.sol";
+import { IOpEditionNftFactory, DeployLimitedEditionNftParams as OpDeployLimitedEditionNftParams, DeployTimedEditionNftParams as OpDeployTimedEditionNftParams } from "src/op/IOpEditionNftFactory.sol";
+import { ICreatorRegistry } from "src/ethereum/ICreatorRegistry.sol";
+import { EditionType } from "src/shared/EditionType.sol";
+import { Ownable } from "openzeppelin-contracts/contracts/access/Ownable.sol";
+
+contract NftCreatorVerifier is INftCreatorVerifier, Ownable {
+    address private _creatorRegistry;
+    mapping(uint256 => address) private _opChainIdToOpEditionNftFactory;
+
+    modifier onlyNftCreator(address nftAddress_, uint256 tokenId_) {
+        if (ICreatorRegistry(_creatorRegistry).getCreatorOf(nftAddress_, tokenId_) != msg.sender) {
+            revert CallerNotNftCreator(nftAddress_, tokenId_, msg.sender);
+        }
+
+        _;
+    }
+
+    modifier onlyRegisteredEditionNftChainId(uint256 editionNftChainId_) {
+        if (_opChainIdToOpEditionNftFactory[editionNftChainId_] == address(0)) {
+            revert UnregisteredOpChainId(editionNftChainId_);
+        }
+
+        _;
+    }
+
+    constructor(address owner_, address creatorRegistry_) {
+        _transferOwnership(owner_);
+        _creatorRegistry = creatorRegistry_;
+    }
+
+    function deployTimedEditionNft(
+        DeployTimedEditionNftParams calldata params_
+    )
+        external
+        onlyNftCreator(params_.originalNftAddress, params_.originalNftTokenId)
+        onlyRegisteredEditionNftChainId(params_.editionNftChainId)
+    {
+        bytes memory message = abi.encodeCall(
+            IOpEditionNftFactory(address(0)).deployTimedEditionNft,
+            (
+                OpDeployTimedEditionNftParams({
+                    creator: msg.sender,
+                    originalNftAddress: params_.originalNftAddress,
+                    originalNftTokenId: params_.originalNftTokenId,
+                    endMintingBlockNumber: params_.endMintingBlockNumber,
+                    mintPrice: params_.mintPrice,
+                    name: params_.name,
+                    symbol: params_.symbol,
+                    description: params_.description,
+                    collectionImageUri: params_.collectionImageUri
+                })
+            )
+        );
+
+        ICrossDomainMessenger(CrossDomainOrigin.crossDomainMessenger(params_.editionNftChainId)).sendMessage(
+            _opChainIdToOpEditionNftFactory[params_.editionNftChainId],
+            message,
+            // The first 1.92M gas is free
+            // https://community.optimism.io/docs/developers/bridge/messaging/#for-l1-%E2%87%92-l2-transactions
+            1920000
+        );
+
+        emit DeployEditionNftMessageSent(
+            params_.editionNftChainId,
+            params_.originalNftAddress,
+            params_.originalNftTokenId,
+            msg.sender,
+            EditionType.Timed
+        );
+    }
+
+    function deployLimitedEditionNft(
+        DeployLimitedEditionNftParams calldata params_
+    )
+        external
+        onlyNftCreator(params_.originalNftAddress, params_.originalNftTokenId)
+        onlyRegisteredEditionNftChainId(params_.editionNftChainId)
+    {
+        bytes memory message = abi.encodeCall(
+            IOpEditionNftFactory(address(0)).deployLimitedEditionNft,
+            (
+                OpDeployLimitedEditionNftParams({
+                    creator: msg.sender,
+                    originalNftAddress: params_.originalNftAddress,
+                    originalNftTokenId: params_.originalNftTokenId,
+                    supplyLimit: params_.supplyLimit,
+                    mintPrice: params_.mintPrice,
+                    name: params_.name,
+                    symbol: params_.symbol,
+                    description: params_.description,
+                    collectionImageUri: params_.collectionImageUri
+                })
+            )
+        );
+
+        ICrossDomainMessenger(CrossDomainOrigin.crossDomainMessenger(params_.editionNftChainId)).sendMessage(
+            _opChainIdToOpEditionNftFactory[params_.editionNftChainId],
+            message,
+            // The first 1.92M gas is free
+            // https://community.optimism.io/docs/developers/bridge/messaging/#for-l1-%E2%87%92-l2-transactions
+            1920000
+        );
+
+        emit DeployEditionNftMessageSent(
+            params_.editionNftChainId,
+            params_.originalNftAddress,
+            params_.originalNftTokenId,
+            msg.sender,
+            EditionType.Limited
+        );
+    }
+
+    function setOpEditionNftFactory(uint256 opChainId_, address opEditionNftFactory_) external override onlyOwner {
+        _opChainIdToOpEditionNftFactory[opChainId_] = opEditionNftFactory_;
+    }
+
+    function creatorRegistry() external view returns (address) {
+        return _creatorRegistry;
+    }
+
+    function opEditionNftFactory(uint256 opChainId_) external view returns (address) {
+        return _opChainIdToOpEditionNftFactory[opChainId_];
+    }
+}

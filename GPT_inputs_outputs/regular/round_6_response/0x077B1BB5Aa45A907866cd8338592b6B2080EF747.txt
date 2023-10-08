@@ -1,0 +1,130 @@
+In analyzing the provided Solidity code, several potential gas-wasting patterns are identified. The patterns are described along with the necessary steps to fix them and their potential impact on readability, security, and maintainability.
+
+\subsection*{Pattern 1: Redundant Ownership Checks}
+
+1. How did you find this pattern?
+
+The `require` statement is used multiple times to check if the `msg.sender` is the owner of a token. This checking is redundant as it is being performed in each of the staking and unstaking functions (`gen1IndividualStake`, `gen2IndividualStake`, `gen1IndividualUnstake`, `gen2IndividualUnstake` and `getArtifactForGen1`).
+
+2. What should I do to fix the found gas-wasting patterns?
+
+The redundant ownership checks can be moved to a modifier that checks the ownership of a token. This modifier can then be applied to functions where the check is necessary, ensuring the condition is met before the execution of the function. Here is an example:
+
+```solidity
+modifier onlyOwner(uint16 _tokenId, uint8 gen) {
+    if(gen == 1) {
+        require(genesis111.ownerOf(_tokenId) == msg.sender);
+    } else {
+        require(genesis2.ownerOf(_tokenId) == msg.sender);
+    }
+    _;
+}
+```
+
+Then apply this modifier to the functions:
+
+```solidity
+function gen1IndividualStake(uint16 _tokenId) onlyOwner(_tokenId, 1) private {...}
+function gen1IndividualUnstake(uint16 _tokenId) onlyOwner(_tokenId, 1) private {...}
+function gen2IndividualStake(uint16 _tokenId) onlyOwner(_tokenId, 2) private {...}
+function gen2IndividualUnstake(uint16 _tokenId) onlyOwner(_tokenId, 2) private {...}
+```
+
+3. Ratings:
+
+- Readability: 4; The modifier improves the readability by reducing duplicate checks.
+- Security: 5; The modifier does not affect security since it only encapsulates the same logic.
+- Maintainability: 4; The use of a modifier increases maintainability because changes in the ownership check only need to be made in one place.
+
+\subsection*{Pattern 2: Loop for Search}
+
+1. How did you find this pattern?
+
+The functions `gen1IndividualUnstake` and `gen2IndividualUnstake` use a loop to search for a token's index in the `gen1StakedArray[msg.sender]` and `gen2StakedArray[msg.sender]` arrays, respectively. This operation has a time complexity of O(n) and can consume significant gas in the worst-case scenario when the token is not present in the array.
+
+2. What should I do to fix the found gas-wasting patterns?
+
+A mapping can be used to store the index of each token in the staked arrays. This would allow constant-time access to the index of any token.
+
+Here is an example of how to implement this:
+
+```solidity
+// Add these mappings
+mapping(address => mapping(uint16 => uint256)) private gen1TokenIndex;
+mapping(address => mapping(uint16 => uint256)) private gen2TokenIndex;
+
+// Update the staking functions to store the token's index in the mappings
+gen1TokenIndex[msg.sender][_tokenId] = gen1StakedArray[msg.sender].length - 1;
+gen2TokenIndex[msg.sender][_tokenId] = gen2StakedArray[msg.sender].length - 1;
+
+// Update the unstaking functions to use the mappings instead of the loop
+uint256 idx = gen1TokenIndex[msg.sender][_tokenId];
+uint256 idx = gen2TokenIndex[msg.sender][_tokenId];
+```
+
+3. Ratings:
+
+- Readability: 3; The use of additional mappings may make the code slightly more complex to read.
+- Security: 5; The change does not have any impact on security.
+- Maintainability: 4; The use of mappings to store indexes can improve maintainability by reducing the complexity of the unstaking functions.
+
+\subsection*{Pattern 3: Array Resizing}
+
+1. How did you find this pattern?
+
+The functions `gen1IndividualUnstake` and `gen2IndividualUnstake` remove an element from an array by swapping it with the last element and then reducing the array's size. If the element being removed is the last one, this leads to an unnecessary swap operation.
+
+2. What should I do to fix the found gas-wasting patterns?
+
+Add a condition to check whether the element being removed is the last one. If it is, skip the swap operation.
+
+Here is an example:
+
+```solidity
+if (idx != len - 1) {
+    gen1StakedArray[msg.sender][idx] = gen1StakedArray[msg.sender][len - 1];
+    gen2StakedArray[msg.sender][idx] = gen2StakedArray[msg.sender][len - 1];
+
+    // Also update the token index in the mapping
+    gen1TokenIndex[msg.sender][gen1StakedArray[msg.sender][idx]] = idx;
+    gen2TokenIndex[msg.sender][gen2StakedArray[msg.sender][idx]] = idx;
+}
+gen1StakedArray[msg.sender].pop();
+gen2StakedArray[msg.sender].pop();
+```
+
+3. Ratings:
+
+- Readability: 4; The additional condition doesn't significantly affect readability.
+- Security: 5; The change does not have any impact on security.
+- Maintainability: 4; The change does not have a significant impact on maintainability.
+
+\subsection*{Pattern 4: Unnecessary State Variable}
+
+1. How did you find this pattern?
+
+The contract has a state variable `genesis2`, but it is never used in the contract except in the constructor where it is assigned a value.
+
+2. What should I do to fix the found gas-wasting patterns?
+
+If the `genesis2` variable is not used in the contract, it should be removed to save gas on storage.
+
+```solidity
+// Remove this line
+ERC721 public genesis2;
+```
+
+In case `genesis2` needs to be kept for other reasons not shown in the code snippet, consider marking it as `immutable` if it's not intended to be changed after being set in the constructor. This will save gas as `immutable` variables are stored in the contract code rather than storage.
+
+```solidity
+// Change this line
+ERC721 public immutable genesis2;
+```
+
+3. Ratings:
+
+- Readability: 4; The removal or marking of the variable as `immutable` doesn't significantly affect readability.
+- Security: 5; The change does not have any impact on security.
+- Maintainability: 5; The removal of unnecessary variables or marking them as `immutable` improves maintainability by reducing complexity.
+
+Overall, these changes should help reduce gas costs in your contract. However, keep in mind that any modifications to your contract should be thoroughly tested to ensure they don't introduce new issues or vulnerabilities.

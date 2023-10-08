@@ -1,0 +1,107 @@
+// SPDX-License-Identifier: MIT
+/* DOGENS TOKEN AIRDROPPER CONTRACT
+Telegram : https://t.me/dogenstoken
+Website  : https://www.dogens.io
+Twitter  : https://twitter.com/DogensToken
+    LAUNCH YOUR TOKEN WITH DOGENS
+*/
+
+pragma solidity 0.8.19;
+
+import "@openzeppelin/contracts/access/Ownable.sol";
+
+interface IERC20 {
+    function transfer(address to, uint256 value) external returns (bool);
+    function transferFrom(address from, address to, uint256 value) external returns (bool);
+}
+
+contract Dogens_Token_Airdropper is Ownable {
+    uint256 public FEE = 0.05 ether; 
+    address payable public  TREASURY_ADDRESS = payable(address(0));
+    address public constant ADDRESS_ZERO = address(0);
+
+
+    function distributeEther(address[] memory recipients, uint256[] memory values) external payable {
+        require(recipients.length == values.length, "Mismatched recipients and values length");
+        uint256 currentFee = (msg.sender == owner()) ? 0 : FEE;
+        uint256 totalAmount;
+        uint256 balanceBefore = address(this).balance;
+
+        if (currentFee > 0) {
+            require(msg.value >= currentFee, "Fee not covered by provided ETH");
+            (bool success, ) = TREASURY_ADDRESS.call{ value: currentFee }("");
+            require(success, "Failed to transfer fee to treasury");
+        }
+
+        for (uint256 i = 0; i < recipients.length; i++) {
+            (bool success, ) = payable(recipients[i]).call{value: values[i]}("");
+            require(success, "Failed to distribute ETH to recipient");
+            totalAmount += values[i];
+        }
+
+        require(msg.value >= totalAmount, "Not enough ETH sent to cover distribution");
+
+        uint256 diff = address(this).balance - balanceBefore;
+        if (diff > 0) {
+            (bool success, ) = payable(msg.sender).call{value: diff}("");
+            require(success, "Failed to refund sender");
+        }
+    }
+
+    function distributeToken(IERC20 token, address[] memory recipients, uint256[] memory values) external payable {
+        require(recipients.length == values.length, "Mismatched recipients and values length");
+
+        uint256 total = 0;
+        uint256 currentFee = (msg.sender == owner()) ? 0 : FEE;
+
+        if (currentFee > 0) {
+            require(msg.value >= currentFee, "Fee not covered by provided ETH");
+            (bool success, ) = TREASURY_ADDRESS.call{ value: currentFee }("");
+            require(success, "Failed to transfer fee to treasury");
+        }
+
+        for (uint256 i = 0; i < recipients.length; i++) {
+            total += values[i];
+        }
+
+        require(token.transferFrom(msg.sender, address(this), total), "Token transfer failed");
+
+        for (uint256 i = 0; i < recipients.length; i++) {
+            require(token.transfer(recipients[i], values[i]), "Failed to distribute token to recipient");
+        }
+    }
+
+    function distributeTokenSimple(IERC20 token, address[] memory recipients, uint256[] memory values) external payable {
+        require(recipients.length == values.length, "Mismatched recipients and values length");
+        uint256 currentFee = (msg.sender == owner()) ? 0 : FEE;
+
+        if (currentFee > 0) {
+            require(msg.value >= currentFee, "Fee not covered by provided ETH");
+            (bool success, ) = TREASURY_ADDRESS.call{ value: currentFee }("");
+            require(success, "Failed to transfer fee to treasury");
+        }
+
+        for (uint256 i = 0; i < recipients.length; i++) {
+            require(token.transferFrom(msg.sender, recipients[i], values[i]), "Failed to distribute token to recipient");
+        }
+    }
+
+    function RecycleETHorToken(address _token, uint256 _amount) external onlyOwner {
+        if (_token != address(0)) {
+            IERC20(_token).transfer(msg.sender, _amount);
+        } else {
+            (bool success, ) = payable(msg.sender).call{ value: _amount }("");
+            require(success, "Failed to recover ETH");
+        }
+    }
+
+    function ChangeFee(uint256 _fee) external onlyOwner {
+        require(_fee > 0, "Invalid fee: must be non-zero");
+        FEE = _fee;
+    }
+
+    function setTreasuryAddress(address payable _treasuryAddress) external onlyOwner {
+        require(_treasuryAddress != ADDRESS_ZERO, "Invalid treasury address");
+        TREASURY_ADDRESS = _treasuryAddress;
+    }
+}

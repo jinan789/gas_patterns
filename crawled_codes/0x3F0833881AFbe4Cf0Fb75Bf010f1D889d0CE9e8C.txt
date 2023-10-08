@@ -1,0 +1,151 @@
+// ********************************************* //
+// ********       Our Social Handles     ****** //
+// ******************************************* //
+
+
+
+
+// https://twitter.com/TokenConspiracy
+
+// https://t.me/ConspiracyDAO
+
+// Conspiracydaotoken.com
+
+
+
+
+// ********************************************* //
+
+
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+import "./ConspiracyDAOToken.sol";
+
+contract ConspiracyDAO is ConspiracyDAOToken {
+    struct Conspiracy{
+        uint256 id;
+        address creator;
+        string name;
+        string description;
+        string imageUri;
+        uint256 upvotes;
+        uint256 downvotes;
+    }
+
+    uint256 public createConspiracyCost = 100e18;
+
+    Conspiracy[] private conspiracies;
+
+    // voterAddress => conspiracy Id => upvoted bool
+    mapping(address => mapping(uint256 => bool)) private upvoted;
+    // voterAddress => conspiracy Id => downvoted bool
+    mapping(address => mapping(uint256 => bool)) private downvoted;
+
+    //////////////////////////////////////////
+    //////////     Events     ///////////////
+    ////////////////////////////////////////
+    event CreatedConspiracy(uint256 id, address creator, string name, string description, string imageUri);
+    event Upvoted(address upvoter, uint256 conspiracyId, uint256 latestUpvotes, uint256 latestDownvotes);
+    event Downvoted(address downvoter, uint256 conspiracyId, uint256 latestUpvotes, uint256 latestDownvotes);
+
+    constructor(address devWallet, address marketingWallet) ConspiracyDAOToken(devWallet, marketingWallet) {}
+
+    //////////////////////////////////////////
+    //////////     Modifiers     ////////////
+    ////////////////////////////////////////
+
+    modifier shouldNotBeUpvoted(uint256 conspiracyId){
+        require(!upvoted[msg.sender][conspiracyId], "You have already Updvoted this conspiracy");
+        _;
+    }
+
+    modifier shouldNotBeDownvoted(uint256 conspiracyId) {
+        require(!downvoted[msg.sender][conspiracyId], "You have already Downvoted this conspiracy");
+        _;
+    }
+
+    ///////////////////////////////////////////////////
+    //////////     External Functions     ////////////
+    /////////////////////////////////////////////////
+
+    function createConspiracy(string calldata name, string calldata description, string calldata imageUri) external {
+        require(balanceOf(msg.sender) >= createConspiracyCost, "Your CDAO Token Balance is too low to create a conspiracy!");
+
+        uint256 conspiracyId = conspiracies.length;
+        address creator = msg.sender;
+
+        Conspiracy memory conspiracy = Conspiracy({
+            name: name,
+            id: conspiracyId,
+            creator: creator,
+            description: description,
+            imageUri: imageUri,
+            upvotes: 0,
+            downvotes: 0
+        });
+
+        conspiracies.push(conspiracy);
+        emit CreatedConspiracy(conspiracyId, creator, name, description, imageUri);
+
+        _transfer(msg.sender, owner(), createConspiracyCost);
+    }
+
+    function upvote(uint256 conspiracyId) external shouldNotBeUpvoted(conspiracyId) {
+        address user = msg.sender;
+        Conspiracy storage conspiracy = conspiracies[conspiracyId];
+
+        if(downvoted[user][conspiracyId]){
+            downvoted[user][conspiracyId] = false;
+            conspiracy.downvotes--;
+        }
+        
+        upvoted[user][conspiracyId] = true;
+        conspiracy.upvotes++;
+
+        emit Upvoted(user, conspiracyId, conspiracy.upvotes, conspiracy.downvotes);
+    }
+
+    function downvote(uint256 conspiracyId) external shouldNotBeDownvoted(conspiracyId){
+        address user = msg.sender;
+        Conspiracy storage conspiracy = conspiracies[conspiracyId]; 
+
+        if(upvoted[user][conspiracyId]){
+            upvoted[user][conspiracyId] = false;
+            conspiracy.upvotes--;
+        }
+        
+        downvoted[user][conspiracyId] = true;
+        conspiracy.downvotes++;
+
+        emit Downvoted(user, conspiracyId, conspiracy.upvotes, conspiracy.downvotes);
+    }
+
+    // Multiplies by 1e18 "So expects a normal number and not a token number"
+    function setCreateConspiracyCost(uint256 newCreateConspiracyCost) external onlyOwner {
+        createConspiracyCost = newCreateConspiracyCost * 1e18;
+    }
+
+
+    ///////////////////////////////////////////////////
+    //////////     External View Functions     ////////////
+    /////////////////////////////////////////////////
+
+    function getAllConspiracies() external view returns(Conspiracy[] memory){
+        return conspiracies;
+    }
+
+    function getConspiracy(uint256 conspiracyId) external view returns(Conspiracy memory){
+        return conspiracies[conspiracyId];
+    } 
+
+    function getUsersVoteFor(uint256 conspiracyId) external view returns(string memory) {
+        address user = msg.sender;
+        if(upvoted[user][conspiracyId]){
+            return "Upvoted";
+        } else if(downvoted[user][conspiracyId]){
+            return "Downvoted";
+        } else {
+            return "Not voted";
+        }
+    }
+}

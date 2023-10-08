@@ -1,0 +1,68 @@
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.17;
+
+import '@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol';
+import {ITpToken} from './interfaces/ITpToken.sol';
+
+/// @title Term Pool Token Contract
+/// @author Holdex Team
+/// @notice Contract for TpToken, that represents the right to receive the interest of certain term of the TermPool
+contract TpToken is ITpToken, ERC20Upgradeable {
+  /// @notice Term pool address
+  address public termPool;
+
+  /// @notice Decimals of the token
+  uint8 private __decimals;
+
+  /// @notice Modifier that allows only term pool to call the function
+  modifier onlyTermPool() {
+    if (msg.sender == termPool) _;
+    else revert NotTermPool(msg.sender);
+  }
+
+  /// @custom:oz-upgrades-unsafe-allow constructor
+  constructor() {
+    _disableInitializers();
+  }
+
+  /// @notice Initializes the upgradeable contract
+  /// @param _name Name of the token
+  /// @param _symbol Symbol of the token
+  /// @param _decimals Decimals of the token
+  function __TpToken_init(
+    string memory _name,
+    string memory _symbol,
+    uint8 _decimals
+  ) external virtual initializer {
+    __ERC20_init(_name, _symbol);
+    termPool = msg.sender;
+    __decimals = _decimals;
+  }
+
+  /// @notice Returns the amount of token smallest unit
+  function decimals()
+    public
+    view
+    virtual
+    override(ERC20Upgradeable, IERC20MetadataUpgradeable)
+    returns (uint8)
+  {
+    return __decimals;
+  }
+
+  /// @notice Mints the tokens according to provided cpToken amount
+  /// @param to The address where the token is minted for
+  /// @param  _amount The nnumber of token to be minted
+  function mint(address to, uint256 _amount) external onlyTermPool {
+    _mint(to, _amount);
+  }
+
+  /// @dev the caller must have allowance for ``accounts``'s tokens of at least `amount`.
+  /// @notice Burns the tokens according to provided cpToken amount
+  /// @param from The address where token burn from
+  /// @param _amount The number of token to be burned
+  function burnFrom(address from, uint256 _amount) external onlyTermPool {
+    _spendAllowance(from, _msgSender(), _amount);
+    _burn(from, _amount);
+  }
+}

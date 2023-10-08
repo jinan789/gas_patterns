@@ -1,0 +1,40 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.19;
+
+import {ECDSAUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/cryptography/ECDSAUpgradeable.sol";
+import {AppFacet} from "../../internals/AppFacet.sol";
+import {BaseStorage} from "../../diamond/BaseStorage.sol";
+import {ApiMintStorage} from "./ApiMintStorage.sol";
+
+contract ApiMintFacet is AppFacet {
+    using ECDSAUpgradeable for bytes32;
+
+    function apiMintTo(
+        address recipient,
+        uint64 quantity,
+        uint256 expiration,
+        bytes calldata signature
+    ) external {
+        ApiMintStorage.Layout storage layout = ApiMintStorage.layout();
+        BaseStorage.Layout storage baseLayout = BaseStorage.layout();
+        require(quantity > 0, "Quantity is 0");
+        require(
+            !layout._isSignatureVerified[signature],
+            "Signature already verified"
+        );
+        require(
+            address(baseLayout._mintSigner) != address(0),
+            "Mint signer not set"
+        );
+        require(expiration > block.timestamp, "Signature expired");
+        require(
+            keccak256(abi.encodePacked(recipient, quantity, expiration))
+                .toEthSignedMessageHash()
+                .recover(signature) == baseLayout._mintSigner,
+            "Invalid signature"
+        );
+
+        layout._isSignatureVerified[signature] = true;
+        _mint(recipient, quantity);
+    }
+}

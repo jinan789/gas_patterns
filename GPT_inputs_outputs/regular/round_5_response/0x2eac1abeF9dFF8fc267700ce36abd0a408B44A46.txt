@@ -1,0 +1,38 @@
+
+1. **Redundant storage reads**
+   - *Discovery process*: The `orderByAssetId[_nftAddress][_assetId]` is read from storage multiple times in different functions. This is inefficient because reading from storage is expensive in gas.
+   - *Fix*: Store the read value in memory the first time it is read and then refer to the memory value for subsequent uses. In the `cancelOrder` function, we could store the `Order` in a memory variable and use that instead.
+   - *Impact*: Readability: 5, Security: 5, Maintainability: 5. This change should not impact readability, security, or maintainability of the code as it's essentially a simple refactoring.
+
+\begin{verbatim}
+Order memory order = orderByAssetId\[\_nftAddress\]\[\_assetId\];
+\end{verbatim}
+
+2. **Repeated conditional checks**
+   - *Discovery process*: In the `safeExecuteOrder` function, we see the conditional check `order.currency == MARKETPLACE_ETHER` multiple times. This is a gas-wasting pattern because the condition is evaluated multiple times, therefore consuming more gas.
+   - *Fix*: Instead of checking this condition multiple times, we could store the result of this condition in a boolean variable once and use this variable for subsequent conditional statements.
+   - *Impact*: Readability: 4, Security: 5, Maintainability: 4. This change should slightly decrease readability as it introduces an additional variable, but it should not impact security and will have a slight impact on maintainability due to the extra variable.
+
+\begin{verbatim}
+bool isEtherMarketplace = order.currency == MARKETPLACE_ETHER;
+\end{verbatim}
+
+3. **Repeated function calls**
+   - *Discovery process*: In the `safeExecuteOrder` function, we see the NFT contract's `getMinterAddress` function is called twice. Each function call consumes gas, so this is a gas-wasting pattern.
+   - *Fix*: We could store the result of the first function call in a variable and reuse this variable, instead of invoking the function twice.
+   - *Impact*: Readability: 4, Security: 5, Maintainability: 4. This change should slightly decrease readability as it introduces an additional variable, but it should not impact security and will have a slight impact on maintainability due to the extra variable.
+
+\begin{verbatim}
+address minterAddress = NFT(order.nftAddress).getMinterAddress(\_assetId);
+\end{verbatim}
+
+4. **Overuse of storage**
+   - *Discovery process*: In the `updateOrder` function, the `Order` struct is declared as storage. This could be expensive because writing to and reading from storage are expensive operations.
+   - *Fix*: If possible, reduce the use of storage by using memory variables. However, this depends on the logic of the contract. If the updated order needs to persist across different transactions, then it needs to be stored in storage. But if not, using memory instead of storage can save gas.
+   - *Impact*: Readability: 5, Security: 3, Maintainability: 4. This change should not impact readability but might reduce security if the persistence of the `Order` is required across transactions. It could also affect maintainability if the developers need to remember when to use storage and when to use memory.
+
+\begin{verbatim}
+Order memory order = orderByAssetId\[\_nftAddress\]\[\_assetId\];
+\end{verbatim}
+
+As for your prompt, it is very clear, and it provides enough information to understand the task. One improvement could be to provide a brief description of the contract and its functions. This would help in understanding the context which can be crucial in some cases for optimizing gas usage.

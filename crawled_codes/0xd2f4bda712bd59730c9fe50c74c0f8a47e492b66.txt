@@ -1,0 +1,21 @@
+// SPDX-License-Identifier: MIT
+
+pragma solidity ^0.8.0;
+
+/// @title: Godlength
+/// @author: manifold.xyz
+
+import "./manifold/ERC721Creator.sol";
+
+/////////////////////
+//                 //
+//                 //
+//    godlength    //
+//                 //
+//                 //
+/////////////////////
+
+
+contract gdlth is ERC721Creator {
+    constructor() ERC721Creator("Godlength", "gdlth") {}
+}

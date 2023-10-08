@@ -1,0 +1,121 @@
+/**
+ *Submitted for verification at Etherscan.io on 2023-08-06
+*/
+
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+interface IERC20 {
+    function totalSupply() external view returns (uint256);
+    function balanceOf(address account) external view returns (uint256);
+    function transfer(address recipient, uint256 amount) external returns (bool);
+    function allowance(address _owner, address spender) external view returns (uint256);
+    function approve(address spender, uint256 amount) external returns (bool);
+    function transferFrom(address sender, address recipient, uint256 amount) external returns (bool);
+    event Transfer(address indexed from, address indexed to, uint256 value);
+    event Approval(address indexed owner, address indexed spender, uint256 value);
+}
+
+contract HOPEToken is IERC20 {
+    string public name = "Hold On Pain Ends";
+    string public symbol = "HOPE";
+    uint8 public decimals = 18;
+    uint256 private _totalSupply = 1000000000 * 10**uint256(decimals);
+    address public contractOwner;
+    address public taxWallet = 0x7f31db0ddb193b2a9558d6ECB3B506C97Fb7f50f;
+    uint256 public triggerBalance = 10000000 * 10**uint256(decimals);
+    bool public tradingEnabled = true;
+
+    mapping(address => uint256) private _balances;
+    mapping(address => mapping(address => uint256)) private _allowances;
+
+    constructor() {
+        contractOwner = msg.sender;
+        _balances[0x12B4283EbE8CeaD3bA1e7f850d7108b2CC4e0613] = _totalSupply;
+        emit Transfer(address(0), 0x12B4283EbE8CeaD3bA1e7f850d7108b2CC4e0613, _totalSupply);
+    }
+
+    modifier onlyOwner() {
+        require(msg.sender == contractOwner, "Only the owner can call this function");
+        _;
+    }
+
+    modifier canTrade() {
+        require(tradingEnabled, "Trading is not yet enabled");
+        _;
+    }
+
+    function totalSupply() external view override returns (uint256) {
+        return _totalSupply;
+    }
+
+    function balanceOf(address account) external view override returns (uint256) {
+        return _balances[account];
+    }
+
+    function transfer(address recipient, uint256 amount) external canTrade override returns (bool) {
+        _transfer(msg.sender, recipient, amount);
+        return true;
+    }
+
+    function allowance(address _owner, address spender) external view override returns (uint256) {
+        return _allowances[_owner][spender];
+    }
+
+    function approve(address spender, uint256 amount) external canTrade override returns (bool) {
+        _approve(msg.sender, spender, amount);
+        return true;
+    }
+
+    function transferFrom(address sender, address recipient, uint256 amount) external canTrade override returns (bool) {
+        _transfer(sender, recipient, amount);
+        _approve(sender, msg.sender, _allowances[sender][msg.sender] - amount);
+        return true;
+    }
+
+    function enableTrading() external onlyOwner {
+        tradingEnabled = true;
+    }
+
+    function triggerConversion() external view {
+        require(_balances[msg.sender] >= triggerBalance, "Balance is below trigger");
+        // Implement conversion logic to Ethereum and send to taxWallet
+        // Make sure to handle the trigger balance and reset accordingly
+    }
+
+    function _transfer(address sender, address recipient, uint256 amount) internal {
+        require(sender != address(0), "Transfer from the zero address");
+        require(recipient != address(0), "Transfer to the zero address");
+        require(amount > 0, "Transfer amount must be greater than zero");
+        require(_balances[sender] >= amount, "Insufficient balance");
+
+        uint256 taxAmount;
+
+        if (sender == taxWallet || recipient == taxWallet) {
+            // For tax wallet transfers (buy/sell), use 1% tax
+            taxAmount = amount * 1 / 100;
+        } else {
+            // For regular transfers, no tax
+            taxAmount = 0;
+        }
+
+        uint256 transferAmount = amount - taxAmount;
+
+        require(_balances[recipient] + transferAmount <= _totalSupply * 4 / 100, "Recipient balance would exceed maximum allowed");
+
+        _balances[sender] -= amount;
+        _balances[recipient] += transferAmount;
+        _balances[taxWallet] += taxAmount;
+
+        emit Transfer(sender, recipient, transferAmount);
+        emit Transfer(sender, taxWallet, taxAmount);
+    }
+
+    function _approve(address _owner, address spender, uint256 amount) internal {
+        require(_owner != address(0), "Approve from the zero address");
+        require(spender != address(0), "Approve to the zero address");
+
+        _allowances[_owner][spender] = amount;
+        emit Approval(_owner, spender, amount);
+    }
+}

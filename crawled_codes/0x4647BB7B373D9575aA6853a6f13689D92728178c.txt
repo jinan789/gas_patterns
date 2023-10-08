@@ -1,0 +1,237 @@
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.18;
+
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+
+import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+
+contract ESDop is Initializable, ERC20Upgradeable, OwnableUpgradeable, UUPSUpgradeable {
+    using SafeERC20 for IERC20;
+
+    uint constant MULTIPLIER = 1e12;
+    uint constant RATIO_UNIT = 100; // 100%
+
+    bool public whitelistEnabled;
+    mapping(address => bool) whitelist;
+    uint public minDuration;
+    uint public maxDuration;
+    uint public minRatio;
+    uint public maxRatio;
+
+    IERC20 public dop;
+    IERC20 public veDop;
+
+    struct UserVesting {
+        uint duration;
+        uint amount;
+        uint claimedAt;
+        uint rewardDebt;
+        uint endAt;
+    }
+
+    mapping(address => UserVesting) public userVesting;
+
+    event DurationUpdated(uint256 minDuration, uint256 maxDuration);
+
+    event RatioUpdated(uint256 minRatio, uint256 maxRatio);
+
+    event WhitelistEnabled(bool enabled);
+
+    event Claim(address indexed user, uint256 amount, uint256 claimedAt);
+
+    event StartVest(address indexed user, uint256 amount, uint256 duration);
+
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
+    function initialize(IERC20 _dop, IERC20 _veDop) public initializer {
+        dop = _dop;
+        veDop = _veDop;
+        whitelist[address(this)] = true;
+        whitelistEnabled = true;
+        minDuration = 30 days;
+        maxDuration = 365 days;
+        minRatio = 10; // 10%; balanceOf * minRatio : veDop.balanceOf
+        maxRatio = 100; // 100%; balanceOf * maxRatio veDop.balanceOf
+        __ERC20_init("escrow DOP", "esDOP");
+        __Ownable_init();
+        __UUPSUpgradeable_init();
+        emit DurationUpdated(minDuration, maxDuration);
+        emit RatioUpdated(minRatio, maxRatio);
+        emit WhitelistEnabled(whitelistEnabled);
+    }
+
+    function setVeDop(IERC20 _veDop) external onlyOwner {
+        veDop = _veDop;
+    }
+
+    function setDop(IERC20 _dop) external onlyOwner {
+        dop = _dop;
+    }
+
+    function setDurations(uint min, uint max) external onlyOwner {
+        minDuration = min;
+        maxDuration = max;
+        emit DurationUpdated(min, max);
+    }
+
+    function getDurations() external view returns (uint, uint) {
+        return (minDuration, maxDuration);
+    }
+
+    // @notion
+    // Ratio is amount / veDop balance small is better
+    function setRatios(uint min, uint max) external onlyOwner {
+        minRatio = min;
+        maxRatio = max;
+        emit RatioUpdated(min, max);
+    }
+
+    function getRatios() external view returns (uint, uint) {
+        return (minRatio, maxRatio);
+    }
+
+    function mint(address to, uint256 amount) external onlyOwner {
+        dop.safeTransferFrom(msg.sender, address(this), amount);
+        _mint(to, amount);
+    }
+
+    function setWhitelistStatus(bool status) external onlyOwner {
+        whitelistEnabled = status;
+        emit WhitelistEnabled(whitelistEnabled);
+    }
+
+    function setWhiteList(address white, bool enabled) external onlyOwner {
+        whitelist[white] = enabled;
+    }
+
+    function _beforeTokenTransfer(
+        address from,
+        address to,
+        uint256
+    ) internal view override {
+        if (from == address(0)) return;
+        if (whitelistEnabled) {
+            // esDop Staking and controllers.
+            // Admin should send esDop to controllers.
+            // controller should be able to send to lenders & borrowers.
+            require(
+                whitelist[from] || whitelist[to],
+                "ESDop: to address is not whitelisted"
+            );
+        }
+    }
+
+    function startVest(uint _amount, address recipient) external {
+        _transfer(msg.sender, address(this), _amount);
+
+        UserVesting storage user = userVesting[recipient];
+        if (user.amount > user.rewardDebt) {
+            _claimDop(recipient);
+        }
+
+        uint amount = user.amount + _amount;
+        uint veDopBalance = veDop.balanceOf(recipient);
+        uint myRatio = (veDopBalance * RATIO_UNIT) / amount;
+        require(myRatio >= minRatio, "ESDop: veDop Balance less than minRatio");
+
+        uint vestingDuration = minDuration;
+        uint _maxRatio = maxRatio; // For gas optimization
+        if (myRatio < _maxRatio) {
+            vestingDuration =
+                minDuration +
+                ((maxDuration - minDuration) * (_maxRatio - myRatio)) /
+                (_maxRatio - minRatio);
+        }
+
+        user.amount = amount;
+        user.duration = vestingDuration;
+        user.claimedAt = block.timestamp;
+        user.endAt = block.timestamp + vestingDuration;
+
+        emit StartVest(recipient, amount, vestingDuration);
+    }
+
+    function claimDop(address to) external returns (uint reward) {
+        reward = _claimDop(to);
+    }
+
+    function maxEsDop(address to) external view returns (uint) {
+        return (veDop.balanceOf(to) * RATIO_UNIT) / maxRatio;
+    }
+
+    function claimableDop(address to) public view returns (uint) {
+        UserVesting memory user = userVesting[to];
+        if (user.rewardDebt >= user.amount) return 0;
+        if (user.amount > 0) {
+            uint duration = block.timestamp - user.claimedAt;
+            uint reward = (user.amount * duration) / user.duration;
+            if (user.rewardDebt + reward > user.amount) {
+                reward = user.amount - user.rewardDebt;
+            }
+            return reward;
+        }
+        return 0;
+    }
+
+    function remainingDop(address to) public view returns (uint) {
+        UserVesting storage user = userVesting[to];
+        return user.amount - user.rewardDebt;
+    }
+
+    function userInfo(
+        address to
+    )
+        public
+        view
+        returns (uint endAt, uint claimed, uint remained, uint claimable)
+    {
+        UserVesting memory user = userVesting[to];
+        claimed = user.rewardDebt;
+        remained = user.amount - user.rewardDebt;
+        claimable = claimableDop(to);
+        endAt = user.endAt;
+    }
+
+    function _claimDop(address to) internal returns (uint256 reward) {
+        UserVesting memory user = userVesting[to];
+        require(user.rewardDebt < user.amount, "ESDop: Claimed All");
+        if (user.amount > 0) {
+            uint duration = block.timestamp - user.claimedAt;
+            reward = (user.amount * duration) / user.duration;
+            if (user.rewardDebt + reward > user.amount) {
+                reward = user.amount - user.rewardDebt;
+            }
+            dop.safeTransfer(to, reward);
+            _burn(address(this), reward);
+            userVesting[to].rewardDebt = user.rewardDebt + reward;
+        }
+        userVesting[to].claimedAt = block.timestamp;
+        emit Claim(to, reward, block.timestamp);
+    }
+
+    function sweepToken(address token) external onlyOwner {
+        require(
+            token != address(this) &&
+                token != address(dop) &&
+                token != address(veDop),
+            "!Allowed"
+        );
+        IERC20(token).safeTransfer(
+            msg.sender,
+            IERC20(token).balanceOf(address(this))
+        );
+    }
+
+    function _authorizeUpgrade(address newImplementation)
+        internal
+        onlyOwner
+        override
+    {}
+}

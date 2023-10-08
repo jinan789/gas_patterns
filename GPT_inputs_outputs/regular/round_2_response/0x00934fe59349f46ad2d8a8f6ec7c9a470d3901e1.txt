@@ -1,0 +1,81 @@
+
+\subsection*{1. Redundant Checks}
+
+\subsubsection*{Pattern Discovery}
+The transferFrom function executes checks that the sender and recipient addresses are not zero in the \_approve function and then again in the \_transfer function. This redundancy wastes gas because it unnecessarily executes the same check twice.
+
+\subsubsection*{Solution}
+Remove the require statements that check if the 'from' and 'to' addresses are not zero from either the \_approve or \_transfer functions. Here's how to do it:
+
+\begin{verbatim}
+    function _approve(
+        address owner,
+        address spender,
+        uint256 amount
+    ) private {
+        _allowances[owner][spender] = amount;
+        emit Approval(owner, spender, amount);
+    }
+\end{verbatim}
+
+\subsubsection*{Sacrifice Score}
+- Readability: 5; The code is just as readable without the redundant checks.
+- Security: 4; The security is almost unaffected assuming that the checks are still performed elsewhere in the contract.
+- Maintainability: 5; The maintainability is not affected because the changes do not make the contract harder to update or modify.
+
+\subsection*{2. Unnecessary Memory Allocation}
+
+\subsubsection*{Pattern Discovery}
+In the \_transfer function, a new memory array is created to hold the path for the Uniswap router function call. This is a gas inefficiency because memory is more expensive than storage and this variable is used only once.
+
+\subsubsection*{Solution}
+You could hard-code the path into the call to the Uniswap router function. Here's how to do it:
+
+\begin{verbatim}
+    uniswapV2Router
+        .swapExactTokensForETHSupportingFeeOnTransferTokens(
+            tokensToSwap,
+            0,
+            [address(this), WETH],
+            marketingWallet,
+            block.timestamp
+        );
+\end{verbatim}
+
+\subsubsection*{Sacrifice Score}
+- Readability: 4; The code is slightly less readable because it's less explicit about what the array contains. 
+- Security: 5; The security is unaffected.
+- Maintainability: 4; The maintainability is slightly decreased because if the path needs to be modified, it has to be done directly in the function call.
+
+\subsection*{3. Redundant Subtraction}
+
+\subsubsection*{Pattern Discovery}
+In the transferFrom function, the allowance is decreased by the amount using subtraction. However, this operation is not necessary if the amount is the entire allowance, wasting gas.
+
+\subsubsection*{Solution}
+Add an if condition to check whether the amount is equal to the allowance. If it is, then just set the allowance to 0. Here's how to do it:
+
+\begin{verbatim}
+    function transferFrom(
+        address sender,
+        address recipient,
+        uint256 amount
+    ) public override returns (bool) {
+        _transfer(sender, recipient, amount);
+        if (_allowances[sender][_msgSender()] == amount) {
+            _allowances[sender][_msgSender()] = 0;
+        } else {
+            _approve(
+                sender,
+                _msgSender(),
+                _allowances[sender][_msgSender()] - amount
+            );
+        }
+        return true;
+    }
+\end{verbatim}
+
+\subsubsection*{Sacrifice Score}
+- Readability: 4; The code is slightly less readable because it adds an additional conditional check.
+- Security: 5; The security is unaffected.
+- Maintainability: 4; The maintainability is slightly decreased because the function now has more logic to manage.

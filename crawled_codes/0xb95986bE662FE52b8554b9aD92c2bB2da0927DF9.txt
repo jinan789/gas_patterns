@@ -1,0 +1,112 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.9;
+
+import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
+import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Snapshot.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+
+/**
+ * @title TheApesKing
+ * @dev The Apes King (TAK) ERC20 token contract with snapshot and burnable features.
+ * Twitter: https://twitter.com/TheApesKing
+ */
+contract TheApesKing is ERC20Burnable, ERC20Snapshot, Ownable {
+    uint256 private constant INITIAL_SUPPLY = 420000000000 * 10 ** 18; // Total supply of TAK tokens
+
+    // Event emitted when a new snapshot is created
+    event SnapshotTaken(uint256 snapshotId);
+
+    constructor() ERC20("The Apes King", "TAK") {
+        _mint(msg.sender, INITIAL_SUPPLY);
+    }
+
+    /**
+     * @dev Creates a new snapshot of the token balances.
+     * Only the owner can trigger this function.
+     */
+    function snapshot() public onlyOwner {
+        _snapshot();
+        emit SnapshotTaken(_getCurrentSnapshotId());
+    }
+
+    /**
+     * @dev Returns the current snapshot ID.
+     */
+    function getCurrentSnapshotId() public view returns (uint256) {
+        return _getCurrentSnapshotId();
+    }
+
+    /**
+     * @dev Returns the total supply of TAK tokens.
+     */
+    function totalSupply() public view override returns (uint256) {
+        return super.totalSupply();
+    }
+
+    /**
+     * @dev Overrides the default _beforeTokenTransfer hook.
+     * Ensures snapshots are taken before every transfer.
+     */
+    function _beforeTokenTransfer(address from, address to, uint256 amount)
+        internal
+        override(ERC20, ERC20Snapshot)
+    {
+        super._beforeTokenTransfer(from, to, amount);
+    }
+
+    /**
+     * @dev Returns the current balance of TAK tokens for an account.
+     */
+    function balanceOf(address account) public view override returns (uint256) {
+        return super.balanceOf(account);
+    }
+
+    /**
+     * @dev Returns the allowance for spender on owner's TAK tokens.
+     */
+    function allowance(address owner, address spender) public view override returns (uint256) {
+        return super.allowance(owner, spender);
+    }
+
+    /**
+     * @dev Approve spender to spend TAK tokens on behalf of the owner.
+     */
+    function approve(address spender, uint256 amount) public override returns (bool) {
+        return super.approve(spender, amount);
+    }
+
+    /**
+     * @dev Transfer amount of TAK tokens from sender to recipient.
+     */
+    function transfer(address recipient, uint256 amount) public override returns (bool) {
+        return super.transfer(recipient, amount);
+    }
+
+    /**
+     * @dev Transfer amount of TAK tokens from sender to recipient using allowance mechanism.
+     */
+    function transferFrom(address sender, address recipient, uint256 amount) public override returns (bool) {
+        return super.transferFrom(sender, recipient, amount);
+    }
+
+    /**
+     * @dev Increase the allowance for spender to spend owner's TAK tokens.
+     */
+    function increaseAllowance(address spender, uint256 addedValue) public override returns (bool) {
+        return super.increaseAllowance(spender, addedValue);
+    }
+
+    /**
+     * @dev Decrease the allowance for spender to spend owner's TAK tokens.
+     */
+    function decreaseAllowance(address spender, uint256 subtractedValue) public override returns (bool) {
+        return super.decreaseAllowance(spender, subtractedValue);
+    }
+
+    /**
+     * @dev Returns the snapshot balance of TAK tokens for an account at a specific snapshot ID.
+     */
+    function balanceOfAtSnapshot(address account, uint256 snapshotId) public view returns (uint256) {
+        return balanceOfAt(account, snapshotId);
+    }
+}

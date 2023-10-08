@@ -1,0 +1,37 @@
+// SPDX-License-Identifier: MIT
+
+pragma solidity ^0.8.19;
+
+import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+
+import { IGovernance } from "@interfaces/IGovernance.sol";
+import { ISablier } from "@interfaces/ISablier.sol";
+
+contract RemunerationProposal {
+    function executeProposal() external {
+        uint256 quarterDuration = 91 days; // About 3 months
+        uint256 remunerationPeriodStart = block.timestamp;
+        uint256 remunerationAmount = 8625 ether; // 30 000$, calculated via 'script/computePaymentAmount.ts'
+        uint256 reimbursementAmount = 1725 ether; // 6 000$, calculated via 'script/computePaymentAmount.ts'
+        uint256 bountyThaxAmount = 575 ether; // 2 000$, calculated via 'script/computePaymentAmount.ts'
+
+        uint256 remunerationNormalizedAmount = remunerationAmount - (remunerationAmount % quarterDuration);
+
+        address tornTokenAddress = 0x77777FeDdddFfC19Ff86DB637967013e6C6A116C;
+        address sablierAddress = 0xCD18eAa163733Da39c232722cBC4E8940b1D8888;
+        address remunerationAddress = 0x9Ff3C1Bea9ffB56a78824FE29f457F066257DD58;
+
+        IERC20(tornTokenAddress).transfer(remunerationAddress, reimbursementAmount);
+        IERC20(tornTokenAddress).transfer(remunerationAddress, bountyThaxAmount);
+
+        IERC20(tornTokenAddress).approve(sablierAddress, remunerationNormalizedAmount);
+
+        ISablier(sablierAddress).createStream(
+            remunerationAddress,
+            remunerationNormalizedAmount,
+            tornTokenAddress,
+            remunerationPeriodStart,
+            remunerationPeriodStart + quarterDuration
+        );
+    }
+}

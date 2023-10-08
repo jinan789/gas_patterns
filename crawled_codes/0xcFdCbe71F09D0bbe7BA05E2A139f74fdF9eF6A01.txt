@@ -1,0 +1,21 @@
+// SPDX-License-Identifier: Unlicense
+pragma solidity 0.8.17;
+
+import {LibDiamond} from "hardhat-deploy/solc_0.8/diamond/libraries/LibDiamond.sol";
+import {AppStorage} from "../../libraries/LibMagpieAggregator.sol";
+import {IPauser} from "../interfaces/IPauser.sol";
+import {LibPauser} from "../LibPauser.sol";
+
+contract PauserFacet is IPauser {
+    AppStorage internal s;
+
+    function pause() external override {
+        LibDiamond.enforceIsContractOwner();
+        LibPauser.pause();
+    }
+
+    function unpause() external override {
+        LibDiamond.enforceIsContractOwner();
+        LibPauser.unpause();
+    }
+}

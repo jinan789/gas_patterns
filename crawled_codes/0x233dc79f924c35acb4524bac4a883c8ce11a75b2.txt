@@ -1,0 +1,174 @@
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+
+/*
+                                         ^^
+    ^^      ..                                       ..
+            []                                       []
+          .:[]:_          ^^                       ,:[]:.
+        .: :[]: :-.                             ,-: :[]: :.
+      .: : :[]: : :`._                       ,.': : :[]: : :.
+    .: : : :[]: : : : :-._               _,-: : : : :[]: : : :.
+_..: : : : :[]: : : : : : :-._________.-: : : : : : :[]: : : : :-._
+_:_:_:_:_:_:[]:_:_:_:_:_:_:_:_:_:_:_:_:_:_:_:_:_:_:_:[]:_:_:_:_:_:_
+!!!!!!!!!!!![]!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!![]!!!!!!!!!!!!!
+^^^^^^^^^^^^[]^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[]^^^^^^^^^^^^^
+            []                                       []
+            []                                       []
+            []                                       []
+ ~~^-~^_~^~/  \~^-~^~_~^-~_^~-^~_^~~-^~_~^~-~_~-^~_^/  \~^-~_~^-~~-
+~ _~~- ~^-^~-^~~- ^~_^-^~~_ -~^_ -~_-~~^- _~~_~-^_ ~^-^~~-_^-~ ~^
+   ~ ^- _~~_-  ~~ _ ~  ^~  - ~~^ _ -  ^~-  ~ _  ~~^  - ~_   - ~^_~
+     ~-  ^_  ~^ -  ^~ _ - ~^~ _   _~^~-  _ ~~^ - _ ~ - _ ~~^ -
+$BRIDGE  ~^ -_ ~^^ -_ ~ _ - _ ~^~-  _~ -_   ~- _ ~^ _ -  ~ ^-
+            ~^~ - _ ^ - ~~~ _ - _ ~-^ ~ __- ~_ - ~  ~^_-
+                ~ ~- ^~ -  ~^ -  ~ ^~ - ~~  ^~ - ~
+*/
+
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {OFTV2} from "@layerzerolabs/contracts/token/oft/v2/OFTV2.sol";
+import {BytesLib} from "@layerzerolabs/contracts/util/BytesLib.sol";
+import {IOFTReceiverV2} from "@layerzerolabs/contracts/token/oft/v2/IOFTReceiverV2.sol";
+import {Errors} from "./libraries/Errors.sol";
+
+/// @title Bridge
+/// @notice The first 1:1 OmnichainFungibleShitcoin using LayerZero technology.
+/// @author @bridge_lz
+contract Bridge is Ownable, OFTV2 {
+    using BytesLib for bytes;
+
+    /*//////////////////////////////////////////////////////////////////////////
+                                       EVENTS
+    //////////////////////////////////////////////////////////////////////////*/
+
+    /// @notice Emitted when fee is sent to the owner.
+    /// @param to The address of the recipient.
+    /// @param amount The amount of ether sent.
+    event FeeSend(address indexed to, uint256 amount);
+
+    /// @notice Emitted when tokens are minted.
+    /// @param from The address of the sender.
+    /// @param amount The amount of tokens minted.
+    event TokenCreated(address indexed from, uint256 amount);
+
+    /// @notice Emitted when tokens are burned.
+    /// @param from The address of the sender.
+    /// @param amount The amount of tokens burned.
+    event TokenBurn(address indexed from, uint256 amount);
+
+    /// @notice Emitted when the fee is changed.
+    /// @param fee The new fee.
+    event FeeChanged(uint256 fee);
+
+    /*//////////////////////////////////////////////////////////////////////////
+                                 INTERNAL CONSTANTS
+    //////////////////////////////////////////////////////////////////////////*/
+
+    uint256 public constant MIN_FEE = 50; // 0.5%
+    uint256 public constant MAX_FEE = 5_00; // 5%
+
+    /*//////////////////////////////////////////////////////////////////////////
+                                   PUBLIC STORAGE
+    //////////////////////////////////////////////////////////////////////////*/
+
+    /// @notice The fee for minting $BRIDGE.
+    uint256 public feeForOwner = 5_00; // 5%
+
+    /// @notice The fee recipient address
+    address public feeRecipient;
+
+    /*//////////////////////////////////////////////////////////////////////////
+                                     CONSTRUCTOR
+    //////////////////////////////////////////////////////////////////////////*/
+
+    /// @notice Constructs the Bridge contract.
+    /// @param _layerZeroEndpoint The address of the LayerZero endpoint.
+    /// @param _sharedDecimals The number of decimals to use.
+    constructor(address _layerZeroEndpoint, uint8 _sharedDecimals)
+        OFTV2("Bridge", "BRIDGE", _sharedDecimals, _layerZeroEndpoint)
+    {
+        feeRecipient = msg.sender;
+    }
+
+    /*//////////////////////////////////////////////////////////////////////////
+                           USER-FACING CONSTANT FUNCTIONS
+    //////////////////////////////////////////////////////////////////////////*/
+
+    /// @notice Mints tokens 1:1 (less fee) with the amount of Ether sent.
+    /// @return The amount of tokens minted.
+    function createToken() external payable returns (uint256) {
+        if (msg.value == 0) revert Errors.MintAmountZero();
+
+        // Taking a fee on the minted amount
+        uint256 feeToSend = msg.value * feeForOwner / 100_00;
+        (bool sent, bytes memory data) = payable(feeRecipient).call{value: feeToSend}("");
+        if (!sent) revert Errors.FailedSendEther();
+        emit FeeSend(owner(), feeForOwner);
+
+        uint256 _amount = msg.value - feeToSend;
+        _mint(msg.sender, _amount);
+        emit TokenCreated(msg.sender, _amount);
+
+        return _amount;
+    }
+
+    /// @notice Burns tokens and sends Ether value to the owner.
+    /// @param _amount The amount of tokens to burn.
+    /// @return True if successful.
+    function burnToken(uint256 _amount) external returns (bool) {
+        if (_amount == 0) revert Errors.BurnAmountZero();
+        if (_amount > address(this).balance) revert Errors.BurnAmountExceedsBalance();
+
+        _burn(msg.sender, _amount);
+        emit TokenBurn(msg.sender, _amount);
+
+        (bool sent, bytes memory data) = payable(msg.sender).call{value: _amount}("");
+        if (!sent) revert Errors.FailedSendEther();
+
+        return true;
+    }
+
+    /*//////////////////////////////////////////////////////////////////////////
+                           ADMIN CONSTANT FUNCTIONS
+    //////////////////////////////////////////////////////////////////////////*/
+
+    /// @notice Let Owner change the fee.
+    /// @param _newFee The new fee.
+    /// @return True if successful.
+    function changeFee(uint256 _newFee) external onlyOwner returns (bool) {
+        if (_newFee < MIN_FEE || _newFee > MAX_FEE) revert Errors.FeeOutOfRange();
+
+        feeForOwner = _newFee;
+        emit FeeChanged(_newFee);
+
+        return true;
+    }
+
+    /// @notice Let Owner change the fee recipient.
+    /// @param _newFeeRecipient The new fee recipient.
+    /// @return True if successful.
+    function changeFeeRecipient(address _newFeeRecipient) external onlyOwner returns (bool) {
+        if (_newFeeRecipient == address(0)) revert Errors.InvalidAddress();
+        feeRecipient = _newFeeRecipient;
+        return true;
+    }
+
+    /*//////////////////////////////////////////////////////////////////////////
+                           INTERNAL FUNCTIONS
+    //////////////////////////////////////////////////////////////////////////*/
+
+    /// @notice Overiding the _nonblockingLzReceive function to handle minting of the token.
+    /// @param _payload The payload received
+    function _nonblockingLzReceive(uint16, bytes memory, uint64, bytes memory _payload) internal override {
+        uint8 packetType = _payload.toUint8(0);
+        if (packetType == PT_SEND) {
+            (address _to, uint256 _amount) = _decodeSendPayload(_payload);
+            _mint(_to, uint256(_amount));
+        } else if (packetType == PT_SEND_AND_CALL) {
+            (, address _to, uint64 _amount,,) = _decodeSendAndCallPayload(_payload);
+            _mint(_to, uint256(_amount));
+        } else {
+            revert("OFTCore: unknown packet type");
+        }
+    }
+}

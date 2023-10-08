@@ -1,0 +1,59 @@
+Sure, based on the provided Solidity code, here are a few potential gas-wasting patterns I found:
+
+1. **Redundant storage reads**: In your code, you have several functions (`openEntries`, `closeEntries`, `cancelGame`, `declareWinner`) where you read the `Game` from storage multiple times, once for the `GameStatus` and once to modify the state of the game. Each storage read operation costs gas.
+
+    *How to find*: Whenever you see the same storage variable being accessed multiple times within the same function, it's a potential for improvement.
+    
+    *How to fix*: You should read the `Game` into memory in one step, then perform all necessary checks and modifications on the memory object, and finally write back to storage.
+
+    ```solidity
+    Game memory game = games[gameId_];
+    GameStatus gameStatus__ = _gameStatus(game);
+    // Perform checks and modifications...
+    games[gameId_] = game;
+    ```
+
+2. **Expensive array operations**: In `declareWinner`, you are checking the length of the `odds` array with `game.odds.length`. This is costly as the length of an array in Solidity is stored as a separate variable and reading it costs gas.
+
+    *How to find*: Whenever you see operations performed on large arrays, it's a potential for improvement.
+    
+    *How to fix*: If the length of the `odds` array is constant for every game, you could store this as a separate variable in the `Game` struct to avoid reading the length of the array.
+
+    ```solidity
+    struct Game {
+        ...
+        uint256 options;
+        ...
+    }
+    ```
+3. **Repeated function calls**: The `_gameStatus` function is called multiple times in different functions (`openEntries`, `closeEntries`, `cancelGame`, `declareWinner`). This could lead to extra gas costs due to function call overhead.
+
+    *How to find*: Whenever you see the same function being called multiple times, especially within loops or conditionals, it's a potential for improvement.
+    
+    *How to fix*: You can store the result of the `_gameStatus` function in a variable when you first call it, and then reuse this value in the rest of the function.
+
+    ```solidity
+    GameStatus gameStatus__ = _gameStatus(game);
+    // Use gameStatus__ in the rest of the function
+    ```
+
+4. **Inefficient use of conditionals**: The `_gameStatus` function uses multiple `if` statements to return the game status. While this is not inherently gas-inefficient, there may be a more efficient way to represent this logic.
+
+    *How to find*: Whenever you see multiple `if` statements, especially if they are mutually exclusive, it's a potential for improvement.
+
+    *How to fix*: You could use a `else if` structure to avoid unnecessary checks. 
+
+    ```solidity
+    if (game.winnerDeclared) {
+        return GameStatus.WinnerDeclared;
+    } else if (game.cancelled) {
+        return GameStatus.Cancelled;
+    } else if (block.timestamp > game.expiresAt) {
+        return GameStatus.Expired;
+    } else if (game.entriesOpen) {
+        return GameStatus.EntriesOpen;
+    } else {
+        return GameStatus.EntriesClosed;
+    }
+    ```
+These are just a few potential areas for gas optimization. In general, you should always be on the lookout for opportunities to minimize storage operations, simplify conditionals, and avoid unnecessary computation.

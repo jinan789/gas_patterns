@@ -1,0 +1,17 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+
+contract HEHEToken is ERC20 {
+  address public admin = 0x48Eadc38A80068E1aB330E8E616C2765b9e6896C;
+  uint256 public hardCap = 187_666_000_000_000 * (10 ** decimals());
+
+  constructor() ERC20("HEHE", "HEHE") {
+    _mint(admin, hardCap);
+  }
+
+  function burn(uint256 amount) external {
+    _burn(_msgSender(), amount);
+  }
+}

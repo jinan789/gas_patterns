@@ -1,0 +1,26 @@
+
+\subsection*{Pattern 1: Redundant Approval Checks}
+
+How did you find this pattern? Could you explain the reasoning process, step by step, behind the discovery?
+The approval function \_approve() is called in multiple places across the code. Looking at the usage of the \_approve() function, it's clear that the function is being called even in scenarios where the approval might not necessarily be needed or where the approval has already been granted.
+
+What should I do, step by step, to fix the found gas-wasting patterns? Could you explain the reasoning process, step by step, behind the reason why such a fix works?
+One way to optimize this would be to implement a check before calling the \_approve() function to see if the approval is already granted or needed. This check would prevent unnecessary calls to the approval function, saving gas. If the check returns false, you can then call the \_approve() function.
+
+On a score of 0 to 5, how would you rate this found new pattern, in terms of how much it is sacrificing readability, security, and maintainability in exchange for gas optimization?
+Readability: 4.5; Although the addition of a check before calling \_approve() adds a bit more complexity, it still maintains the code's readability.
+Security: 5; This optimization doesn't pose a security risk, as the approval mechanism remains intact.
+Maintainability: 4.5; Adding a check doesn't significantly affect the maintainability of the code.
+\subsection*{Pattern 2: Unnecessary Balance Check}
+
+How did you find this pattern? Could you explain the reasoning process, step by step, behind the discovery?
+In the manualSwap() function, there are two balance checks (tokenBalance>0 and ethBalance>0) before calling the respective functions. These checks might be unnecessary because the functions swapTokensForEth() and sendETHToFee() can handle situations where the balance is zero.
+
+What should I do, step by step, to fix the found gas-wasting patterns? Could you explain the reasoning process, step by step, behind the reason why such a fix works?
+You should remove the balance checks in the manualSwap() function. By doing so, you avoid unnecessary checks and save gas. If the functions swapTokensForEth() and sendETHToFee() are implemented correctly, they should be able to handle scenarios where the balance is zero, and no tokens or ETH need to be transferred.
+
+On a score of 0 to 5, how would you rate this found new pattern, in terms of how much it is sacrificing readability, security, and maintainability in exchange for gas optimization?
+Readability: 5; The code remains just as easy to read without the balance checks.
+Security: 4; As long as the functions swapTokensForEth() and sendETHToFee() are designed to handle zero balances safely, there should be no security risks.
+Maintainability: 5; Removing the checks doesn't affect the maintainability of the code.
+To improve the prompt, it would be helpful if you provide additional specifics about the contract's functionality. This would help in understanding the context better and might lead to more accurate and context-specific gas optimization suggestions.

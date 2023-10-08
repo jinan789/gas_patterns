@@ -1,0 +1,30 @@
+A1. Utilizing language features that do not belong to Solidity (e.g. mixing with other programming languages
+
+A2. The found pattern is conditioned on some not-so-likely assumptions (e.g. asking to
+move require statements to be validated offchain to save onchain gas))
+
+A3. Based on non-existent or incorrect code information (e.g. claiming that a variable was
+used twice, while actually it is only once)
+
+A4. Misunderstanding of the execution sequence of codes (e.g. misunderstanding that all
+defined functions are to be executed sequentially at once, or all branches of if-else statements
+are to be executed in order)
+
+A5. Unrelated to gas optimization
+
+A6. A suggestion that does not reduce gas consumption once implemented, but still keeps the same code logic and functionality (no harm but no help) (e.g. a refactorization of functions that does not change anything) 
+
+A7. Negligence of the transient nature of function or function argument variables, which changes across different calls and should not be cached
+
+A8. Misunderstanding of the gas mechanism or Solidity language-related features (e.g. where local variables are located by default)
+
+A9. Not considering the effect of other code lines within the same function (e.g. repeated operations of reading the balance occurs with a modification to balance in between, and this does not constitute a repeated operation)
+
+A10. Negligence of the changing nature of indexing variables across for-loop iterations
+
+A11. Reasonable pattern that is unfortunately not likely to be fixable (e.g. looping over array is slow, but it does not suggest any alternatives to remove the loop) 
+
+A12. Unrelated to the provided codes
+
+A13. Too superficial or common-sense to be a valid or interesting gas-wasting pattern (e.g. "Accessing local variables is cheaper than accessing state variables. By reducing the number of accesses to global variables, we can decrease the gas cost.")
+

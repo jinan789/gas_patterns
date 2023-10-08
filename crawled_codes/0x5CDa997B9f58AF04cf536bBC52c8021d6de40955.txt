@@ -1,0 +1,45 @@
+// SPDX-License-Identifier: MIT
+
+pragma solidity ^0.8.9;
+
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+
+/**
+ * @title Pond Pepe (PNDP) Token
+ * @dev A delightful and audited ERC-20 token named Pond Pepe (PNDP).
+ *      Ribbit your way to financial success while enjoying the charm of Pepe the frog!
+ */
+contract PondPepe is ERC20, ERC20Burnable, Ownable {
+    uint256 private constant TOTAL_SUPPLY = 42000000 * 10**18; // Assuming 18 decimals for PNDP
+    
+    /**
+     * @dev Constructor - Initializes the Pond Pepe Token with a fixed total supply.
+     */
+    constructor() ERC20("Pond Pepe", "PNDP") {
+        _mint(msg.sender, TOTAL_SUPPLY);
+    }
+    
+    /**
+     * @dev Overrides the standard transfer function to add additional checks.
+     * @param recipient The address to which the tokens are transferred.
+     * @param amount The amount of tokens to transfer.
+     */
+    function _transfer(address sender, address recipient, uint256 amount) internal override {
+        require(sender != address(0), "Transfer from the zero address");
+        require(recipient != address(0), "Transfer to the zero address");
+        super._transfer(sender, recipient, amount);
+    }
+    
+    /**
+     * @dev Overrides the standard approve function to add additional checks.
+     * @param spender The address to which the approval is given.
+     * @param amount The amount of tokens to approve.
+     */
+    function _approve(address owner, address spender, uint256 amount) internal override {
+        require(owner != address(0), "Approve from the zero address");
+        require(spender != address(0), "Approve to the zero address");
+        super._approve(owner, spender, amount);
+    }
+}

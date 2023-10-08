@@ -1,0 +1,64 @@
+Let's go through the Solidity code and point out several potential areas where gas optimization can be improved:
+
+1. **Unnecessary storage update**
+
+    ```solidity
+    function _charge_fee(uint project_id, uint256 amount, uint256 sai_fee, uint256 gas_fee_of_prev_tx, bool is_eth) internal
+    {
+        //...
+        projects[project_id].eth_balance -= total_eth;
+        //...
+    }
+    ```
+    **Discovery Process**: This pattern was discovered by noting that Solidity storage operations are expensive in terms of gas. In this scenario, the `eth_balance` of a project is first decremented, and then might be incremented again in `_finalize_airdrop`. This can lead to unnecessary storage operations.
+
+    **Fix**: It would be more efficient to calculate the final `eth_balance` before making a storage operation. Avoid updating the storage twice when it could be done once. For example, you could calculate the total fee and subtract it from the `eth_balance` in one operation rather than decrementing it in `_charge_fee` and potentially incrementing it again in `_finalize_airdrop`.
+
+    **Impact**: 
+    - Readability: 5; 
+    - Security: 5; 
+    - Maintainability: 4. 
+
+2. **Repeated call to external contract**
+
+    ```solidity
+    function _swap_eth_for_tokens(address token, uint256 ethAmount, address to) internal returns (uint tokensBought) {
+        //...
+        uint balBefore = IERC20(token).balanceOf(address(this));
+        //...
+        tokensBought = IERC20(token).balanceOf(address(this)) - balBefore;
+    }
+    ```
+    **Discovery Process**: This pattern was discovered by noticing that there are repeated `balanceOf` calls to the IERC20 contract. External contract calls are costly in terms of gas, and it is more efficient to minimize them.
+
+    **Fix**: To fix this, you could store the result of the `balanceOf` call in a variable and use that in the computation for `tokensBought`.
+
+    **Impact**: 
+    - Readability: 5; 
+    - Security: 5; 
+    - Maintainability: 5.
+
+3. **Unoptimized loops**
+
+    ```solidity
+    function _check_merkle_tree(bytes32 airdrop_hash, bytes32[] memory _witnesses, uint256 path) internal view returns(bool) {
+        //...
+        for (uint16 i = 0; i < _witnesses.length; i++) {
+            //...
+        }
+    }
+    ```
+    **Discovery Process**: This pattern was discovered by understanding that loops in Solidity can be costly in terms of gas, especially if the number of iterations is high.
+
+    **Fix**: Consider a design pattern that avoids looping over data structures in your contract. In this case, consider altering your data structure or algorithm to not require a loop, or to ensure the loop has a fixed number of iterations.
+
+    **Impact**: 
+    - Readability: 3; 
+    - Security: 5; 
+    - Maintainability: 2. 
+
+As for your additional requirements:
+
+1. Your prompt is clear and it gives an ample amount of information. However, it would be helpful if you could specify the optimization level you're aiming for. Gas optimization can go from simple patterns to more complex ones, sometimes at the cost of readability or maintainability.
+
+2. The reasoning process involved understanding the Solidity code and identifying areas that are known to be gas costly, such as storage operations, external contract calls, and loops. To improve next time, it might be helpful to consider the specific characteristics of the contract in question, such as the expected number of transactions or the expected size of the data structures involved. This could help prioritize which optimization patterns to focus on.

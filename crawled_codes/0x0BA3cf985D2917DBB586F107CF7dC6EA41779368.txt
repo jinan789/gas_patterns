@@ -1,0 +1,55 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.17;
+
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/math/SafeMath.sol";
+
+contract Doged is ERC20, Ownable {
+    using SafeMath for uint256;
+
+    uint256 private _buyTax = 0; // Buy tax in percentage
+    uint256 private _sellTax = 1; // Sell tax in percentage
+
+    constructor() ERC20("Doged", "DOGED") {
+        uint256 initialSupply = 100000000 * 10**decimals(); // Total supply of 100,000,000 tokens
+        _mint(msg.sender, initialSupply);
+    }
+
+    function setBuyTax(uint256 tax) external onlyOwner {
+        require(tax <= 100, "Tax percentage must be <= 100");
+        _buyTax = tax;
+    }
+
+    function setSellTax(uint256 tax) external onlyOwner {
+        require(tax <= 100, "Tax percentage must be <= 100");
+        _sellTax = tax;
+    }
+
+    function _transfer(
+        address sender,
+        address recipient,
+        uint256 amount
+    ) internal override {
+        require(sender != address(0), "Transfer from zero address");
+        require(recipient != address(0), "Transfer to zero address");
+        uint256 taxAmount = 0;
+
+        if (sender != owner() && recipient != owner()) {
+            if (recipient == address(this)) {
+                // Sell tax
+                taxAmount = amount.mul(_sellTax).div(100);
+            } else {
+                // Buy tax
+                taxAmount = amount.mul(_buyTax).div(100);
+            }
+        }
+
+        uint256 transferAmount = amount.sub(taxAmount);
+        super._transfer(sender, recipient, transferAmount);
+
+        if (taxAmount > 0) {
+            super._transfer(sender, address(this), taxAmount);
+        }
+    }
+}

@@ -1,0 +1,68 @@
+// SPDX-License-Identifier: BUSL-1.1
+
+pragma solidity >=0.8.19;
+
+import {LibDiamond} from "hardhat-deploy/solc_0.8/diamond/libraries/LibDiamond.sol";
+import {UsingDiamondOwner} from "hardhat-deploy/solc_0.8/diamond/UsingDiamondOwner.sol";
+
+import { IDekohInitV1Facet } from './IDekohInitV1Facet.sol';
+import { RolesLib } from '../../../facets/RolesLib.sol';
+import { AccessControlLib } from '../../../facets/AccessControl/AccessControlLib.sol';
+
+import { MetadataNameSymbolUpdateLibERC721A } from '../../../facets/MetadataNameSymbolUpdate/MetadataNameSymbolUpdateLibERC721A.sol';
+import { BasicTokenURIStorage } from '../../../facets/BasicTokenURI/BasicTokenURIStorage.sol';
+import { FakeERC173Storage } from '../../../facets/FakeERC173/FakeERC173Storage.sol';
+import { ERC712Lib } from '../../../facets/ERC712/ERC712Lib.sol';
+import { RoyaltiesERC2981Lib } from '../../../facets/RoyaltiesERC2981/RoyaltiesERC2981Lib.sol';
+import { OperatorFiltererLib } from '../../../facets/OperatorFilterer/OperatorFiltererLib.sol';
+import { ROJIInterfacesLib } from '../../../interfaces/ROJIInterfacesLib.sol';
+import { DekohDiamondStorage } from '../../DekohDiamondStorage.sol';
+import { OpenSeaContractStorage } from "../../../facets/OpenSeaContract/OpenSeaContractStorage.sol";
+import { ERC721AStorage } from "../../../facets/ERC721A/ERC721AStorage.sol";
+
+
+
+/// @title DekohInitV1Facet
+/// @author Martin Wawrusch for Roji Inc.
+/// @notice Initializer facet to be used on the verse diamond.
+contract DekohInitV1Facet is UsingDiamondOwner, IDekohInitV1Facet   {
+
+
+  address constant ANIMEMEELABS = 0x328424E95EC34CC062627508efE55ad01988adAb;
+
+  /// @inheritdoc IDekohInitV1Facet
+  function dekohInitV1( address adminUser, address diamondOwner ) external /* onlyOwner */ {
+
+    if(!DekohDiamondStorage.layout().initializedV1) {
+      DekohDiamondStorage.layout().initializedV1 = true;
+
+      // all the interfaces
+      LibDiamond.diamondStorage().supportedInterfaces[ROJIInterfacesLib.INTERFACE_ID_ERC721] = true;
+      LibDiamond.diamondStorage().supportedInterfaces[ROJIInterfacesLib.INTERFACE_ID_ERC721_METADATA] = true;
+      LibDiamond.diamondStorage().supportedInterfaces[ROJIInterfacesLib.INTERFACE_ID_ERC4494] = true;
+      LibDiamond.diamondStorage().supportedInterfaces[ROJIInterfacesLib.INTERFACE_ID_ERC2981] = true;
+      LibDiamond.diamondStorage().supportedInterfaces[ROJIInterfacesLib.INTERFACE_ID_ROJI_VERSIONED_CONTRACT] = true;
+      LibDiamond.diamondStorage().supportedInterfaces[ROJIInterfacesLib.INTERFACE_ID_IERC4906] = true;
+
+      AccessControlLib.grantRole(RolesLib.ROLE_ACCESS_CONTROL_ADMIN, adminUser);
+      AccessControlLib.grantRole(RolesLib.ROLE_FINANCE, adminUser);
+      AccessControlLib.grantRole(RolesLib.ROLE_OPERATIONS, adminUser);
+      AccessControlLib.grantRole(RolesLib.ROLE_METADATA_UPDATE, adminUser);
+      AccessControlLib.grantRole(RolesLib.ROLE_ADMIN_MINTING, adminUser);
+      AccessControlLib.grantRole(RolesLib.ROLE_ADMIN_BURNING, adminUser);
+
+      BasicTokenURIStorage.layout().baseTokenURI = "https://static.rojiapi.com/meta-animemelabs-dekoh/tokens/";
+      ERC712Lib.init("Dekoh", "1");
+      ERC721AStorage.layout()._currentIndex = 1; // This works together with _startTokenId being hardcoded to 1
+      FakeERC173Storage.layout().owner = ANIMEMEELABS;
+      MetadataNameSymbolUpdateLibERC721A._updateNameAndSymbol("Dekoh", "DEKOH");
+      OpenSeaContractStorage.layout().contractURI = "https://static.rojiapi.com/meta-animemelabs-dekoh/contract.json";
+      OperatorFiltererLib._init();
+      RoyaltiesERC2981Lib._setDefaultRoyalty(ANIMEMEELABS, 750);
+      
+      // Make this the last one, just for giggles
+      LibDiamond.diamondStorage().contractOwner = diamondOwner;
+
+    }
+  }
+}

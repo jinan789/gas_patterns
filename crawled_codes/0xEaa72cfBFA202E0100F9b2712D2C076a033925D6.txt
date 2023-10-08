@@ -1,0 +1,512 @@
+// SPDX-License-Identifier: Apache-2.0
+pragma solidity ^0.8.16;
+
+import "@openzeppelin/contracts/utils/math/SafeMath.sol";
+import "@openzeppelin/contracts/access/AccessControl.sol";
+import "@openzeppelin/contracts/security/Pausable.sol";
+import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
+import "./interfaces/IKreyptNFT.sol";
+
+
+contract KreyptOrder is AccessControl, Pausable {
+    using SafeMath for uint256;
+
+    bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
+    uint public constant FEE_MAX = 10000; // 100%
+
+    address public owner;
+
+    enum NFTType {
+        KMTPL,
+        KMTO
+    }
+
+    enum Status {
+        Pending,
+        Accepted,
+        Rejected
+    }
+
+    struct ItemBundle {
+        NFTType kreyptNFT;
+        uint256 quantity;
+    }
+
+    struct Bundle {
+        uint256 id;
+        string name;
+        uint256 priceTotal;
+        uint256 priceTotalWl;
+        mapping(uint => ItemBundle) items;
+        uint itemsSize;
+    }
+
+    mapping(uint256 => Bundle) public bundles;
+
+
+    struct Command {
+        uint256 id;
+        address owner;
+        uint256 bundleNb;
+        bytes32 sentence32;
+        string sentence;
+        bytes32 clearSentence32;
+        string clearSentence;
+        uint256 amountSpend;
+        Status status;
+    }
+
+    Command[] public commands;
+    // Command ID => NFT ID
+    mapping(uint256 => uint256[]) public commandIdToNftIds;
+
+    // NFT Type => Sentence => Command ID
+    mapping(NFTType => mapping(bytes32 => uint256)) public pendingSentences;
+    // NFT Type => Clear sentence => Command ID
+    mapping(NFTType => mapping(bytes32 => uint256)) public pendingClearSentences;
+    // NFT Type => Address of NFT
+    mapping(NFTType => address) public kreyptNFTAddress;
+    // Address of Kreypt to send the funds
+    address public kreyptPayementAddress;
+    // Address of the Kreypt minter
+    address public kreyptMinterAddress;
+    // Address of the whitelist => Is use wl or not
+    mapping(address => bool) public whitelistClaimed;
+    // Merkle root
+    bytes32 public merkleRoot;
+
+
+    // Event
+    event NewOrder(uint256 commandNb, address indexed buyer, uint256 amountSpend, uint256 bundleNb, string bundleName, string sentence, string clearSentence);
+    event OrderValidated(uint256 commandNb);
+    event OrderRejected(uint256 commandNb, uint256 refundedAmount);
+    event PriceChanged(uint256 bundleNb, uint256 newPrice);
+    event PriceChangedWl(uint256 bundleNb, uint256 newPrice);
+
+    // Error
+    error AddressNotValid();
+    error PackNotFound();
+    error BundleNotFound();
+    error OrderNotFound();
+    error NotEnoughFunds();
+    error FailedToTransfer();
+    error SentenceAlreadyUsed();
+    error SentenceTooLong();
+    error CommandNotPending();
+    error CommandNotAccepted();
+    error ErrorData();
+    error FeeTooHigh();
+    error AddressNotWhitelisted();
+    error WhitelistAlreadyClaimed();
+
+    /*
+        @notice Constructor
+        @param _kreyptPianoLongAdress : The contract address of the Kreypt Piano Long NFT
+        @param _kreyptOrchestralAdress : The contract address of the Kreypt Orchestral NFT
+        @param _kreyptAddressPayement : The address of the Kreypt
+        @param _kreyptMinterAddress : The address of the minter
+        @param _kreyptAdminAddress : The address of the admin
+    */
+    constructor(
+        address _kreyptPianoLongAddress,
+        address _kreyptOrchestralAddress,
+        address _kreyptPayementAddress,
+        address _kreyptMinterAddress,
+        address _kreyptAdminAddress
+    ) payable {
+        kreyptPayementAddress = _kreyptPayementAddress;
+        _setupRole(MINTER_ROLE, _kreyptMinterAddress);
+        kreyptMinterAddress = _kreyptMinterAddress;
+        _setupRole(DEFAULT_ADMIN_ROLE, _kreyptAdminAddress);
+        owner = _kreyptAdminAddress;
+
+        _pause();
+
+        kreyptNFTAddress[NFTType.KMTPL] = _kreyptPianoLongAddress;
+        kreyptNFTAddress[NFTType.KMTO] = _kreyptOrchestralAddress;
+
+        // Creating the two items
+        ItemBundle memory item1 = ItemBundle({
+            kreyptNFT: NFTType.KMTPL,
+            quantity: 1
+        });
+
+        ItemBundle memory item2 = ItemBundle({
+            kreyptNFT: NFTType.KMTO,
+            quantity: 1
+        });
+
+        // Creating the three bundles
+        bundles[1].id = 1;
+        bundles[1].name = "kreypt_music-theme_piano_long";
+        bundles[1].priceTotal = 432100000000000000 wei; // 0.4321 ether
+        bundles[1].priceTotalWl = 432100000000000000 wei; // 0.4321 ether
+        bundles[1].items[bundles[1].itemsSize] = item1;
+        bundles[1].itemsSize++;
+
+        bundles[2].id = 2;
+        bundles[2].name = "kreypt_music-theme_orchestral";
+        bundles[2].priceTotal = 5432100000000000000 wei; // 5.4321 ether
+        bundles[2].priceTotalWl = 5432100000000000000 wei; // 5.4321 ether
+        bundles[2].items[bundles[2].itemsSize] = item2;
+        bundles[2].itemsSize++;
+
+        bundles[3].id = 3;
+        bundles[3].name = "kreypt_music-bundle";
+        bundles[3].priceTotal = 6543210000000000000 wei; // 6.54321 ether
+        bundles[3].priceTotalWl = 6543210000000000000 wei; // 6.54321 ether
+        bundles[3].items[bundles[3].itemsSize] = item1;
+        bundles[3].itemsSize++;
+        bundles[3].items[bundles[3].itemsSize] = item2;
+        bundles[3].itemsSize++;
+    }
+
+    function isWhitelistedAddress(address destinationAddress, bytes32[] calldata merkleProof) public view returns (bool) {
+        return MerkleProof.verifyCalldata(merkleProof, merkleRoot, keccak256(abi.encodePacked(destinationAddress)));
+    }
+
+    function whitelistedAddressHasAlreadyClaimed(address destinationAddress) public view returns (bool) {
+        return whitelistClaimed[destinationAddress];
+    }
+
+    /*
+      @notice Let the user buy a bundle of Kreypt NFT, whitelist sale (Status : Pending)
+      @param bundleNb : The number of the bundle to buy
+      @param sentence : The sentence choose by the user
+      @param clearSentence : The sentence clear by the Kreypt Algo
+      @param destinationAddress : The destination address of the NFT
+      @param merkleProof : The merkle proof of the user
+      @return commandNb : The number of the command
+    */
+    function buyBundleKreyptNFTWhitelist(
+        uint bundleNb,
+        string memory sentence,
+        string memory clearSentence,
+        address destinationAddress,
+        bytes32[] calldata merkleProof
+    ) public payable whenNotPaused returns (uint256) {
+        requireBundle(bundleNb);
+        if (msg.sender != kreyptMinterAddress) {
+            if (msg.value < bundles[bundleNb].priceTotalWl) revert NotEnoughFunds();
+            destinationAddress = msg.sender;
+        }
+        if (!isWhitelistedAddress(destinationAddress, merkleProof)) revert AddressNotWhitelisted();
+        if (whitelistedAddressHasAlreadyClaimed(destinationAddress)) revert WhitelistAlreadyClaimed();
+        whitelistClaimed[destinationAddress] = true;
+        return buyBundle(bundleNb, sentence, clearSentence, destinationAddress, msg.value);
+    }
+
+    /*
+      @notice Let the user buy a bundle of Kreypt NFT, whitelist sale (Status : Pending)
+      @param bundleNb : The number of the bundle to buy
+      @param sentence : The sentence choose by the user
+      @param clearSentence : The sentence clear by the Kreypt Algo
+      @param destinationAddress : The destination address of the NFT
+      @return commandNb : The number of the command
+    */
+    function buyBundleKreyptNFT(
+        uint bundleNb,
+        string memory sentence,
+        string memory clearSentence,
+        address destinationAddress
+    ) public payable whenNotPaused returns (uint256) {
+        requireBundle(bundleNb);
+        if (msg.sender != kreyptMinterAddress) {
+            if (msg.value < bundles[bundleNb].priceTotal) revert NotEnoughFunds();
+            destinationAddress = msg.sender;
+        }
+        return buyBundle(bundleNb, sentence, clearSentence, destinationAddress, msg.value);
+    }
+
+    /*
+      @dev The buy function
+      @param bundleNb : The number of the bundle to buy
+      @param sentence : The sentence choose by the user
+      @param clearSentence : The sentence clear by the Kreypt Algo
+      @param destinationAddress : The destination address of the NFT
+      @return commandNb : The number of the command
+    */
+    function buyBundle(
+        uint bundleNb,
+        string memory sentence,
+        string memory clearSentence,
+        address destinationAddress,
+        uint256 amountSpend
+    ) internal returns (uint256) {
+        if(bytes(sentence).length  > 500 || bytes(clearSentence).length > 500) revert SentenceTooLong();
+        if(destinationAddress == address(0)) revert AddressNotValid();
+        uint256 commandNb = commands.length + 1;
+
+        // Reserve sentence
+        bytes32 _sentenceBytes32 = keccak256(abi.encodePacked(sentence));
+        bytes32 _clearSentenceBytes32 = keccak256(abi.encodePacked(clearSentence));
+
+        for (uint256 i = 0; i < bundles[bundleNb].itemsSize;) {
+            NFTType _kreyptNFT = bundles[bundleNb].items[i].kreyptNFT;
+            // Check if sentence is available
+            if (!isAvailableSentence(_kreyptNFT, _sentenceBytes32, _clearSentenceBytes32)) revert SentenceAlreadyUsed();
+            pendingSentences[_kreyptNFT][_sentenceBytes32] = commandNb;
+            pendingClearSentences[_kreyptNFT][_clearSentenceBytes32] = commandNb;
+
+            unchecked {
+                ++i;
+            }
+        }
+
+        {
+            // Create the order + avoid stack too deep
+            Command memory command = Command({
+                id: commandNb,
+                owner: destinationAddress,
+                bundleNb: bundleNb,
+                sentence32: _sentenceBytes32,
+                sentence: sentence,
+                clearSentence32: _clearSentenceBytes32,
+                clearSentence: clearSentence,
+                amountSpend: amountSpend,
+                status: Status.Pending
+            });
+            commands.push(command);
+        }
+
+        emit NewOrder(commandNb, destinationAddress, msg.value, bundleNb, bundles[bundleNb].name, sentence, clearSentence);
+
+        return commandNb;
+    }
+
+
+    /*
+        @notice Validate order (Status : Accepted) => mint NFT => send funds to KreyptPayementAddress
+        @param commandNb : The number of the command
+        @param Uris : The array of the URI of the NFT
+    */
+    function validateOrder(uint256 commandNb, string[] memory Uris) public onlyRole(MINTER_ROLE) {
+        if (commandNb > commands.length || commandNb == 0) revert OrderNotFound();
+        Command memory command = commands[commandNb - 1];
+        // Command start at 1 but array start at 0
+        if (command.status != Status.Pending) revert CommandNotPending();
+        commands[commandNb - 1].status = Status.Accepted;
+        // Command start at 1 but array start at 0
+        if (Uris.length != bundles[command.bundleNb].itemsSize) revert ErrorData();
+        for (uint i = 0; i < bundles[command.bundleNb].itemsSize;) {
+            NFTType _kreyptNFT = bundles[command.bundleNb].items[i].kreyptNFT;
+            commandIdToNftIds[commandNb].push(IKreyptNFT(kreyptNFTAddress[_kreyptNFT]).mint(
+                command.owner,
+                command.sentence,
+                command.clearSentence,
+                Uris[i]
+            ));
+
+            unchecked {
+                ++i;
+            }
+        }
+        // Send funds to KreyptPayementAddress if needed
+        uint256 amountTotal = command.amountSpend;
+        if (amountTotal > 0) {
+            (bool sent,) = payable(kreyptPayementAddress).call{value: amountTotal}("");
+            if (!sent) revert FailedToTransfer();
+        }
+
+        emit OrderValidated(command.id);
+    }
+
+    /*
+        @notice Reject multiple order in one call (Status : Rejected) => liberate sentence => refund the buyer
+        @param commandRejects : The array of the command number to reject
+        @param refunds : An array of boolean to know if the buyer need to be refunded
+        @param percentageFeeTake : An array of percentage to take from the buyer
+    */
+    function rejectMultipleOrder(
+        uint256[] memory commandNbs,
+        bool[] memory refunds,
+        uint256[] memory percentageFeeTakes
+    ) external onlyRole(MINTER_ROLE) {
+        if (commandNbs.length != refunds.length || refunds.length != percentageFeeTakes.length) revert ErrorData();
+        for (uint256 i = 0; i < commandNbs.length; i++) {
+            rejectOrder(commandNbs[i], refunds[i], percentageFeeTakes[i]);
+        }
+    }
+
+    /*
+        @notice Reject order (Status : Rejected) => liberate sentence => refund the buyer
+        @param commandReject : The command number to reject
+        @param refund : A boolean to know if the buyer need to be refunded
+        @param percentageFeeTake : A percentage to take from the buyer (max 10000 = 100%)
+    */
+    function rejectOrder(
+        uint256 commandNb,
+        bool refund,
+        uint256 percentageFeeTake // 10000 = 100%
+    ) public onlyRole(MINTER_ROLE) {
+        Command memory command = commands[commandNb - 1];
+        // Command start at 1 but array start at 0
+        if (command.status != Status.Pending) revert CommandNotPending();
+        if (percentageFeeTake > FEE_MAX) revert FeeTooHigh();
+        commands[commandNb - 1].status = Status.Rejected;
+
+        // Liberate the sentence
+        for (uint i = 0; i < bundles[command.bundleNb].itemsSize;) {
+            NFTType _kreyptNFT = bundles[command.bundleNb].items[i].kreyptNFT;
+            pendingSentences[_kreyptNFT][command.sentence32] = 0;
+            pendingClearSentences[_kreyptNFT][command.clearSentence32] = 0;
+
+            unchecked {
+                ++i;
+            }
+        }
+
+        // Send funds to KreyptPayementAddress and refund the buyer if needed
+        uint256 amountToKreyptAddress = command.amountSpend;
+        uint256 amountToRefund = amountToKreyptAddress;
+        if (percentageFeeTake > 0 || !refund) {
+            amountToRefund = (amountToKreyptAddress * percentageFeeTake) / FEE_MAX;
+            amountToKreyptAddress -= amountToRefund;
+
+            (bool sent,) = payable(kreyptPayementAddress).call{value: amountToKreyptAddress}("");
+            if (!sent) revert FailedToTransfer();
+        }
+        if (refund) {
+            (bool sent,) = payable(command.owner).call{value: amountToRefund}("");
+            if (!sent) revert FailedToTransfer();
+        }
+
+        emit OrderRejected(command.id, amountToRefund);
+    }
+
+    // --- Admin functions ---
+
+    /*
+      @notice Let admin change the price of a pack
+      @param bundleNb : Number of the pack
+      @param newPrice : New price of the pack (in wei)
+     */
+    function changePriceBundle(uint bundleNb, uint256 newPrice) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        requireBundle(bundleNb);
+        bundles[bundleNb].priceTotal = newPrice;
+
+        emit PriceChanged(bundleNb, newPrice);
+    }
+
+    /*
+      @notice Let admin change the whitelist price of a pack
+      @param bundleNb : Number of the pack
+      @param newPrice : New whitelist price of the pack (in wei)
+     */
+    function changePriceWlBundle(uint bundleNb, uint256 newPrice) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        requireBundle(bundleNb);
+        bundles[bundleNb].priceTotalWl = newPrice;
+
+        emit PriceChangedWl(bundleNb, newPrice);
+    }
+
+    /*
+      @notice Set the merkle root for the whitelist
+    */
+    function setMerkleRoot(bytes32 _merkleRoot) external {
+        require(hasRole(MINTER_ROLE, msg.sender) || hasRole(DEFAULT_ADMIN_ROLE, msg.sender), "KreyptOrder: don't have the right role (MINTER_ROLE or DEFAULT_ADMIN_ROLE))");
+        merkleRoot = _merkleRoot;
+    }
+
+    /*
+       @notice Let admin change the Kreypt Payement Address
+       @param _kreyptAddress : New address of payement for Kreypt, used to send money
+    */
+    function changeKreyptPayementAddress(address _kreyptPayementAddress) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (_kreyptPayementAddress != address(0)) revert AddressNotValid();
+        kreyptPayementAddress = _kreyptPayementAddress;
+    }
+
+    /*
+       @notice Let admin change the Kreypt Address
+       @param _kreyptAddress : New address of Minter Kreypt, used to reserve NFT
+     */
+    function changeKreyptMinterAddress(address _kreyptMinterAddress) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (_kreyptMinterAddress != address(0)) revert AddressNotValid();
+        kreyptMinterAddress = _kreyptMinterAddress;
+    }
+
+    /*
+        @notice Let the Admin pause the contract
+    */
+    function pause() external whenNotPaused onlyRole(DEFAULT_ADMIN_ROLE) {
+        _pause();
+    }
+
+    /*
+       @notice Let the Admin unpause the contract
+    */
+    function unpause() external whenPaused onlyRole(DEFAULT_ADMIN_ROLE) {
+        _unpause();
+    }
+
+    // --- View functions ---
+
+    /*
+        @notice Check if sentence is available (not already used and not in pending)
+        @param _kreyptNFT : NFT type
+        @param _sentenceBytes32 : The sentence hashed with keccak256
+        @param _clearSentenceBytes32 : The sentence cleared by the Kreypt Algo hashed with keccak256
+        @return bool : true if sentence is available, false otherwise
+    */
+    function isAvailableSentence(NFTType _kreyptNFT, bytes32 _sentenceBytes32, bytes32 _clearSentenceBytes32) public view returns (bool) {
+        return (pendingClearSentences[_kreyptNFT][_clearSentenceBytes32] == 0)
+        && (pendingSentences[_kreyptNFT][_sentenceBytes32] == 0)
+        && (IKreyptNFT(kreyptNFTAddress[_kreyptNFT]).isSentenceAvailable(_sentenceBytes32, _clearSentenceBytes32));
+    }
+
+    /*
+        @notice Return all available product (not already used and not in Status : Pending)
+        @param sentence : The sentence
+        @param clearSentence : The sentence cleared by the Kreypt Algo
+        @return NFTType : An array of the product (NFTType) available
+    */
+    function availableProductForSentence(string memory sentence, string memory clearSentence) external view returns (NFTType[] memory) {
+        NFTType[] memory kreyptNFTsAvailable;
+        for (uint i = 0; i < uint(NFTType.KMTO);) {
+            if (isAvailableSentence(NFTType(i), keccak256(abi.encodePacked(sentence)), keccak256(abi.encodePacked(clearSentence)))) {
+                kreyptNFTsAvailable[kreyptNFTsAvailable.length] = NFTType(i);
+            }
+
+        unchecked {
+            ++i;
+        }
+        }
+        return kreyptNFTsAvailable;
+    }
+
+    /*
+        @dev Return all the commands
+        @return Command[] : All the commands
+    */
+    function getCommands() public view returns (Command[] memory)  {
+        return commands;
+    }
+
+    /*
+        @dev Return total number of commands
+        @return uint : Total number of commands
+    */
+    function getTotalCommands() public view returns (uint)  {
+        return commands.length;
+    }
+
+    /*
+        @dev Check if the bundle exist
+    */
+    function requireBundle(uint bundleNb) internal view virtual {
+        if (bundles[bundleNb].itemsSize == 0) revert BundleNotFound();
+    }
+
+    /*
+        @dev Transfert smart contract ownership
+        @param newAddress : New owner address
+    */
+    function transferOwnership(address newAddress) public onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(newAddress != address(0), "Invalid Address");
+        _revokeRole(DEFAULT_ADMIN_ROLE, owner);
+        _grantRole(DEFAULT_ADMIN_ROLE, newAddress);
+        owner = newAddress;
+    }
+
+}

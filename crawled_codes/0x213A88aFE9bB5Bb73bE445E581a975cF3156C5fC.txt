@@ -1,0 +1,88 @@
+pragma solidity ^0.8.17;
+
+//SPDX-License-Identifier: MIT
+
+import "OperaRevenue.sol";
+// import "WETH.sol";
+
+// import "OperaBaseTokenTaxed.sol";
+import "OperaBaseTokenNoTax.sol";
+
+// import "IERC20.sol";
+// import "Math.sol";
+
+contract OperaBaseDeployer2 {
+    address public WETHAddress = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+    address public operaRewardAddress =
+        0x11c68f5c28684FD553160aC89b32c1F6390e7F33;
+    address public owner;
+    uint256 public taxFee = 4 * 10 ** 16;
+    IDEXRouter public router;
+
+    event tokenDeployed(
+        address user,
+        address token,
+        uint256 blocktime,
+        string[] stringData,
+        uint256[] uintData
+    );
+
+    constructor() {
+        owner = msg.sender;
+        router = IDEXRouter(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
+    }
+
+    function emitDeployedEvent(
+        address token,
+        string[] memory _stringData,
+        uint256[] memory _intData
+    ) internal {
+        emit tokenDeployed(
+            msg.sender,
+            token,
+            block.timestamp,
+            _stringData,
+            _intData
+        );
+    }
+
+    function deployToken(
+        string[] memory _stringData,
+        uint256[] memory _intData
+    ) external payable returns (address) {
+        require(msg.value == taxFee, "Did not send enough to cover fee.");
+        address tempAddress;
+
+        OperaBaseTokenNoTax deployedToken = new OperaBaseTokenNoTax(
+            _stringData,
+            _intData
+        );
+        tempAddress = address(deployedToken);
+
+        uint256 tokenAmount = deployedToken.balanceOf(address(this));
+        deployedToken.transfer(msg.sender, tokenAmount);
+        deployedToken.transferOwnership(payable(msg.sender));
+        OperaRevenue rewardContract = OperaRevenue(payable(operaRewardAddress));
+        rewardContract.recieveRewards{value: msg.value}();
+        emitDeployedEvent(address(deployedToken), _stringData, _intData);
+        return tempAddress;
+    }
+
+    receive() external payable {}
+
+    function rescueToken(address token) external {
+        require(msg.sender == owner, "only owner");
+        IERC20 tokenToRescue = IERC20(token);
+        tokenToRescue.transfer(owner, tokenToRescue.balanceOf(address(this)));
+    }
+
+    function withdraw() external {
+        require(msg.sender == owner, "only owner");
+        payable(owner).transfer(address(this).balance);
+    }
+
+    function changeFees(uint256 _taxFee) external {
+        require(msg.sender == owner, "only owner");
+        taxFee = _taxFee;
+    }
+}

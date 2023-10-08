@@ -1,0 +1,71 @@
+
+The provided Solidity code is quite complex and involves a variety of functions that interact with external libraries and contracts. In this analysis, we identify potential issues that may act as gas-wasting patterns.
+
+Please note that these are potential issues, and further investigation and testing may be required to confirm the extent of their impact on gas usage. It's also important to keep in mind that gas optimization may not always be the most important factor, and we should also consider code readability, maintainability, and security.
+
+\subsection*{1. Multiple Calls to the Same Function}
+
+\subsubsection*{How did you find this pattern?}
+
+While examining the code, we notice the `TickMath.getSqrtRatioAtTick()` function is called multiple times with the same arguments in different functions. For instance, in `tokenAmountsToLiquidity()` and `tokenAmountsToMaximalLiquidity()`, this function is executed twice consecutively.
+
+\subsubsection*{What should I do, step by step, to fix the found gas-wasting patterns?}
+
+The potential fix for this would be to avoid repeated function calls when the output is predictable or the same. We can store the results of the function call in a variable and reuse the variable instead of calling the function again.
+
+For example:
+
+```solidity
+uint160 sqrtPriceAX96 = TickMath.getSqrtRatioAtTick(tickLower);
+uint160 sqrtPriceBX96 = TickMath.getSqrtRatioAtTick(tickUpper);
+```
+
+can be refactored to:
+
+```solidity
+uint160 sqrtPriceAX96;
+uint160 sqrtPriceBX96;
+
+if (tickLower == tickUpper) {
+    sqrtPriceAX96 = sqrtPriceBX96 = TickMath.getSqrtRatioAtTick(tickLower);
+} else {
+    sqrtPriceAX96 = TickMath.getSqrtRatioAtTick(tickLower);
+    sqrtPriceBX96 = TickMath.getSqrtRatioAtTick(tickUpper);
+}
+```
+
+\subsubsection*{On a score of 0 to 5, could you please tell me how would you rate this found new pattern?}
+
+- Readability: 5; Storing the result in a variable and reusing it does not make the code less readable, it could actually improve readability by reducing the number of function calls.
+- Security: 5; This approach does not affect the security of the contract as the same function is being used, just less frequently.
+- Maintainability: 5; This change does not affect the maintainability of the code, as no complex changes are required.
+
+\subsection*{2. Unnecessary Typecasting}
+
+\subsubsection*{How did you find this pattern?}
+
+In the function `calculateTvlByMinMaxPrices()`, there is typecasting of `minPriceX96` and `maxPriceX96` to `uint160`. However, these variables were declared as `uint256` and do not seem to exceed the `uint160` limit in the function.
+
+\subsubsection*{What should I do, step by step, to fix the found gas-wasting patterns?}
+
+To optimize this, you should first verify if the `uint160` typecasting is really necessary. If the values of `minPriceX96` and `maxPriceX96` do not exceed the `uint160` limit, you could remove the `uint160` typecasting:
+
+```solidity
+uint160 minSqrtPriceX96 = uint160(CommonLibrary.sqrtX96(minPriceX96));
+uint160 maxSqrtPriceX96 = uint160(CommonLibrary.sqrtX96(maxPriceX96));
+```
+
+Can be refactored to:
+
+```solidity
+uint256 minSqrtPriceX96 = CommonLibrary.sqrtX96(minPriceX96);
+uint256 maxSqrtPriceX96 = CommonLibrary.sqrtX96(maxPriceX96);
+```
+
+\subsubsection*{On a score of 0 to 5, could you please tell me how would you rate this found new pattern?}
+
+- Readability: 5; Removing unnecessary typecasting makes the code cleaner and easier to read.
+- Security: 5; The security of the contract does not seem to be affected by this change. However, it's crucial to ensure that the values of `minPriceX96` and `maxPriceX96` do not exceed the `uint160` limit before making this change.
+- Maintainability: 5; This change simplifies the code and does not impact the maintainability.
+
+These are just two potential gas-wasting patterns found in the provided Solidity code. Further analysis and testing may reveal additional areas for optimization. It's also important to remember that while gas optimization is important, it should not come at the expense of code readability, maintainability, or security.

@@ -1,0 +1,196 @@
+/**
+ *Submitted for verification at Etherscan.io on 2023-08-12
+*/
+
+// Set the license for the smart contract.
+// SPDX-License-Identifier: MIT
+
+// Specify the version of the Solidity compiler.
+pragma solidity ^0.8.0;
+
+// Define the interface for the ERC20 standard.
+interface IERC20 {
+    // Returns the total supply of the token.
+    function totalSupply() external view returns (uint256);
+
+    // Returns the token balance of a specific address.
+    function balanceOf(address account) external view returns (uint256);
+
+    // Transfers tokens to a specific address.
+    function transfer(address recipient, uint256 amount) external returns (bool);
+
+    // Returns the remaining number of tokens that spender can spend on behalf of the owner.
+    function allowance(address owner, address spender) external view returns (uint256);
+
+    // Sets the allowance of one address, allowing another to spend on its behalf.
+    function approve(address spender, uint256 amount) external returns (bool);
+
+    // Transfers tokens from one address to another.
+    function transferFrom(address sender, address recipient, uint256 amount) external returns (bool);
+
+    // Event emitted when tokens are transferred.
+    event Transfer(address indexed from, address indexed to, uint256 value);
+
+    // Event emitted when an allowance is set.
+    event Approval(address indexed owner, address indexed spender, uint256 value);
+}
+
+// The main token contract.
+contract MemeCoin is IERC20 {
+    // Declare the token's name.
+    string public constant name = "MemeCoin";
+
+    // Declare the token's symbol.
+    string public constant symbol = "MEME";
+
+    // Set the number of decimals the token uses.
+    uint8 public constant decimals = 18;
+
+    // Initialize the total supply of the token.
+    uint256 private _totalSupply = 1000000 * 10**decimals;
+
+    // A mapping to store each address's balance.
+    mapping(address => uint256) private _balances;
+
+    // A mapping to store allowances.
+    mapping(address => mapping(address => uint256)) private _allowances;
+
+    // Addresses to receive the 1% tax.
+    address public developerAddress;
+    address public marketingAddress;
+
+    // The constructor sets the initial supply and developer/marketing addresses.
+    constructor(address _developerAddress, address _marketingAddress) {
+        // Assign the total supply to the creator's balance.
+        _balances[msg.sender] = _totalSupply;
+        
+        // Emit a transfer event for the creation of tokens.
+        emit Transfer(address(0), msg.sender, _totalSupply);
+
+        // Set the addresses for tax purposes.
+        developerAddress = _developerAddress;
+        marketingAddress = _marketingAddress;
+    }
+
+    // Returns the total supply.
+    function totalSupply() external view override returns (uint256) {
+        return _totalSupply;
+    }
+
+    // Returns the balance of a specific address.
+    function balanceOf(address account) external view override returns (uint256) {
+        return _balances[account];
+    }
+
+    // Transfer tokens to a recipient after deducting tax.
+    function transfer(address recipient, uint256 amount) external override returns (bool) {
+        // Calculate the 1% taxes.
+        uint256 developerTax = amount / 100;
+        uint256 marketingTax = amount / 100;
+
+        // Handle the tax transfers.
+        _transferTax(msg.sender, developerTax, marketingTax);
+
+        // Calculate the net amount after taxes.
+        uint256 netAmount = amount - developerTax - marketingTax;
+
+        // Perform the token transfer.
+        return _transfer(msg.sender, recipient, netAmount);
+    }
+
+    // Check the allowance an owner gave to a spender.
+    function allowance(address owner, address spender) external view override returns (uint256) {
+        return _allowances[owner][spender];
+    }
+
+    // Allow a spender to spend a set amount of tokens on behalf of the caller.
+    function approve(address spender, uint256 amount) external override returns (bool) {
+        // Set the allowance.
+        _allowances[msg.sender][spender] = amount;
+
+        // Emit an approval event.
+        emit Approval(msg.sender, spender, amount);
+        
+        return true;
+    }
+
+    // Transfer tokens on behalf of an address after deducting tax.
+    function transferFrom(address sender, address recipient, uint256 amount) external override returns (bool) {
+        // Calculate the 1% taxes.
+        uint256 developerTax = amount / 100;
+        uint256 marketingTax = amount / 100;
+
+        // Handle the tax transfers.
+        _transferTax(sender, developerTax, marketingTax);
+
+        // Calculate the net amount after taxes.
+        uint256 netAmount = amount - developerTax - marketingTax;
+
+        // Transfer the tokens and reduce the allowance.
+        bool success = _transfer(sender, recipient, netAmount);
+        if (success) {
+            _allowances[sender][msg.sender] -= amount;
+        }
+
+        return success;
+    }
+
+    // Internal function to handle token transfers.
+    function _transfer(address from, address to, uint256 value) internal returns (bool) {
+        // Ensure recipient isn't zero address.
+        require(to != address(0), "Transfer to zero address");
+        
+        // Check sender has enough tokens.
+        require(_balances[from] >= value, "Insufficient balance");
+
+        // Adjust balances after transfer.
+        _balances[from] -= value;
+        _balances[to] += value;
+
+        // Emit a transfer event.
+        emit Transfer(from, to, value);
+        
+        return true;
+    }
+
+    // Internal function to handle the tax transfers.
+    function _transferTax(address from, uint256 developerTax, uint256 marketingTax) internal {
+        // Deduct total tax from sender.
+        _balances[from] -= (developerTax + marketingTax);
+
+        // Add tax to developer's balance.
+        _balances[developerAddress] += developerTax;
+
+        // Add tax to marketing's balance.
+        _balances[marketingAddress] += marketingTax;
+
+                // Emit transfer events for transparency.
+        emit Transfer(from, developerAddress, developerTax);
+        emit Transfer(from, marketingAddress, marketingTax);
+    }
+
+    // Function to safely subtract two numbers. This prevents underflows.
+    function _sub(uint256 a, uint256 b) internal pure returns (uint256) {
+        require(b <= a, "Subtraction amount exceeds balance");
+        return a - b;
+    }
+
+    // Function to safely add two numbers. This prevents overflows.
+    function _add(uint256 a, uint256 b) internal pure returns (uint256) {
+        uint256 c = a + b;
+        require(c >= a, "Addition overflow");
+        return c;
+    }
+
+    // Allow the developer or marketing addresses to be updated in the future, if necessary.
+    // Note: This can be removed if you want these addresses to remain constant.
+    function setDeveloperAddress(address _newDeveloperAddress) external {
+        require(msg.sender == developerAddress, "Only the current developer can change the address");
+        developerAddress = _newDeveloperAddress;
+    }
+
+    function setMarketingAddress(address _newMarketingAddress) external {
+        require(msg.sender == marketingAddress, "Only the current marketer can change the address");
+        marketingAddress = _newMarketingAddress;
+    }
+}

@@ -1,0 +1,33 @@
+**Gas-wasting pattern 9: Unoptimized data type usage**
+
+- *Explanation*: Using an inefficient data type for a variable in solidity can lead to waste of gas. For example, using `uint256` when `uint8` would suffice. This is because the EVM (Ethereum Virtual Machine) has to reserve more memory for the larger data type, even when the larger capacity is not required.
+
+- *Discovery Process*: This pattern was found by understanding the underlying memory allocation mechanism of EVM and how different data types require different amounts of memory. Efficiency in memory usage directly translates to gas efficiency in Ethereum.
+
+- *Fix*: Examine the maximum possible value a variable can hold during the lifetime of the contract. Use the smallest data type that can accommodate this value. 
+
+- *Impact*: Readability: 5; Security: 5; Maintainability: 4. This does not affect readability or security, but maintainability might be slightly impacted if future contract updates require larger values for some variables.
+
+**Gas-wasting pattern 10: Unnecessary use of external calls**
+
+- *Explanation*: Solidity contracts can interact with other contracts via external function calls. These calls are expensive in terms of gas, especially if the called contract is not in the same address space. Unnecessary external calls can thus waste a lot of gas.
+
+- *Discovery Process*: This pattern was identified by understanding the gas cost associated with external function calls in Solidity. If an operation can be achieved without an external call, it's more gas efficient to do so.
+
+- *Fix*: If the functionality of an external contract is not essential, consider implementing the necessary features in your contract. For cross-contract interactions, use the `internal` or `private` visibility specifier, when possible, to avoid the overhead of external calls.
+
+- *Impact*: Readability: 4; Security: 3; Maintainability: 3. This might reduce readability slightly, as the code could become longer. Security could potentially be compromised if the external contracts have security features that are hard to replicate. Maintainability could also be impacted, as updates to the functionality of the external contract would need to be manually incorporated into your contract.
+
+**Gas-wasting pattern 11: Reverting transactions without reason strings**
+
+- *Explanation*: In Solidity, a transaction can be reverted using the `revert()` function. This function accepts an optional "reason" string which provides more information about the cause of the revert. However, storing and returning these strings costs gas.
+
+- *Discovery Process*: This pattern was found by understanding that storing and returning data in Ethereum costs gas. Even though reason strings can be helpful for debugging, they can waste gas in a production environment.
+
+- *Fix*: Remove reason strings from `revert()` function calls in the production version of your contract. You can use conditional compilation or a configuration flag to include the reason strings in a debugging or testing environment.
+
+- *Impact*: Readability: 3; Security: 5; Maintainability: 2. This could reduce readability, as the reason for reverts would be less clear. However, it does not impact security. Maintainability might be reduced, as it would be harder to debug contract failures without reason strings.
+
+To improve the prompt next time, it would be helpful to specify the target audience's familiarity with Solidity and blockchain concepts. This would help in tailoring the explanation and discovery process. 
+
+As for my reasoning process, understanding the underlying principles of how Ethereum and Solidity work was key in identifying these patterns. However, I could have also studied the Solidity documentation more closely to find specific features that might lead to gas inefficiencies.

@@ -1,0 +1,344 @@
+// SPDX-License-Identifier: BUSL-1.1
+pragma solidity 0.8.18;
+
+import {DojochipPredeploy} from "./DojochipPredeploy.sol";
+import {ERC20Extendable} from "./ERC20Extendable.sol";
+import {ERC20Permit} from "./ERC20Permit.sol";
+import {IERC20} from "openzeppelin/token/ERC20/IERC20.sol";
+import {Pausable} from "openzeppelin/security/Pausable.sol";
+import {Ownable} from "openzeppelin/access/Ownable.sol";
+import {IUniswapV2Factory} from "uniswap-v2-core/interfaces/IUniswapV2Factory.sol";
+import {IUniswapV2Pair} from "uniswap-v2-core/interfaces/IUniswapV2Pair.sol";
+import {IUniswapV2Router02} from "uniswap-v2-periphery/interfaces/IUniswapV2Router02.sol";
+
+contract Dojochip is DojochipPredeploy, Pausable, Ownable, ERC20Permit {
+    // Basis Points are always the base percentage multiplied by 100.
+    // This implies that percentages are taken like so: <amount> * bps / 10_000
+    // The denominator must also scale by a factor of 100 due to lack of floating point types
+    // in Solidity
+    uint256 public constant MAX_LAUNCH_BUY_TAX_BPS = 35 * 100; // 35%
+    uint256 public constant MAX_LAUNCH_SELL_TAX_BPS = 55 * 100; // 55%
+    uint256 public constant MAX_BUY_TAX_BPS = 5 * 100; // 5%
+    uint256 public constant MAX_SELL_TAX_BPS = 5 * 100; // 5%
+    uint256 public constant DEV_TAX_BPS = 50; // 0.5%
+    uint256 public constant AUTO_LIQUIDITY_TAX_BPS = 1 * 100; // 1%
+
+    uint256 public maxBuyTaxBps = MAX_LAUNCH_BUY_TAX_BPS;
+    uint256 public maxSellTaxBps = MAX_LAUNCH_SELL_TAX_BPS;
+    uint256 public buyTaxBps = MAX_LAUNCH_BUY_TAX_BPS;
+    uint256 public sellTaxBps = MAX_LAUNCH_SELL_TAX_BPS;
+
+    address public immutable devWallet;
+    address public teamMarketingWallet;
+    address public teamDevAndRDWallet;
+    address public teamBuybackWallet;
+
+    uint256 public constant MAX_TOKENS_PER_WALLET_BPS = 1 * 100; // 1%
+    uint256 public immutable maxTokensPerWallet;
+
+    bool public isPostLaunchTaxFuse = false;
+    bool public isMaxTokensPerWalletEnabled = true;
+    bool public isTradingEnabled = false;
+
+    mapping(address => bool) public isAddressMaxTokenExempt;
+
+    uint256 public happyHourEndTimestamp = 0;
+
+    // All Uniswap Contracts are on Mainnet ETH
+    IUniswapV2Router02 public constant UNISWAP_V2_ROUTER =
+        IUniswapV2Router02(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
+    IUniswapV2Pair public immutable uniswapV2Pair;
+    IERC20 public immutable weth;
+
+    event SellTaxSet(uint256 sellTaxPercentage);
+    event BuyTaxSet(uint256 buyTaxPercentage);
+    event TaxWalletSet(string walletType, address indexed wallet);
+    event AutoLiquidityTaxToggled(bool);
+    event MaxTokensPerWalletToggled(bool);
+    event TradingEnabledToggled(bool);
+    event TaxOutputSwapToETHToggled(bool);
+    event AddressMaxTokenExemptSet(address, bool);
+    event HappyHour(uint256 timestamp, uint256 duration);
+
+    constructor(
+        address _devWallet,
+        address _teamMarketingWallet,
+        address _teamDevAndRDWallet,
+        address _teamBuybackWallet
+    ) payable ERC20Extendable("Dojochip", "DJO") ERC20Permit("Dojochip") {
+        require(_devWallet != address(0), "DevWallet: Can not be the zero address");
+        _preDeploy();
+        _preDeployMintToAll();
+
+        devWallet = _devWallet;
+        setWallets(_teamMarketingWallet, _teamDevAndRDWallet, _teamBuybackWallet);
+
+        // Create a Uniswap v2 Pair for this new token
+        weth = IERC20(UNISWAP_V2_ROUTER.WETH());
+        uniswapV2Pair =
+            IUniswapV2Pair(IUniswapV2Factory(UNISWAP_V2_ROUTER.factory()).createPair(address(this), address(weth)));
+
+        // Denominator is 10,000 because we're using bps for math. % gets scaled by factor of 100,
+        // so too does the denominator
+        maxTokensPerWallet = (totalSupply() * MAX_TOKENS_PER_WALLET_BPS) / 10_000;
+
+        isAddressMaxTokenExempt[_devWallet] = true;
+        isAddressMaxTokenExempt[_teamMarketingWallet] = true;
+        isAddressMaxTokenExempt[_teamDevAndRDWallet] = true;
+        isAddressMaxTokenExempt[_teamBuybackWallet] = true;
+        isAddressMaxTokenExempt[address(uniswapV2Pair)] = true;
+        isAddressMaxTokenExempt[address(UNISWAP_V2_ROUTER)] = true;
+        isAddressMaxTokenExempt[address(this)] = true;
+        isAddressMaxTokenExempt[msg.sender] = true;
+    }
+
+    function startHappyHour() public onlyOwner {
+        require(block.timestamp > happyHourEndTimestamp, "Happy Hour already in effect");
+        happyHourEndTimestamp = block.timestamp + 1 hours;
+        emit HappyHour(block.timestamp, 1 hours);
+    }
+
+    function startHappyHourCustomDuration(uint256 duration) public onlyOwner {
+        require(block.timestamp > happyHourEndTimestamp, "Happy Hour already in effect");
+        require(duration >= 1 hours && duration <= 1 weeks, "Duration should be 1 hour <= x <= 1 weeks");
+        happyHourEndTimestamp = block.timestamp + duration;
+        emit HappyHour(block.timestamp, duration);
+    }
+
+    function _isHappyHour() private view returns (bool) {
+        return block.timestamp < happyHourEndTimestamp;
+    }
+
+    function setIsAddressMaxWalletExempt(address addr, bool val) public onlyOwner {
+        require(isAddressMaxTokenExempt[addr] != val, "Toggle value must be different than current");
+        isAddressMaxTokenExempt[addr] = val;
+        emit AddressMaxTokenExemptSet(addr, val);
+    }
+
+    function setTradingEnabled(bool _isTradingEnabled) public onlyOwner {
+        require(isTradingEnabled != _isTradingEnabled, "Toggle value must be different than current");
+        isTradingEnabled = _isTradingEnabled;
+        emit TradingEnabledToggled(_isTradingEnabled);
+    }
+
+    function setMaxTokensPerWallet(bool _isMaxTokensPerWalletEnabled) public onlyOwner {
+        require(
+            isMaxTokensPerWalletEnabled != _isMaxTokensPerWalletEnabled, "Toggle value must be different than current"
+        );
+        isMaxTokensPerWalletEnabled = _isMaxTokensPerWalletEnabled;
+        emit MaxTokensPerWalletToggled(_isMaxTokensPerWalletEnabled);
+    }
+
+    function setTeamMarketingWallet(address _newWallet) public onlyOwner {
+        require(_newWallet != address(0), "Can not be the zero address");
+        require(teamMarketingWallet != _newWallet, "Wallet must be different than current");
+        teamMarketingWallet = payable(_newWallet);
+        emit TaxWalletSet("teamMarketingWallet", _newWallet);
+    }
+
+    function setTeamDevAndRDWallet(address _newWallet) public onlyOwner {
+        require(_newWallet != address(0), "Can not be the zero address");
+        require(teamDevAndRDWallet != _newWallet, "Wallet must be different than current");
+        teamDevAndRDWallet = payable(_newWallet);
+        emit TaxWalletSet("teamDevAndRDWallet", _newWallet);
+    }
+
+    function setTeamBuybackWallet(address _newWallet) public onlyOwner {
+        require(_newWallet != address(0), "Can not be the zero address");
+        require(teamBuybackWallet != _newWallet, "Wallet must be different than current");
+        teamBuybackWallet = payable(_newWallet);
+        emit TaxWalletSet("teamBuybackWallet", _newWallet);
+    }
+
+    function setWallets(address _teamMarketingWallet, address _teamDevAndRDWallet, address _teamBuybackWallet)
+        public
+        onlyOwner
+    {
+        require(_teamMarketingWallet != address(0), "TeamMarketingWallet: Can not be the zero address");
+        require(_teamDevAndRDWallet != address(0), "TeamDevAndRDWallet: Can not be the zero address");
+        require(_teamBuybackWallet != address(0), "TeamBuybackWallet: Can not be the zero address");
+        require(teamMarketingWallet != _teamMarketingWallet, "TeamMarketingWallet: Must be different than current");
+        require(teamDevAndRDWallet != _teamDevAndRDWallet, "TeamDevAndRDWallet: Must be different than current");
+        require(teamBuybackWallet != _teamBuybackWallet, "TeamBuybackWallet: Must be different than current");
+
+        teamMarketingWallet = payable(_teamMarketingWallet);
+        teamDevAndRDWallet = payable(_teamDevAndRDWallet);
+        teamBuybackWallet = payable(_teamBuybackWallet);
+        emit TaxWalletSet("teamMarketingWallet", _teamMarketingWallet);
+        emit TaxWalletSet("teamDevAndRDWallet", _teamDevAndRDWallet);
+        emit TaxWalletSet("teamBuybackWallet", _teamBuybackWallet);
+    }
+
+    function setSellTax(uint256 sellTaxPercentage) public onlyOwner {
+        require(sellTaxPercentage <= (maxSellTaxBps / 100), "Sell Tax must be between 0% - maxSellTaxBps%");
+        sellTaxBps = sellTaxPercentage * 100;
+        emit SellTaxSet(sellTaxPercentage);
+    }
+
+    function setBuyTax(uint256 buyTaxPercentage) public onlyOwner {
+        require(buyTaxPercentage <= (maxBuyTaxBps / 100), "Buy Tax must be between 0% - maxBuyTaxBps%");
+        buyTaxBps = buyTaxPercentage * 100;
+        emit BuyTaxSet(buyTaxPercentage);
+    }
+
+    function setTaxes(uint256 buyTaxPercentage, uint256 sellTaxPercentage) public onlyOwner {
+        require(buyTaxPercentage <= (maxBuyTaxBps / 100), "Buy Tax must be between 0% - maxBuyTaxBps%");
+        require(sellTaxPercentage <= (maxSellTaxBps / 100), "Sell Tax must be between 0% - maxSellTaxBps%");
+        buyTaxBps = buyTaxPercentage * 100;
+        sellTaxBps = sellTaxPercentage * 100;
+        emit BuyTaxSet(buyTaxPercentage);
+        emit SellTaxSet(sellTaxPercentage);
+    }
+
+    function blowIsPostLaunchFuse() public onlyOwner {
+        require(!isPostLaunchTaxFuse, "Post Launch Fuse can only be blown once");
+        isPostLaunchTaxFuse = true;
+        maxBuyTaxBps = MAX_BUY_TAX_BPS;
+        maxSellTaxBps = MAX_SELL_TAX_BPS;
+        setTaxes(MAX_BUY_TAX_BPS / 100, MAX_SELL_TAX_BPS / 100);
+    }
+
+    function calculateTaxes(uint256 amount, uint256 remainingTaxesBps)
+        public
+        pure
+        returns (
+            uint256 numTokensRemainder,
+            uint256 numTokensDev,
+            uint256 numTokensMarketing,
+            uint256 numTokensDevAndRD,
+            uint256 numTokensBuyback
+        )
+    {
+        uint256 remainingTaxTokens = (amount * remainingTaxesBps) / 10_000;
+        numTokensRemainder = amount - remainingTaxTokens;
+
+        // First, always take the 1% for dev output
+        numTokensDev = (amount * DEV_TAX_BPS) / 10_000;
+        remainingTaxTokens -= numTokensDev;
+
+        // Then, split the remainder between the other 3 wallets
+        uint256 teamWalletTaxTokensInThirds = remainingTaxTokens / 3;
+        numTokensMarketing = teamWalletTaxTokensInThirds;
+        numTokensDevAndRD = teamWalletTaxTokensInThirds;
+        // Use the remainingTaxTokens here to handle rounding errors
+        remainingTaxTokens -= (teamWalletTaxTokensInThirds + teamWalletTaxTokensInThirds);
+        numTokensBuyback = remainingTaxTokens;
+
+        uint256 numTokensTaxed = numTokensDev + numTokensMarketing + numTokensDevAndRD + numTokensBuyback;
+        require(numTokensRemainder + numTokensTaxed == amount, "Tax Calculation is incorrect");
+    }
+
+    function _performTradeTransfer(address from, address to, uint256 amount, uint256 taxBps) private {
+        require(taxBps != 0, "Tax Basis Points may not be 0");
+        (
+            uint256 numTokensRemainder,
+            uint256 numTokensDev,
+            uint256 numTokensMarketing,
+            uint256 numTokensDevAndRD,
+            uint256 numTokensBuyback
+        ) = calculateTaxes(amount, taxBps);
+        _balances[from] -= amount;
+        _balances[to] += numTokensRemainder;
+        _balances[devWallet] += numTokensDev;
+        _balances[teamMarketingWallet] += numTokensMarketing;
+        _balances[teamDevAndRDWallet] += numTokensDevAndRD;
+        _balances[teamBuybackWallet] += numTokensBuyback;
+
+        emit Transfer(from, to, numTokensRemainder);
+        emit Transfer(from, devWallet, numTokensDev);
+        emit Transfer(from, teamMarketingWallet, numTokensMarketing);
+        emit Transfer(from, teamDevAndRDWallet, numTokensDevAndRD);
+        emit Transfer(from, teamBuybackWallet, numTokensBuyback);
+    }
+
+    function _transfer(address from, address to, uint256 amount) internal override {
+        require(from != address(0), "ERC20: transfer from the zero address");
+        require(to != address(0), "ERC20: transfer to the zero address");
+
+        _beforeTokenTransfer(from, to, amount);
+
+        uint256 fromBalance = _balances[from];
+        require(fromBalance >= amount, "ERC20: transfer amount exceeds balance");
+
+        uint256 toBalance = _balances[to];
+        address uniV2PairAddr = address(uniswapV2Pair);
+        bool isBuy = from == uniV2PairAddr ? true : false;
+        bool isSell = to == uniV2PairAddr ? true : false;
+        uint256 taxBps = isBuy ? buyTaxBps : isSell ? sellTaxBps : 0;
+
+        // Enforce 1% Wallet Cap
+        if (isMaxTokensPerWalletEnabled && !isAddressMaxTokenExempt[to]) {
+            uint256 amountRemainder = amount - ((amount * taxBps) / 10_000);
+            require(toBalance + amountRemainder <= maxTokensPerWallet, "Exceeds maximum wallet token amount of 1%");
+        }
+
+        // Handle a regular transfer: either not a buy/sell, or happy hour is active
+        if ((!isBuy && !isSell) || _isHappyHour()) {
+            _balances[from] = fromBalance - amount;
+            _balances[to] = toBalance + amount;
+            emit Transfer(from, to, amount);
+            return;
+        } else {
+            // In this block, we are either a buy or a sell
+            // If trading is disabled, still allow the owner to make liquidity changes
+            if (!isTradingEnabled) {
+                // We're guaranteed to have the `from` or `to` as the uniV2PairAddr at this point
+                require(
+                    from == owner() || to == owner() || to == address(UNISWAP_V2_ROUTER),
+                    "Trading Not Enabled: Only Owner Is Allowed To Update Liquidity"
+                );
+            }
+
+            // Owner never pays taxes so they can change liquidity. Everyone else pays taxes
+            // Removing liquidity also does not trigger a tax, as it is not a buy/sell
+            if (from == owner() || to == owner() || to == address(UNISWAP_V2_ROUTER)) {
+                _balances[from] = fromBalance - amount;
+                _balances[to] = toBalance + amount;
+                emit Transfer(from, to, amount);
+                return;
+            }
+
+            // Allow no tax when the seller is this contract, for distributions in ETH
+            if (isSell && from == address(this)) {
+                _balances[from] = fromBalance - amount;
+                _balances[to] = toBalance + amount;
+                emit Transfer(from, to, amount);
+                return;
+            }
+
+            _performTradeTransfer(from, to, amount, taxBps);
+        }
+
+        _afterTokenTransfer(from, to, amount);
+    }
+
+    function pause() public onlyOwner {
+        _pause();
+    }
+
+    function unpause() public onlyOwner {
+        _unpause();
+    }
+
+    function _beforeTokenTransfer(address from, address to, uint256 amount) internal override whenNotPaused {
+        super._beforeTokenTransfer(from, to, amount);
+    }
+
+    // Function to receive Ether. msg.data must be empty
+    receive() external payable {}
+
+    // Fallback function is called when msg.data is not empty
+    fallback() external payable {}
+
+    function getBalance() public view returns (uint256) {
+        return address(this).balance;
+    }
+
+    function withdrawETH(address payable to) public payable onlyOwner {
+        require(to != address(0), "withdrawETH: May not send to 0 address");
+        // Call returns a boolean value indicating success or failure.
+        // This is the current recommended method to use.
+        (bool sent,) = to.call{value: address(this).balance}("");
+        require(sent, "Failed to send Ether");
+    }
+}

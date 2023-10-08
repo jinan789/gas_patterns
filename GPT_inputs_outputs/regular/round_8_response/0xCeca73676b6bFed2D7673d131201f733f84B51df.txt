@@ -1,0 +1,39 @@
+Here are a few new gas-wasting patterns that I can observe in the given Solidity code:
+
+1. **Repeated calls to external functions or contracts:** For instance, `payload.getBranchMaskAsBytes()` is called twice. Each external call consumes more gas than an internal function call, because it requires an inter-contract communication.
+
+    - **Discovery Process:** I started by analyzing each function in the contract, paying special attention to any function calls that appear more than once. I then researched the cost of these calls and found that external calls are particularly expensive in terms of gas.
+    - **Fix:** Store the result of the first call to `payload.getBranchMaskAsBytes()` in a variable and reuse it later instead of making the call again. This would look something like this:
+    ```solidity
+    vars.branchMaskBytes = payload.getBranchMaskAsBytes();
+    // use vars.branchMaskBytes instead of payload.getBranchMaskAsBytes()
+    ```
+    - **Impact on Readability, Security, and Maintainability:** Readability: 5; Security: 5; Maintainability: 4. This change doesn't make the code less readable or less secure, but it adds an extra variable that needs to be kept track of, slightly affecting maintainability.
+
+2. **Inefficient use of storage:** For example, `exits[exitId].owner = exitor;` writes to storage, which is expensive in terms of gas.
+
+    - **Discovery Process:** I looked for any lines that interact with contract storage, as I know that reading from and writing to storage is more gas-intensive than interacting with memory.
+    - **Fix:** If possible, reduce the frequency of writing to storage. In some cases, it may not be necessary to store certain data on-chain. In this case, it would be more gas efficient to store `exitor` in memory and only write to storage when necessary. The fix would look something like this:
+    ```solidity
+    address exitor = exitNft.ownerOf(exitId);
+    // exits[exitId].owner = exitor; This line is removed
+    ```
+    - **Impact on Readability, Security, and Maintainability:** Readability: 4; Security: 3; Maintainability: 3. This change may make the code slightly less readable and maintainable due to the added complexity, and could potentially impact security depending on how the `exitor` variable is used elsewhere in the code.
+
+3. **Use of magic numbers:** The code contains several hardcoded numbers, such as `127` and `32` in the line `(getExitableAt(vars.createdAt) << 127) | (vars.blockNumber << 32)`. These "magic numbers" can lead to higher gas costs if they are used in computations.
+
+    - **Discovery Process:** I looked for any hardcoded numbers in the code, as these can often be a sign of inefficient or hard-to-maintain code.
+    - **Fix:** Replace the hardcoded numbers with constants defined at the beginning of the contract. This makes the code easier to understand and maintain, and could potentially save gas if the numbers are used in computations. The fix might look like this:
+    ```solidity
+    uint constant SHIFT_CREATED_AT = 127;
+    uint constant SHIFT_BLOCK_NUMBER = 32;
+    // Then use these constants in the code
+    return (getExitableAt(vars.createdAt) << SHIFT_CREATED_AT) | (vars.blockNumber << SHIFT_BLOCK_NUMBER);
+    ```
+    - **Impact on Readability, Security, and Maintainability:** Readability: 5; Security: 5; Maintainability: 5. This change makes the code more readable and maintainable without impacting security.
+
+Overall, the analysis and optimization of gas usage is a complex process that requires a deep understanding of both the Solidity language and the Ethereum Virtual Machine. It's always a trade-off between optimization and the maintainability and readability of the code.
+
+As for the prompt, I think it's clear and well-structured. However, it could be improved by providing a few more examples of gas-inefficient patterns, as well as some context on how the contract is used. This would help to better understand the potential optimizations.
+
+In terms of my own process, I tried to systematically analyze each line of code and consider its gas cost. I could improve this process in the future by creating a checklist of common gas-inefficient patterns to look for, which could help to ensure that I don't miss any potential optimizations.

@@ -1,0 +1,229 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.13;
+
+import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC1155/ERC1155Upgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/StringsUpgradeable.sol";
+import "operator-filter-registry/src/upgradeable/DefaultOperatorFiltererUpgradeable.sol";
+
+contract AKEYCalledBEAST is Initializable, ERC1155Upgradeable, OwnableUpgradeable, DefaultOperatorFiltererUpgradeable, UUPSUpgradeable {
+
+    struct Card {
+        bool exists;
+        bool mint_active;
+        bool unlockable;
+        string name;
+        uint256 id;
+        uint256 supply;
+        uint256 beast_list_max;
+    }
+
+    mapping(uint256 => Card) public cards;
+    mapping(uint => bool) public genesisMinted;
+    mapping(address => bool) public padlocks;
+    address public akcbAddr;
+    string public baseURI;
+
+    mapping(address => uint32) public _walletsMinted;
+    bytes32 private verificationHash;
+
+    string _name;
+    string _symbol;
+
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
+    function initialize() initializer public {
+        __ERC1155_init("");
+        __Ownable_init();
+        __UUPSUpgradeable_init();
+        __DefaultOperatorFilterer_init();
+
+        _name = "a KEY called BEAST";
+        _symbol = "KEY";
+        akcbAddr = 0x77372a4cc66063575b05b44481F059BE356964A4;
+    }
+
+    function name() public view returns (string memory) {
+        return _name;
+    }
+
+    function symbol() public view returns (string memory) {
+        return _symbol;
+    }
+
+    // OpenSea Operator Filter Registry Functions https://github.com/ProjectOpenSea/operator-filter-registry
+    function setApprovalForAll(address operator, bool approved) public override onlyAllowedOperatorApproval(operator) {
+        super.setApprovalForAll(operator, approved);
+    }
+
+    function safeTransferFrom(address from, address to, uint256 tokenId, uint256 amount, bytes memory data)
+        public
+        override
+        onlyAllowedOperator(from)
+    {
+        super.safeTransferFrom(from, to, tokenId, amount, data);
+    }
+
+    function safeBatchTransferFrom(
+        address from,
+        address to,
+        uint256[] memory ids,
+        uint256[] memory amounts,
+        bytes memory data
+    ) public virtual override onlyAllowedOperator(from) {
+        super.safeBatchTransferFrom(from, to, ids, amounts, data);
+    }
+
+    function setURI(string memory _baseURI) public onlyOwner {
+        baseURI = _baseURI;
+    }
+
+    function setVerificationHash(bytes32 _hash) external onlyOwner {
+        verificationHash = _hash;
+    }
+
+    function setPadlocks(address[] memory _adr, bool _can) external onlyOwner {
+        for (uint256 i = 0; i < _adr.length; i++) {
+            padlocks[_adr[i]] = _can;
+        }
+    }
+
+    function initialiseCard(
+        string memory card_name,
+        uint256 id,
+        bool mint_active,
+        uint256 beast_list_max
+    ) public onlyOwner {
+        require(!cards[id].exists, "Card has already been created.");
+
+        cards[id] = Card({
+            id: id,
+            name: card_name,
+            supply: 0,
+            exists: true,
+            mint_active: mint_active,
+            beast_list_max: beast_list_max,
+            unlockable: false
+        });
+    }
+
+    function updateCard(
+        string memory card_name,
+        uint256 id,
+        bool mint_active,
+        uint256 beast_list_max,
+        bool unlockable
+    ) public onlyOwner {
+        require(cards[id].exists, "Card has to exist in order to update.");
+
+        cards[id].name = card_name;
+        cards[id].mint_active = mint_active;
+        cards[id].unlockable = unlockable;
+        cards[id].beast_list_max = beast_list_max;
+    }
+
+    function beastsHaveClaimed(uint256[] memory genesisIds) external view returns (bool[] memory) {
+        bool[] memory hasClaimed = new bool[](genesisIds.length);
+
+        for (uint256 index = 0; index < genesisIds.length; index++) {
+            if (genesisMinted[genesisIds[index]]) {
+                hasClaimed[index] = true;
+            }
+        }
+
+        return hasClaimed;
+    }
+
+    function mintGenesisBatch(uint[] memory genesisIds, uint256 cardId) external {
+        require(cards[cardId].mint_active, "Claim hasn't started");
+        require(genesisIds.length > 0, "Must claim for at least one Genesis.");
+        IERC721 akcbContract = IERC721(akcbAddr);
+
+        address holder = akcbContract.ownerOf(genesisIds[0]);
+
+        for (uint256 i = 0; i < genesisIds.length; i++) {
+            require(akcbContract.ownerOf(genesisIds[i]) == holder, "BEASTs must be owned by the same wallet for mint.");
+            require(!genesisMinted[genesisIds[i]], "One of the BEASTs have already been claimed for this collection.");
+            genesisMinted[genesisIds[i]] = true;
+        }
+
+        cards[cardId].supply = cards[cardId].supply + genesisIds.length;
+        _mint(holder, cardId, genesisIds.length, "");
+    }
+
+    function airdrop(address[] memory adrs, uint256[] memory amounts, uint256 id) external onlyOwner {
+        require(cards[id].exists, "Card minting is not currently active.");
+        require(adrs.length == amounts.length, "Amounts much match addresses");
+
+        uint256 total = 0;
+
+        for (uint256 i = 0; i < adrs.length; i++) {
+            total = total + amounts[i];
+            _mint(adrs[i], id, amounts[i], "");
+        }
+
+        cards[id].supply = cards[id].supply + total;
+    }
+
+    function unlock(uint256 cardId, uint256 amount, address adr) external {
+        require(cards[cardId].unlockable, "Padlock not found for key.");
+        require(padlocks[msg.sender], "Not a valid Padlock.");
+        require(balanceOf(adr, cardId) >= amount, "User does not have enough to unlock.");
+
+        cards[cardId].supply = cards[cardId].supply - amount;
+        _burn(adr, cardId, amount);
+    }
+
+    function mintBeastList (uint256 cardId, uint256 amount, bytes32[] memory proof) external payable {
+        require(cards[cardId].mint_active, "Card minting is not currently active.");
+        require((_walletsMinted[msg.sender] + amount) <= cards[cardId].beast_list_max, "Max per address exceeded.");
+
+        bytes32 user = keccak256(abi.encodePacked(msg.sender));
+        require(verify(user, proof), "User is not beast listed.");
+
+        _walletsMinted[msg.sender]++;
+
+        cards[cardId].supply = cards[cardId].supply + amount;
+        _mint(msg.sender, cardId, amount, "");
+    }
+
+    function verify (bytes32 user, bytes32[] memory proof) internal view returns (bool) {
+        bytes32 computedHash = user;
+
+        for (uint256 i = 0; i < proof.length; i++) {
+            bytes32 proofElement = proof[i];
+
+            if (computedHash <= proofElement) {
+                computedHash = keccak256(abi.encodePacked(computedHash, proofElement));
+            } else {
+                computedHash = keccak256(abi.encodePacked(proofElement, computedHash));
+            }
+        }
+
+        return computedHash == verificationHash;
+    }
+
+    function totalSupply(uint256 id) public view returns (uint256) {
+        return cards[id].supply;
+    }
+
+    function uri(
+        uint256 _id
+    ) override public view returns (string memory) {
+        require(cards[_id].exists, "ERC721Tradable#uri: NONEXISTENT_TOKEN");
+
+        return bytes(baseURI).length > 0 ? string(abi.encodePacked(baseURI, StringsUpgradeable.toString(_id))) : "";
+    }
+
+    function _authorizeUpgrade(address newImplementation)
+        internal
+        onlyOwner
+        override
+    {}
+}

@@ -1,0 +1,76 @@
+// SPDX-License-Identifier: BUSL-1.1
+pragma solidity >=0.8.19;
+
+import { IPermit4494Facet } from "./IPermit4494Facet.sol";
+import { Permit4494Storage } from "./Permit4494Storage.sol";
+import { ERC721AUpgradeableInternal } from "../ERC721A/ERC721AUpgradeableInternal.sol";
+import { ECDSA } from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import { CountersUpgradeable } from "@openzeppelin/contracts-upgradeable/utils/CountersUpgradeable.sol";
+import { EIP712Upgradeable } from  "@openzeppelin/contracts-upgradeable/utils/cryptography/EIP712Upgradeable.sol";
+import { ERC721AStorage } from "../ERC721A/ERC721AStorage.sol";
+import { ERC712Lib } from '../ERC712/ERC712Lib.sol';
+import { Permit4494Lib } from './Permit4494Lib.sol';
+
+/// @title Permit4494ERC721AFacet
+/// @author Martin Wawrusch for Roji Inc.
+/// @notice Requires the `ERC712Facet`.
+contract Permit4494ERC721AFacet is ERC721AUpgradeableInternal, IPermit4494Facet {
+    using CountersUpgradeable for CountersUpgradeable.Counter;
+
+    /// @inheritdoc IPermit4494Facet
+    function nonces(uint256 tokenId_) external view returns(uint256) {
+        return Permit4494Storage.layout().nonces[tokenId_].current();
+    }
+
+    /// @inheritdoc IPermit4494Facet
+    function permit(
+    address spender,
+    uint256 tokenId,
+    uint256 deadline,
+    bytes memory signature
+  ) external  {
+    // solhint-disable-next-line not-rely-on-time
+    require(block.timestamp <= deadline, "ERC721Permit: expired deadline");
+
+    bytes32 structHash = keccak256(
+      abi.encode(
+        Permit4494Lib.PERMIT_4494_TYPEHASH,
+        spender,
+        tokenId,
+         Permit4494Storage.layout().nonces[tokenId].current(),
+        deadline
+      )
+    );
+    bytes32 hash = ERC712Lib._hashTypedDataV4(structHash);
+
+    (address signer, ) = ECDSA.tryRecover(hash, signature);
+    bool isValidEOASignature = signer != address(0) &&
+      _isApprovedOrOwner(signer, tokenId);
+
+    require(
+      isValidEOASignature ||
+        Permit4494Lib._isValidContractERC1271Signature(_ownerOf(tokenId), hash, signature) ||
+        Permit4494Lib._isValidContractERC1271Signature(_getApproved(tokenId), hash, signature),
+      "ERC721Permit: invalid signature"
+    );
+
+    _approve(spender, tokenId);
+  }
+
+  function _getApproved(uint256 tokenId) internal view virtual returns (address) {
+      if (!_exists(tokenId)) _revert(ApprovalQueryForNonexistentToken.selector);
+
+      return ERC721AStorage.layout()._tokenApprovals[tokenId].value;
+  }
+
+  function _isApprovedOrOwner(address spender, uint256 tokenId)
+        internal
+        view
+        returns (bool)
+    {
+        return _getApproved(tokenId) == spender ||
+            _isApprovedForAll(_ownerOf(tokenId), spender) ||
+            _ownerOf(tokenId) == spender;
+    }
+
+}

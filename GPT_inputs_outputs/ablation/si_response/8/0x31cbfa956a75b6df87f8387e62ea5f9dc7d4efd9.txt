@@ -1,0 +1,29 @@
+Here are some potential gas-wasting patterns I noticed from the provided Solidity code:
+
+1. **Repeated calls to external contract methods**: In the `_accumulateReward` function, `lmPool.lastRewardTimestamp()`, `lmPool.rewardGrowthGlobalX128()`, and `lmPool.lmLiquidity()` are called more than once. Each external contract method call consumes gas, so it's more efficient to store the result in a local variable and refer to that variable instead of making repeated external calls. Also, in the `liquidityToTokenAmounts` and `tokenAmountsToLiquidity` functions, `positionManager.positions(uniV3Nft)` and `pool.slot0()` are called twice. These calls should be reduced to just one by storing their results in a local variable.
+
+    To fix this, introduce local variables to store the results of these methods. For example:
+    ```solidity
+    uint32 lastRewardTimestamp = lmPool.lastRewardTimestamp();
+    uint256 rewardGrowthGlobalX128 = lmPool.rewardGrowthGlobalX128();
+    uint256 lmLiquidity = lmPool.lmLiquidity();
+    ```
+    Then replace all subsequent calls to these methods with the corresponding local variables.
+
+2. **Unnecessary typecasting**: In the `_accumulateReward` function, `endTime` is typecast to `uint32` to create `endTimestamp`, but `endTime` itself is never used again. This is an unnecessary operation and consumes extra gas.
+
+    To fix this, remove the typecasting and use `endTime` directly in the code without converting it to `endTimestamp`.
+
+3. **Redundant conditional branches**: In the function `tokenAmountsToMaximalLiquidity`, there are conditional branches to check the value of `sqrtRatioX96` in relation to `sqrtRatioAX96` and `sqrtRatioBX96`. However, the conditions seem to be overlapping and could possibly be consolidated.
+
+    To fix this, review the logic and consider simplifying the condition branches to eliminate redundancy.
+
+4. **Unoptimized array initialization**: In the `calculateTvlByMinMaxPrices` function, `minTokenAmounts` and `maxTokenAmounts` arrays are initialized with a size of 2 but only the first two elements are used.
+
+    To fix this, consider changing the size of the arrays to match the number of elements that will actually be stored.
+
+5. **Unnecessary calculations**: In the `tokenAmountsToMaximalLiquidity` function, there are calculations performed to determine the liquidity for both tokens, but only the larger value is used.
+
+    To fix this, consider calculating the liquidity for each token in separate conditional branches to avoid unnecessary calculations.
+
+Doing a thorough code review with gas cost optimization in mind is a good practice when writing Solidity contracts. Solidity's unique factor of gas costs for operations makes it important to pay attention to the small details that could end up costing a lot in transaction fees.

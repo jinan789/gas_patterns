@@ -1,0 +1,137 @@
+// SPDX-License-Identifier: AGPL-3.0
+pragma solidity 0.8.19;
+
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "./interface/IUniswapV2Router02.sol";
+import "./interface/IQWN.sol";
+import "./interface/IWETH.sol";
+
+/// @title   QWAFeeHandler
+/// @notice  Handles distributing fees for Quantum Wealth Accelerator
+contract QWAFeeHandler is Ownable {
+    /// EVENTS ///
+
+    event ETHSwapped(uint256 amount, FEETYPE indexed feetype);
+
+    /// VARIABLES ///
+
+    enum FEETYPE {
+        LIQUIDITY,
+        BUYANDBURN,
+        BUYANDSEND,
+        ETHTOTREASURY
+    }
+
+    /// @notice Current fee type
+    FEETYPE public feeType;
+    /// @notice Swap ETH at amount
+    uint256 public swapETHAtAmount;
+
+    /// @notice Address of QWN
+    address public immutable QWN;
+    /// @notice Address of WETH
+    address public immutable WETH;
+
+    /// @notice Address to transfer QWN if `FEETYPE` is `BUYANDSEND`
+    address public transferAddress;
+
+    /// @notice Address of UniswapV2Router
+    IUniswapV2Router02 public immutable uniswapV2Router;
+
+    /// CONSTRUCTOR ///
+
+    constructor(address _QWN, address _WETH) {
+        IUniswapV2Router02 _uniswapV2Router = IUniswapV2Router02(
+            0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D
+        );
+
+        uniswapV2Router = _uniswapV2Router;
+
+        swapETHAtAmount = 2.5 ether;
+
+        QWN = _QWN;
+        WETH = _WETH;
+    }
+
+    /// OWNER FUNCTIONS ///
+
+    /// @notice Set fee type
+    function setFeeType(FEETYPE _feeType) external onlyOwner {
+        feeType = _feeType;
+    }
+
+    /// @notice ETH balance of contract to sawp
+    function setSwapETHAtAmount(uint256 _swapETHAtAmount) external onlyOwner {
+        swapETHAtAmount = _swapETHAtAmount;
+    }
+
+    /// @notice Transfer address to send if sending QWN, not burning
+    function setTransferAddress(address _transferAddress) external onlyOwner {
+        transferAddress = _transferAddress;
+    }
+
+    /// CONVERT FEES ///
+
+    /// @notice Convert fees to `FEETYPE`
+    function convertFees() external {
+        uint256 wethBalance = IERC20(WETH).balanceOf(address(this));
+        if (wethBalance > 0) IWETH(WETH).withdraw(wethBalance);
+
+        uint256 contractBalance = address(this).balance;
+        bool canSwap = contractBalance >= swapETHAtAmount;
+
+        if (canSwap) {
+            if (feeType == FEETYPE.LIQUIDITY) {
+                _addLiquidity(contractBalance);
+            } else if (feeType == FEETYPE.BUYANDBURN) {
+                _swapETHForQWN(contractBalance);
+                IQWN(QWN).burn(IERC20(QWN).balanceOf(address(this)));
+            } else if (feeType == FEETYPE.BUYANDSEND) {
+                _swapETHForQWN(contractBalance);
+                IERC20(QWN).transfer(
+                    transferAddress,
+                    IERC20(QWN).balanceOf(address(this))
+                );
+            } else if (feeType == FEETYPE.ETHTOTREASURY) {
+                IWETH(WETH).deposit{value: contractBalance}();
+                IERC20(WETH).transfer(IQWN(QWN).treasury(), contractBalance);
+            }
+            emit ETHSwapped(contractBalance, feeType);
+        }
+    }
+
+    //// INTERNAL FUNCTIONS ///
+
+    /// @dev INTERNAL function to add swap ETH fees for QWN
+    /// @dev Invoked in `_addLiquidity()` and `convertFees()`
+    function _swapETHForQWN(uint256 _ethAmount) internal {
+        address[] memory path = new address[](2);
+        path[0] = WETH;
+        path[1] = QWN;
+
+        uniswapV2Router.swapExactETHForTokensSupportingFeeOnTransferTokens{
+            value: _ethAmount
+        }(0, path, address(this), block.timestamp);
+    }
+
+    /// @dev INTERNAL function to add ETH and QWN to liquidity
+    /// @dev Invoked in `convertFees()`
+    function _addLiquidity(uint256 _ethBalance) internal {
+        _swapETHForQWN(_ethBalance / 2);
+        uint256 qwnBalance = IERC20(QWN).balanceOf(address(this));
+        IERC20(QWN).approve(address(uniswapV2Router), qwnBalance);
+
+        uniswapV2Router.addLiquidityETH{value: address(this).balance}(
+            QWN,
+            qwnBalance,
+            0,
+            0,
+            IQWN(QWN).treasury(),
+            block.timestamp
+        );
+    }
+
+    /// RECEIVE ///
+
+    receive() external payable {}
+}

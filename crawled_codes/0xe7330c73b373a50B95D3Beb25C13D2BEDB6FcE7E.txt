@@ -1,0 +1,29 @@
+
+# @version 0.3.9
+"""
+@title veBoost Patch (Yearn)
+@author CurveFi
+"""
+from vyper.interfaces import ERC20
+
+interface BoostV2:
+    def delegated_balance(_user: address) -> uint256: view
+
+
+BOOST_V2: constant(address) = 0xD0921691C7DEBc698e6e372c6f74dc01fc9d3778
+VE: constant(address) = 0x5f3b5DfEb7B28CDbD7FAba78963EE202a494e2A2
+
+CONVEX_WALLET: constant(address) = 0x989AEb4d175e16225E39E87d0D97A3360524AD80
+YEARN_WALLET: constant(address) = 0xF147b8125d2ef93FB6965Db97D6746952a133934
+
+
+@view
+@external
+def adjusted_balance_of(_user: address) -> uint256:
+    if _user == CONVEX_WALLET:
+        return ERC20(BOOST_V2).balanceOf(CONVEX_WALLET) - BoostV2(BOOST_V2).delegated_balance(YEARN_WALLET)
+    
+    if _user == YEARN_WALLET:
+        return ERC20(VE).balanceOf(YEARN_WALLET)
+
+    return ERC20(BOOST_V2).balanceOf(_user)

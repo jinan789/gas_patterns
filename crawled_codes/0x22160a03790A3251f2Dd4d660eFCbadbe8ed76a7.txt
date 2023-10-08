@@ -1,0 +1,130 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+pragma solidity ^0.8.0;
+
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
+
+
+contract BSTIDO is Ownable{
+
+    using EnumerableSet for EnumerableSet.AddressSet;
+    event Invest(address indexed account, uint indexed amount,uint time);
+
+    struct Info{
+        uint targetAmount;
+        uint maximum;
+        uint price;
+        uint startTime;
+        uint endTime;
+        uint claimTime;
+        uint base;
+        address rewardAddress;
+        address receiver;
+        string name;
+    }
+
+    Info public info;
+
+    uint public totalSupply;
+    mapping(address => uint) public balance;
+    mapping(address => uint) public payed;
+    mapping(address => uint) public payedETH;
+    EnumerableSet.AddressSet accounts;
+
+    struct Log {
+        uint time;
+        uint amount;
+    }
+
+    mapping(address => Log[]) logs;
+
+    constructor(Info memory info_) {
+        info = info_;
+    }
+
+    function getLog(address account) external view returns(Log[] memory) {
+        return logs[account];
+    }
+
+    function setInfo(Info calldata info_) external onlyOwner{
+        info = info_;
+    }
+
+    function invest() external payable {
+        require(info.startTime <= block.timestamp && block.timestamp <= info.endTime, 'Unable to stack');
+        _invest(Export(msg.sender, msg.value));
+        emit Invest(msg.sender, msg.value, block.timestamp);
+    }
+
+    
+    function claim() external {
+        require(block.timestamp >= info.claimTime && info.claimTime != 0, 'Unable to claim');
+        uint eth = cost(msg.sender);
+        uint bst = eth * info.price;
+        require(payed[msg.sender] == 0 && payedETH[msg.sender] == 0, 'Unable to claim');
+        if (info.base == 1) {
+            IERC20(info.rewardAddress).transfer(msg.sender, bst);
+            payed[msg.sender] += bst;
+        } else {
+            payable(msg.sender).transfer(balance[msg.sender] - eth - 1);
+            payedETH[msg.sender] += balance[msg.sender] - eth  - 1;
+        }
+    }
+
+    function cost(address account) public view returns (uint) {
+        return totalSupply < info.targetAmount ? 0 : info.targetAmount * balance[account] / totalSupply;
+    }
+
+    struct ViewLog{
+        uint invested;
+        uint investedFinal;
+        uint youHaveGotEth;
+        uint youCanClaimEth;
+        uint youHaveGot;
+        uint youCanClaim;
+        string name;
+    }
+
+    function viewLog(address account) external view  returns(ViewLog memory){
+        uint eth = cost(account);
+        uint bst = eth * info.price;
+        return ViewLog(balance[account], eth, payedETH[account], balance[account] - eth - payedETH[account] - 1, payed[account], bst - payed[account], info.name);
+    }
+
+    struct Export{
+        address account;
+        uint amount;
+    }
+
+    function exportData(uint start, uint end) external view returns(Export[] memory) {
+        if (end > accounts.length()) {
+            end = accounts.length();
+        }
+        require(start < end, "start > end");
+        Export[] memory export_ = new Export[](end - start);
+        for(uint i = start; i < end; i++) {
+            export_[i - start].account = accounts.at(i);
+            export_[i - start].amount = balance[accounts.at(i)];
+        }
+        return export_;
+    }
+
+    function importData(Export[] memory exports) external {
+        for (uint i; i < exports.length; i++) {
+            _invest(exports[i]);
+        }
+    }
+
+    function _invest(Export memory export_) internal {
+        balance[export_.account] += export_.amount;
+        totalSupply += export_.amount;
+        accounts.add(export_.account);
+        logs[export_.account].push(Log(block.timestamp, msg.value));
+    }
+
+    function withdrawTarget () external {
+        payable(info.receiver).transfer(info.targetAmount);
+    }
+
+}

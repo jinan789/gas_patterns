@@ -1,0 +1,59 @@
+// SPDX-License-Identifier: BUSL-1.1
+pragma solidity ^0.8.0;
+
+import {IUniV3Vault} from "@mellow-vaults/contracts/interfaces/vaults/IUniV3Vault.sol";
+
+import "../../../interfaces/external/univ3/IUniswapV3Pool.sol";
+import "../../../interfaces/external/univ3/INonfungiblePositionManager.sol";
+import "../../../libraries/external/FullMath.sol";
+import "../../../libraries/external/OracleLibrary.sol";
+
+import "./IMEVProtectionImpl.sol";
+
+contract UniV3VaultMEVProtection is IMEVProtectionImpl {
+    error NotEnoughObservations();
+    error LimitOverflow();
+
+    uint256 public constant D9 = 10 ** 9;
+
+    INonfungiblePositionManager public immutable positionManager;
+    uint256 public immutable maxDeviationD;
+    int24 public immutable maxAbsoluteDeviation;
+    uint32 public immutable timespan;
+
+    constructor(
+        INonfungiblePositionManager positionManager_,
+        uint256 maxDeviationD_,
+        int24 maxAbsoluteDeviation_,
+        uint32 timespan_
+    ) {
+        positionManager = positionManager_;
+        maxDeviationD = maxDeviationD_;
+        maxAbsoluteDeviation = maxAbsoluteDeviation_;
+        timespan = timespan_;
+    }
+
+    function ensureNoMEV(address vault) external view {
+        uint256 uniV3Nft = IUniV3Vault(vault).uniV3Nft();
+        if (uniV3Nft == 0) return;
+
+        IUniswapV3Pool pool = IUniswapV3Pool(address(IUniV3Vault(vault).pool()));
+        (, , , , , int24 tickLower, int24 tickUpper, , , , , ) = positionManager.positions(uniV3Nft);
+        int24 maxDeviation = int24(uint24(FullMath.mulDiv(uint24(tickUpper - tickLower), maxDeviationD, D9)));
+
+        if (maxDeviation > maxAbsoluteDeviation) {
+            maxDeviation = maxAbsoluteDeviation;
+        }
+
+        (, int24 spotTick, , , , , ) = pool.slot0();
+
+        (int24 arithmeticMeanTick, , bool withFail) = OracleLibrary.consult(address(pool), timespan);
+
+        if (withFail) revert NotEnoughObservations();
+
+        int24 deviation = arithmeticMeanTick - spotTick;
+        if (deviation < 0) deviation = -deviation;
+
+        if (deviation > maxDeviation) revert LimitOverflow();
+    }
+}

@@ -1,0 +1,113 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+interface IERC20 {
+    function transferFrom(address sender, address recipient, uint256 amount) external returns (bool);
+    function balanceOf(address account) external view returns (uint256);
+    function transfer(address recipient, uint256 amount) external returns (bool);
+    function approve(address spender, uint256 amount) external returns (bool);
+}
+
+contract VersusWagerVersus {
+    IERC20 public versusToken = IERC20(0xf2F80327097d312334Fe4E665F60a83CB6ce71B3);
+
+    struct Game {
+        address payable playerA;
+        address payable playerB;
+        uint256 stake;
+        bool isFlipped;
+        address winner;
+    }
+
+    mapping(string => Game) public games;
+    mapping(uint256 => string) public gameNumbers;
+    string[] public openGames;
+    string[] public allGames;
+    
+    uint256 public currentGameNumber = 0;
+
+    function createGame(string memory gameID, uint256 amount) public {
+        require(bytes(gameID).length <= 10, "GameID too long");
+        require(games[gameID].playerA == address(0), "GameID already exists");
+        
+        require(versusToken.transferFrom(msg.sender, address(this), amount), "Token transfer failed");
+        
+        games[gameID] = Game({
+            playerA: payable(msg.sender),
+            playerB: payable(address(0)),
+            stake: amount,
+            isFlipped: false,
+            winner: address(0)
+        });
+
+        currentGameNumber++;
+        gameNumbers[currentGameNumber] = gameID;
+        openGames.push(gameID);
+        allGames.push(gameID);
+    }
+
+    function joinGame(string memory gameID, uint256 amount) public {
+        require(games[gameID].playerA != address(0), "Game does not exist");
+        require(games[gameID].playerB == address(0), "Game already has a second player");
+        require(amount == games[gameID].stake, "Must send the correct stake amount");
+        
+        require(versusToken.transferFrom(msg.sender, address(this), amount), "Token transfer failed");
+        games[gameID].playerB = payable(msg.sender);
+
+        // Removing game from the openGames list
+        for(uint i = 0; i < openGames.length; i++) {
+            if(keccak256(abi.encodePacked(openGames[i])) == keccak256(abi.encodePacked(gameID))) {
+                openGames[i] = openGames[openGames.length - 1];
+                openGames.pop();
+                break;
+            }
+        }
+    }
+
+    function flip(string memory gameID) public {
+        require(msg.sender == games[gameID].playerA || msg.sender == games[gameID].playerB, "Only participating players can flip");
+        require(!games[gameID].isFlipped, "Game already flipped");
+
+        uint256 randomness = uint256(keccak256(abi.encodePacked(blockhash(block.number - 1), msg.sender))) % 2;
+
+        if(randomness == 0) {
+            games[gameID].winner = games[gameID].playerA;
+            require(versusToken.transfer(games[gameID].playerA, games[gameID].stake * 2), "Token transfer failed");
+        } else {
+            games[gameID].winner = games[gameID].playerB;
+            require(versusToken.transfer(games[gameID].playerB, games[gameID].stake * 2), "Token transfer failed");
+        }
+        games[gameID].isFlipped = true;
+    }
+
+    function getGame(string memory gameID) public view returns (Game memory) {
+        return games[gameID];
+    }
+
+    function getOpenGames() public view returns (string[] memory) {
+        return openGames;
+    }
+
+    function getAllGames() public view returns (string[] memory) {
+        return allGames;
+    }
+
+    function getUnflippedGames(address playerAddress) public view returns (string[] memory) {
+        string[] memory unflippedGames = new string[](allGames.length);
+        uint256 count = 0;
+
+        for(uint256 i = 0; i < allGames.length; i++) {
+            if((games[allGames[i]].playerA == playerAddress || games[allGames[i]].playerB == playerAddress) && !games[allGames[i]].isFlipped) {
+                unflippedGames[count] = allGames[i];
+                count++;
+            }
+        }
+
+        string[] memory result = new string[](count);
+        for(uint256 i = 0; i < count; i++) {
+            result[i] = unflippedGames[i];
+        }
+
+        return result;
+    }
+}

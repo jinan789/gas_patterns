@@ -1,0 +1,110 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+
+contract APU is ERC20 {
+    address public owner;
+    address public lpAddress;
+
+    uint256 public apuLiquidityProvided; // Initial APU amount available to buy on Uniswap
+    uint256 public apuSold; // APU amount sold on Uniswap (to calculate the cap on the available amount)
+    uint256 public startTimestamp; // timestamp when the token sale started
+    uint256 private constant percentIncreaseInterval = 2 hours; // how often the percent is increased
+
+    bool private transferAllowed; // this is to avoid bots buying before the capped sale started
+
+    event CappedTokenSaleStarted();
+    event OwnershipRenounced();
+
+    error Unauthorized();
+    error TransferNotAllowed();
+    error TransferAmountCapped();
+
+    /// @dev Creates the APU token and mints the supply according to the allocations below.
+    constructor(address _owner) ERC20("APU", "APU") {
+        uint256 supply = 420690000000000 * 1e18;
+        uint256 apuForInitialLiquidity = supply * 775 / 1000; // 77.5% of the supply
+        uint256 frensFarmRewards = supply * 2 / 10; // 20% of the supply
+        uint256 pepeMemeCreationRewards = supply * 7 / 1000; // 0.7% of the supply
+        uint256 pepePromotion = supply * 3 / 1000; // 0.3% of the supply
+        uint256 allocation03 = supply * 3 / 1000; // 0.3% of the supply
+        uint256 allocation01 = supply * 1 / 1000; // 0.1% of the supply
+
+        _mint(msg.sender, frensFarmRewards);
+        _mint(0x185dA64def5003676E23cae90A6455c2D5C724d0, apuForInitialLiquidity);
+        _mint(0x4d8EEF10a1D927632ADC4B5B0c01E1834e92797c, pepeMemeCreationRewards);
+        _mint(0xafA294Eb2748F8a5A8B9568C670d4B370379e31a, pepePromotion);
+        // Allocations for the team:
+        _mint(0x28448E13311Cd2d8ba4699C086BA22D66649e3E8, allocation03);
+        _mint(0x28a861828076Ca9DeaB73492771E381A953262E3, allocation03);
+        _mint(0xeF8F6C771309B81E0efF526Ec369aAE9f827222d, allocation03);
+        _mint(0xb68b11A770a5C8A5faDeFf9bbd54Ae0dF2915afE, allocation03);
+        _mint(0xF38ba675f9C3b7649132E1077d9c8d947bc11947, allocation01);
+        _mint(0x29a0D75bd188b6d6f43A644F716d8120f6Ec4053, allocation01);
+        _mint(0x75adA3589E50C8f975f5772508e5D373fbE0Aa83, allocation01);
+
+        apuLiquidityProvided = apuForInitialLiquidity;
+        owner = _owner;
+        transferAllowed = false; 
+    }
+
+    /// @dev Initializes the token sales parameters
+    function startCappedTokenSale(address _lpAddress) external {
+        if (msg.sender != owner) revert Unauthorized();
+        lpAddress = _lpAddress;
+        startTimestamp = block.timestamp;
+        transferAllowed = true;
+        emit CappedTokenSaleStarted();
+
+        owner = address(0);
+        emit OwnershipRenounced();
+    }
+
+    /// @dev % of the liquidity allowed to buy on Uniswap (divide by 10 to get the %: e.g. 1 => 1 / 10 = 0.1%)
+    /// 0: 2**0 = 1 (1 (0.1%) is the initial value, so for 1 the calculation is: 1 * 2**0; simplified: 2**0)
+    /// 1: 2**1 = 2
+    /// 2: 2**2 = 4
+    /// 3: 2**3 = 8
+    /// 4: 2**4 = 16
+    /// 8: 2**8 = 256 (25.6%) etc. (it doubles every 2 hours)
+    /// 10: 2**10 = 1024 (102.4%) at the 10th interval (20 hours elapsed) the cap is disabled
+    function percentAllowedToBuy() public view returns (uint256) {
+        if (startTimestamp == 0) return 0;
+        uint256 intervalsElapsed = (block.timestamp - startTimestamp) / percentIncreaseInterval;
+        if (intervalsElapsed >= 10) return 1000;
+        return 2**intervalsElapsed;
+    }
+
+    /// @dev APU amount allowed to buy on Uniswap
+    function apuAllowedToBuy() public view returns (uint256) {
+        if (apuSold >= apuLiquidityProvided) return 0;
+        return (apuLiquidityProvided - apuSold) * percentAllowedToBuy() / 1000;
+    }
+
+    /// @dev Returns `true`, if the amount of APU allowed to buy on Uniswap is capped
+    /// returns `false` if there is no limit (after 20 hours the cap is disabled)
+    function transferCapped() public view returns (bool) {
+        if (percentAllowedToBuy() == 1000) return false; // at 100% the cap is disabled
+        return true;
+    }
+
+    /// @dev Burning tokens will reduce the total supply (users can burn only amounts they own in their wallet)
+    function burn(uint256 _amount) external {
+        _burn(msg.sender, _amount);
+    }
+
+    /// @dev Hook override to forbid transfers except from whitelisted addresses and minting
+    /// The cap is to limit only the initial swaps, but it goes up exponentially (doubled every 2 hours)
+    function _beforeTokenTransfer(address from, address, uint256 amount) internal override {
+        if (!(transferAllowed || from == address(0) || from == owner)) revert TransferNotAllowed();
+
+        if (!transferCapped()) return; // if the cap is disabled, there is no need to check further
+
+        if (startTimestamp != 0 && from == lpAddress) {
+            // this is a transfer (swap or removeLiquidity) from the Uniswap LP token to the user, so we cap it as per rules
+            if (amount > apuAllowedToBuy()) revert TransferAmountCapped();
+            apuSold += amount; // we track only the sales from the LP token
+        }
+    }
+}

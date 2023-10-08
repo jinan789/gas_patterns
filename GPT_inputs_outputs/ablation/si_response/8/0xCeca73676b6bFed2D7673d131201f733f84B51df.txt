@@ -1,0 +1,27 @@
+Sure, let's dive into the Solidity code and see if we can identify any gas-inefficient patterns that are not included in your provided list. Here are some potential issues:
+
+1. **Inefficient use of external function calls**: External function calls are significantly more expensive in terms of gas than internal function calls. For instance, in the `verifyInclusion` function, `MerklePatriciaProof.verify` is called twice if the `verifyTxInclusion` is true. Perhaps there is a way to optimize the double calls if they perform similar calculations. 
+
+    How I found it: By looking at the `verifyInclusion` function and noticing the potentially repeated external function calls.
+
+    How to fix it: Depending on the structure of `MerklePatriciaProof.verify`, you might be able to create a new function that takes multiple parameters and performs the necessary operations only once, thereby reducing the overall gas cost.
+
+2. **Potential overuse of storage**: The `PlasmaExit storage exit = exits[exitId];` in `challengeExit` function uses storage, which is expensive in terms of gas. 
+
+    How I found it: By recognizing that storage variables are expensive in terms of gas.
+
+    How to fix it: If the `exit` variable is not used many times in the function, it may be more gas-efficient to directly use `exits[exitId]` instead of assigning it to a storage variable.
+
+3. **Repeated access to the same mapping**: In the `processExits` function, `exits[exitId]` and `exitNft.ownerOf(exitId)` are accessed multiple times. 
+
+    How I found it: By noticing the repeated access to the same mapping, which costs gas each time.
+
+    How to fix it: It might be more efficient to store the result of `exits[exitId]` and `exitNft.ownerOf(exitId)` in a memory variable if they are accessed more than once.
+
+4. **Use of `send` for transferring Ether**: In the `challengeExit` and `processExits` functions, `send` is used to transfer Ether. `send` only provides 2300 gas which may not be enough if the receiving contract has a fallback function.
+
+    How I found it: By seeing the use of `send` in the code.
+
+    How to fix it: Consider using `transfer` instead, which forwards all available gas and reverts on failure.
+
+Please note, these are potential issues based on the given code. The actual gas inefficiencies may depend on the context and usage of these functions. Always profile your contracts using tools like the Remix IDE, or the Hardhat network's built-in gas reporter to identify high gas consumption areas.

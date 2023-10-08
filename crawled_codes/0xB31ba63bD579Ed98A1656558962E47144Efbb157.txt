@@ -1,0 +1,114 @@
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.19;
+
+import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/access/Ownable2StepUpgradeable.sol";
+import {DeIdDelegationUpgradeable} from "./lib/DeIdDelegationUpgradeable.sol";
+
+contract UpgradeNFT is
+	UUPSUpgradeable,
+	PausableUpgradeable,
+	Ownable2StepUpgradeable,
+	DeIdDelegationUpgradeable
+{
+	struct TokenInfo {
+		bool upgraded;
+	}
+
+	mapping(uint256 => TokenInfo) public tokenInfos;
+
+	IERC20Upgradeable public upgradePaymentToken;
+
+	uint256 public upgradePrice;
+	uint256 public constant COLLECTION_SIZE = 10000;
+
+	string constant _FUNC_NAME_PAY_FOR_UPGRADE = "payForUpgrade";
+
+	event NFTUpgraded(uint256 indexed tokenId, address indexed payer);
+	event UpgradePaymentChanged(address newAddress, uint256 newFee);
+
+	error AlreadyUpgraded();
+	error InvalidTokenId();
+	error TokenTransferError();
+
+	/// @custom:oz-upgrades-unsafe-allow constructor
+	constructor() {
+		_disableInitializers();
+	}
+
+	function initialize(
+		uint256 _chainId,
+		address _signer,
+		address _upgradePaymentToken,
+		uint256 _upgradePrice
+	) public initializer {
+		__UUPSUpgradeable_init();
+		__Pausable_init();
+		__Ownable2Step_init();
+		__DeIdDelegation_init(_chainId, _signer);
+
+		upgradePaymentToken = IERC20Upgradeable(_upgradePaymentToken);
+		upgradePrice = _upgradePrice;
+	}
+
+	function _authorizeUpgrade(address) internal override onlyOwner {}
+
+	function pause() public onlyOwner {
+		_pause();
+	}
+
+	function unpause() public onlyOwner {
+		_unpause();
+	}
+
+	function setUpgradePayment(address _paymentToken, uint256 _price) public onlyOwner {
+		upgradePaymentToken = IERC20Upgradeable(_paymentToken);
+		upgradePrice = _price;
+		emit UpgradePaymentChanged(_paymentToken, _price);
+	}
+
+	function withdrawTokenFunds(
+		IERC20Upgradeable token,
+		address to,
+		uint256 amount
+	) public onlyOwner {
+		if (!token.transfer(to, amount)) {
+			revert TokenTransferError();
+		}
+	}
+
+	function payForUpgrade(
+		uint256[] calldata tokenIds,
+		bytes calldata signature
+	) public whenNotPaused delegate(_FUNC_NAME_PAY_FOR_UPGRADE, abi.encode(tokenIds), signature) {
+		uint256 tokenIdsLength = tokenIds.length;
+		if (
+			!upgradePaymentToken.transferFrom(
+				msg.sender,
+				address(this),
+				upgradePrice * tokenIdsLength
+			)
+		) {
+			revert TokenTransferError();
+		}
+
+		for (uint256 i = 0; i < tokenIdsLength; ) {
+			uint256 tokenId = tokenIds[i];
+			if (tokenId >= COLLECTION_SIZE) {
+				revert InvalidTokenId();
+			}
+			if (tokenInfos[tokenId].upgraded) {
+				revert AlreadyUpgraded();
+			}
+
+			tokenInfos[tokenId].upgraded = true;
+			emit NFTUpgraded(tokenId, msg.sender);
+
+			unchecked {
+				i++;
+			}
+		}
+	}
+}

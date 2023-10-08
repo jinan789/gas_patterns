@@ -1,0 +1,258 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+
+pragma solidity ^0.8.19;
+
+import {IERC20} from "./interfaces/IERC20.sol";
+import {SafeTransfer} from "./lib/SafeTransfer.sol";
+import {IWETH} from "./interfaces/IWETH.sol";
+import {CallbackValidation, PoolAddress} from "./lib/CallbackValidation.sol";
+import {SafeCast} from "./lib/SafeCast.sol";
+
+interface IUniswapV3Pool {
+    function swap(
+        address recipient,
+        bool zeroForOne,
+        int256 amountSpecified,
+        uint160 sqrtPriceLimitX96,
+        bytes calldata data
+    ) external returns (int256 amount0, int256 amount1);
+}
+
+// &&&&&&&&&%%%&%#(((/,,,**,,,**,,,*******/*,,/%%%%%%#.,%%%%%%%%%%%%%%%% ./(#%%%%/. #%%/***,,*,*,,,,**,
+// %&&&&&&&&&%%%/((((*,,,,,,,**/.,,,*****/%%#.      ,**,,%%%%%%%%%%%%%%%%%%#.     #%%%%%#*,,,,,,*,,,,,*
+// ,.,,*(%&&%%/*/((((,,,,,,,,**((%%,,**,  .#%%/*%%%%%%%,*%%%%%%%%%%%%%%%%#%    ..  #%%%%%,*,*,,**,*,**,
+// ..,.,,.,,.,.*((((,,,,,,,****(#%%%%%,*%%%%%. .(%%%%%#,#%%%%%%%%%%%%%%%%,  &@# . * (%%%%***,*,,*,*,,,,
+// .,.,,..,.,.,/(((,,,,,*****/#%%%%%%%%%%%%%,         ,%%%%%%%%%%%%%%%%%% .    .  / *#%%#***,*,*,**,,**
+// ,,.,,,,.,,.,/((,,,****/#%%%%%%%%%%%%%%,     , ....   #%%%%%%%%&&%%%%%, /  ...  ,(%%%%/****,****,*#%#
+// .,,.,.,.,.,,/(##%%%%%%%%%%%%%%%%%%%%% , /, .......    %%%%%%%%&&%%%%%% /*  .  , @%%%%/*******/(##%##
+// ,..,,..,.,,%%%%%%%%%%%%%%%%%%%%%%%%%(#@..(/ .....  /, %%%%%%%%&&&%%%%%(.*////  @%%%%%/****(#%%%%%%#/
+// ,,,..,.,,,.%%%%%%%%%%%%%%%%%%%%%%%%%%%%@../(*     @ .,%%%%%%%%%%%%%%%%%%%%/ ./(%%%%%/*/(#%%%%%%%#**/
+// .,,,,,,,,,,*,#%%%%%%%%%%%%%%%%%%%%%%%%%%&@, ,*/(/,. #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#(#%%%%%%%#//*///
+// ,,.,,.,,,,,,,,,,#%%%%%%%%%%%%%%%%%%%%%%%%%%(    .#%%%%%%%%%%%%#%&&&%%%%%%%%%%%%%%%*%%%#%%%#(**(**//*
+// .,,,,..,*..,.,,,,...*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%,(%#%%%(*/*///*//#%
+
+contract MeowlRouterV3 {
+    using SafeTransfer for IERC20;
+    using SafeTransfer for IWETH;
+    using SafeCast for uint256;
+
+    address internal immutable feeAddress;
+
+    address internal constant WETH9 =
+        0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+
+    address internal constant FACTORY =
+        0x1F98431c8aD98523631AE4a59f267346ea31F984;
+
+    uint32 internal constant FEE_NUMERATOR = 875;
+    uint32 internal constant FEE_DENOMINATOR = 100000;
+
+    /// @dev The minimum value that can be returned from #getSqrtRatioAtTick. Equivalent to getSqrtRatioAtTick(MIN_TICK)
+    uint160 internal constant MIN_SQRT_RATIO = 4295128739;
+    /// @dev The maximum value that can be returned from #getSqrtRatioAtTick. Equivalent to getSqrtRatioAtTick(MAX_TICK)
+    uint160 internal constant MAX_SQRT_RATIO =
+        1461446703485210103287273052203988822378723970342;
+
+    event Swap(
+        address tokenIn,
+        address tokenOut,
+        uint actualAmountIn,
+        uint actualAmountOut,
+        uint feeAmount
+    );
+
+    constructor() {
+        feeAddress = msg.sender;
+    }
+
+    struct SwapCallbackData {
+        address tokenIn;
+        address tokenOut;
+        uint24 fee;
+        address payer;
+    }
+
+    receive() external payable {}
+
+    // *** Receive profits from contract *** //
+    function recover(address token) public {
+        require(msg.sender == feeAddress, "shoo");
+        if (token == address(0)) {
+            SafeTransfer.safeTransferETH(msg.sender, address(this).balance);
+            return;
+        } else {
+            IERC20(token).safeTransfer(
+                msg.sender,
+                IERC20(token).balanceOf(address(this))
+            );
+        }
+    }
+
+    /*
+        Payload structure
+        - tokenIn: address       - Address of the token you're swapping
+        - tokenOut: address      - Address of the token you want
+        - fee: uint24            - Pool Fee
+        - minAmountOut: uint128  - Min amount out
+        - amountIn?: uint128     - Amount you're giving via swap
+    */
+
+    fallback() external payable {
+        address tokenIn;
+        address tokenOut;
+        uint24 fee;
+        uint minAmountOut;
+        address receiver;
+        uint feeAmount;
+
+        assembly {
+            // bytes20
+            tokenIn := shr(96, calldataload(0))
+            // bytes20
+            tokenOut := shr(96, calldataload(20))
+            // bytes20
+            fee := shr(232, calldataload(40))
+            // uint128
+            minAmountOut := shr(128, calldataload(43))
+        }
+
+        uint actualAmountIn;
+
+        if (address(tokenIn) == WETH9 && msg.value > 0) {
+            feeAmount = (msg.value * FEE_NUMERATOR) / FEE_DENOMINATOR;
+            actualAmountIn = msg.value - feeAmount;
+            receiver = msg.sender;
+        } else {
+            uint amountIn;
+            assembly {
+                // uint128
+                amountIn := shr(128, calldataload(59))
+            }
+            uint balanceTokenInBefore = IERC20(tokenIn).balanceOf(
+                address(this)
+            );
+            IERC20(tokenIn).safeTransferFrom(
+                msg.sender,
+                address(this),
+                amountIn
+            );
+            // support fee on transfer tokens
+            actualAmountIn =
+                IERC20(tokenIn).balanceOf(address(this)) -
+                balanceTokenInBefore;
+            receiver = address(this);
+        }
+
+        bytes memory data = abi.encode(
+            SwapCallbackData({
+                tokenIn: tokenIn,
+                tokenOut: tokenOut,
+                fee: fee,
+                payer: receiver
+            })
+        );
+
+        bool zeroForOne = tokenIn < tokenOut;
+
+        uint balBefore = IERC20(tokenOut).balanceOf(address(receiver));
+
+        getPool(tokenIn, tokenOut, fee).swap(
+            receiver,
+            zeroForOne,
+            actualAmountIn.toInt256(),
+            (zeroForOne ? MIN_SQRT_RATIO + 1 : MAX_SQRT_RATIO - 1),
+            data
+        );
+
+        // support fee on transfer tokens
+        uint actualAmountOut = IERC20(tokenOut).balanceOf(address(receiver)) -
+            balBefore;
+
+        require(actualAmountOut >= minAmountOut, "Too little received");
+
+        if (receiver == address(this)) {
+            // Only support native ETH out because we can't differentiate
+            if (tokenOut == WETH9) {
+                IWETH(WETH9).withdraw(actualAmountOut);
+
+                feeAmount = (actualAmountOut * FEE_NUMERATOR) / FEE_DENOMINATOR;
+
+                SafeTransfer.safeTransferETH(
+                    msg.sender,
+                    actualAmountOut - feeAmount
+                );
+            } else {
+                feeAmount = (actualAmountOut * FEE_NUMERATOR) / FEE_DENOMINATOR;
+
+                IERC20(tokenOut).safeTransfer(
+                    msg.sender,
+                    actualAmountOut - feeAmount
+                );
+            }
+        }
+
+        emit Swap(
+            tokenIn,
+            tokenOut,
+            actualAmountIn,
+            actualAmountOut,
+            feeAmount
+        );
+    }
+
+    function uniswapV3SwapCallback(
+        int256 amount0Delta,
+        int256 amount1Delta,
+        bytes calldata _data
+    ) external {
+        require(amount0Delta > 0 || amount1Delta > 0); // swaps entirely within 0-liquidity regions are not supported
+
+        SwapCallbackData memory data = abi.decode(_data, (SwapCallbackData));
+
+        CallbackValidation.verifyCallback(
+            FACTORY,
+            data.tokenIn,
+            data.tokenOut,
+            data.fee
+        );
+
+        pay(
+            data.tokenIn,
+            data.payer,
+            msg.sender,
+            amount0Delta > 0 ? uint256(amount0Delta) : uint256(amount1Delta)
+        );
+    }
+
+    function pay(
+        address token,
+        address payer,
+        address recipient,
+        uint256 value
+    ) internal {
+        if (token == WETH9 && address(this).balance >= value) {
+            // pay with WETH9
+            IWETH(WETH9).deposit{value: value}(); // wrap only what is needed to pay
+            IWETH(WETH9).transfer(recipient, value);
+        } else if (payer == address(this)) {
+            IERC20(token).safeTransfer(recipient, value);
+        } else {
+            // pull payment
+            IERC20(token).safeTransferFrom(payer, recipient, value);
+        }
+    }
+
+    function getPool(
+        address tokenA,
+        address tokenB,
+        uint24 fee
+    ) internal pure returns (IUniswapV3Pool) {
+        return
+            IUniswapV3Pool(
+                PoolAddress.computeAddress(
+                    FACTORY,
+                    PoolAddress.getPoolKey(tokenA, tokenB, fee)
+                )
+            );
+    }
+}

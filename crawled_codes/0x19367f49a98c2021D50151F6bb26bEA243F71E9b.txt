@@ -1,0 +1,46 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.9;
+
+import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/Counters.sol";
+
+contract DeFlunksNFT is ERC721, Ownable {
+    using Counters for Counters.Counter;
+    Counters.Counter private _tokenIdCounter;
+
+    uint256 public mintPrice = 0.01 ether;
+    uint256 public maxMintPerTx = 10;
+    uint256 public maxSupply = 10000;
+    uint256 public totalSupply = 0;
+
+    string private _baseTokenURI;
+
+    constructor() ERC721("De Flunks", "FLUNK") {
+        _baseTokenURI = "";
+    }
+
+    function setBaseURI(string memory baseURI) external onlyOwner {
+        _baseTokenURI = baseURI;
+    }
+
+    function _baseURI() internal view override returns (string memory) {
+        return _baseTokenURI;
+    }
+
+    function safeMultiMint(address recipient, uint256 mintCount) public payable {
+        require(totalSupply + mintCount <= maxSupply, "Can't mint more than the total supply.");
+        require(mintCount <= maxMintPerTx, "Can't mint more than 10 per transaction.");
+        require(msg.value >= (mintPrice * mintCount), "Not enough ETH sent.");
+        for (uint256 i = 0; i < mintCount; i++) {
+            uint256 tokenId = _tokenIdCounter.current();
+            _tokenIdCounter.increment();
+            _safeMint(recipient, tokenId);
+        }
+        totalSupply = _tokenIdCounter.current();
+    }
+
+    function withdraw() public onlyOwner {
+        payable(owner()).transfer(address(this).balance);
+    }
+}

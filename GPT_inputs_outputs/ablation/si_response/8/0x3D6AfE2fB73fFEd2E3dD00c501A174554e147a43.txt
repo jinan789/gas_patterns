@@ -1,0 +1,15 @@
+The Solidity code provided here is relatively well-written with regard to gas usage, but there are still a few areas where potential optimizations could be made. However, note that gas optimization sometimes comes at the cost of code readability and maintainability. Here are a few additional gas-wasting patterns that could be found in the provided code:
+
+1. **Redundant contract interfaces**: The contract is using both `IKSElasticLMV2` and `KSAdmin` as interfaces. If these interfaces contain duplicate function signatures, this could lead to unnecessary gas consumption. You should always ensure that your contract interfaces are lean and do not contain any unnecessary or redundant function signatures.
+
+2. **Unnecessary use of arrays**: Arrays, especially dynamic ones, are more expensive in terms of gas than using single value variables. For example, in the `addFarm` function, `phase.rewards.length` is used multiple times. If the length of this array doesn't change during the function execution, it could make sense to store it in a variable at the beginning of the function to avoid getting the length of the array multiple times.
+
+3. **Repeated use of mappings**: In several functions, the `farms` mapping is accessed multiple times with the same key. As accessing a mapping is more expensive than accessing a local variable, you could consider storing `farms[fId]` in a local variable at the beginning of the function and use this variable instead.
+
+4. **Unchecked blocks for loop increment**: Using unchecked blocks for loop increment (e.g., `unchecked { ++i; }`) is unnecessary as the Solidity compiler automatically prevents overflow for increment operations.
+
+5. **Excessive use of storage**: The `farms` variable is a storage variable. Every time you make a change to a storage variable, you are writing to the blockchain, which is expensive. When you need to make multiple changes to a storage variable within a function, it would be more efficient to use a local variable, make all the changes to the local variable, and then write back to the storage variable once at the end of the function.
+
+6. **Use of assembly code**: Although using assembly code (`create2` function) can sometimes save gas, it can also introduce additional complexity and potential security risks. If there's a higher-level language construct or library that does the same job with a similar gas cost, it would be better to use that instead to improve code safety and readability.
+
+These patterns were found by carefully examining the code and considering the gas cost of various operations in Solidity. To fix these, you would adjust the code according to the suggestions provided. However, before making any changes, it would be important to test the gas impact of these changes to make sure they actually result in improvements, as the specific impact can depend on the context and the Ethereum Virtual Machine's (EVM) optimizations.

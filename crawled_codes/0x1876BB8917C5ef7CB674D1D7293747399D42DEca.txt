@@ -1,0 +1,119 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract ColorGenerator {
+    struct Color {
+        string name;
+        uint8[3] rgb;
+    }
+    
+    Color[] public colors;
+    
+    constructor() {
+        colors.push(Color("Atique white", [250, 235, 215]));
+        colors.push(Color("Aqua", [0, 255, 255]));
+        colors.push(Color("Aquamarine", [127, 255, 212]));
+        colors.push(Color("Beige", [245, 245, 220]));
+        colors.push(Color("Blue", [0, 0, 255]));
+        colors.push(Color("Burlywood", [222, 184, 135]));
+        colors.push(Color("Cadet blue", [95, 158, 160]));
+        colors.push(Color("Chartreuse", [127, 255, 0]));
+        colors.push(Color("Chocolate", [210, 105, 30]));
+        colors.push(Color("Coral", [255, 127, 80]));
+        colors.push(Color("Corn flower blue", [100, 149, 237]));
+        colors.push(Color("Corn silk", [255, 248, 220]));
+        colors.push(Color("Cyan", [0, 255, 255]));
+        colors.push(Color("Dodger blue", [30, 144, 255]));
+        colors.push(Color("Fuchsia", [255, 0, 255]));
+        colors.push(Color("Gainsboro", [220, 220, 220]));
+        colors.push(Color("Ghost white", [248, 248, 255]));
+        colors.push(Color("Gold", [255, 215, 0]));
+        colors.push(Color("Golden rod", [218, 165, 32]));
+        colors.push(Color("Gray", [128, 128, 128]));
+        colors.push(Color("Green", [0, 128, 0]));
+        colors.push(Color("Grey", [128, 128, 128]));
+        colors.push(Color("Honeydew", [240, 255, 240]));
+        colors.push(Color("Deep pink", [255,20,147]));
+        colors.push(Color("Indigo", [75, 0, 130]));
+        colors.push(Color("Khaki", [240, 230, 140]));
+        colors.push(Color("Lavender", [230, 230, 250]));
+        colors.push(Color("Lime", [0, 255, 0]));
+        colors.push(Color("Linen", [250, 240, 230]));
+        colors.push(Color("Magenta", [255, 0, 255]));
+        colors.push(Color("Maroon", [128, 0, 0]));
+        colors.push(Color("Midnight blue", [25, 25, 112]));
+        colors.push(Color("Misty rose", [255, 228, 225]));
+        colors.push(Color("Moccasin", [255, 228, 181]));
+        colors.push(Color("Navajo white", [255, 222, 173]));
+        colors.push(Color("Navy", [0, 0, 128]));
+        colors.push(Color("Old lace", [253, 245, 230]));
+        colors.push(Color("Olive", [128, 128, 0]));
+        colors.push(Color("Olive drab", [107, 142, 35]));
+        colors.push(Color("Orange", [255, 165, 0]));
+        colors.push(Color("Orchid", [218, 112, 214]));
+        colors.push(Color("Pale golden rod", [238, 232, 170]));
+        colors.push(Color("Pale green", [152, 251, 152]));
+        colors.push(Color("Pale turquoise", [175, 238, 238]));
+        colors.push(Color("Peru", [205, 133, 63]));
+        colors.push(Color("Pink", [255, 192, 203]));
+        colors.push(Color("Plum", [221, 160, 221]));
+        colors.push(Color("Powder blue", [176, 224, 230]));
+        colors.push(Color("Purple", [128, 0, 128]));
+        colors.push(Color("Red", [255, 0, 0]));
+        colors.push(Color("Rosy brown", [188, 143, 143]));
+        colors.push(Color("Royal blue", [65, 105, 225]));
+        colors.push(Color("Saddle brown", [139, 69, 19]));
+        colors.push(Color("Salmon", [250, 128, 114]));
+        colors.push(Color("Sienna", [160, 82, 45]));
+        colors.push(Color("Silver", [192, 192, 192]));
+        colors.push(Color("Sky blue", [135, 206, 235]));
+        colors.push(Color("Snow", [255, 250, 250]));
+        colors.push(Color("Steel blue", [70, 130, 180]));
+        colors.push(Color("Tan", [210, 180, 140]));
+        colors.push(Color("Teal", [0, 128, 128]));
+        colors.push(Color("Thistle", [216, 191, 216]));
+        colors.push(Color("Turquoise", [64, 224, 208]));
+        colors.push(Color("Violet", [238, 130, 238]));
+        colors.push(Color("White", [255, 255, 255]));
+        colors.push(Color("Yellow", [255, 255, 0]));
+        colors.push(Color("Electric Blue", [0, 255, 255]));
+        colors.push(Color("Neon Green", [57, 255, 20]));
+        colors.push(Color("Royal Purple", [120, 81, 169]));
+        colors.push(Color("Goldenrod Yellow", [218, 165, 32]));
+    }
+    
+    function getRandomColor(uint256 tokenId) view external returns (string memory, uint8[3] memory) {
+        uint256 randomIndex = uint256(keccak256(abi.encodePacked(tokenId))) % colors.length;
+        Color memory randomColor = colors[randomIndex];
+        return (randomColor.name, randomColor.rgb);
+    }
+
+
+    function addColor(string memory _name, uint8[3] memory _rgb) public {
+        colors.push(Color(_name, _rgb));
+    }
+
+    function removeColor(uint256 index) public {
+        require(index < colors.length, "Index out of bounds");
+        colors[index] = colors[colors.length - 1];
+        colors.pop();
+    }
+    function toString(uint256 value) internal pure returns (string memory) {
+        if (value == 0) {
+            return "0";
+        }
+        uint256 temp = value;
+        uint256 digits;
+        while (temp != 0) {
+            digits++;
+            temp /= 10;
+        }
+        bytes memory buffer = new bytes(digits);
+        while (value != 0) {
+            digits -= 1;
+            buffer[digits] = bytes1(uint8(48 + uint256(value % 10)));
+            value /= 10;
+        }
+        return string(buffer);
+    }
+}

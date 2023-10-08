@@ -1,0 +1,32 @@
+After carefully reviewing the given Solidity codes, I have identified three new gas-wasting patterns that extend beyond the patterns provided in your list. 
+
+1. **Redundant External Calls**: 
+
+- *Finding*: In the `hvCheckpoint` function, `IHTokenRewards(hToken).totalSupply()` and `IVariableDebtTokenRewards(variableDebtToken).totalSupply()` are called twice. External function calls are expensive in terms of gas cost in Solidity. Hence, this repetition of external calls is a gas-wasting pattern. 
+- *Fix*: Store the result of these function calls in memory variables and use these variables instead of making repetitive external calls.
+  - `uint256 hTokenSupply = IHTokenRewards(hToken).totalSupply();`
+  - `uint256 variableDebtTokenSupply = IVariableDebtTokenRewards(variableDebtToken).totalSupply();`
+- *Impact*: Readability: 5; Security: 5; Maintainability: 5. This fix does not impact readability, security, or maintainability of the code, since it merely introduces intermediate variables.
+
+2. **Repeated Zero Address Validation Checks**: 
+
+- *Finding*: In the `initialize` function, there are repeated checks to ensure that input addresses are not zero. While this is important for contract security, the repetition of zero address checks for each address is a gas-wasting pattern.
+- *Fix*: Create a separate internal function `_validateAddress` that takes an array of addresses and checks if any of them are zero. This reduces the number of opcodes and hence, saves gas.
+  - `function _validateAddress(address[] memory addresses) internal { for(uint i=0; i<addresses.length; i++) { require(addresses[i] != address(0), Errors.ZERO_ADDRESS_NOT_VALID); } }`
+- *Impact*: Readability: 4; Security: 5; Maintainability: 4. While this does slightly impact readability and maintainability due to the introduction of a new function, it does not affect security.
+
+3. **Use of Division Operation Inside a Loop**:
+
+- *Finding*: In the `kick` function, division operation is used inside the `require` statements. Division is one of the most gas-expensive operations in Solidity. Having it inside a loop increases the gas cost even more.
+- *Fix*: Compute the division operation outside the loop and store the result in a memory variable. Use this variable inside the loop.
+  - `uint256 hTokenBalance40Pct = (_hTokenBalance * 40) / 100;`
+  - `uint256 variableDebtTokenBalance40Pct = (_variableDebtTokenBalance * 40) / 100;`
+- *Impact*: Readability: 5; Security: 5; Maintainability: 5. This change does not impact readability, security, or maintainability, as it just introduces intermediate variables.
+
+**Reflections**:
+
+Your prompt was clear and well-structured. However, it would be helpful if you include the complete contract code or at least provide all the dependencies. This could help in understanding the context better and identifying more potential gas-wasting patterns.
+
+Regarding the reasoning process, I started by looking for the patterns mentioned in the list and then moved onto other common gas-wasting practices like redundant external calls, unnecessary calculations inside loops, and frequent storage operations.
+
+Next time, I could improve by familiarizing myself more with the contract dependencies and the overall architecture of the contract system. This would help in identifying more complex and context-specific gas-wasting patterns.

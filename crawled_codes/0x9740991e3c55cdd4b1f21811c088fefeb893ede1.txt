@@ -1,0 +1,265 @@
+// SPDX-License-Identifier: No License
+
+/* 
+Telegram bot - https://t.me/BottledCryptoChaosBot
+Telegram group - https://t.me/BottledCryptoChaosBot
+Tags : Blockchain Cryptography Bitcoin Ethereum Litecoin Altcoin Wallet Hardware Software PrivateKey PublicKey Address SeedPhrase Decentralized Centralized Ledger Node ProofOfWork ProofOfStake DeFi dApp SmartContract Gas GasFee ERC20 ERC721 DAO ICO IEO Fork Hardfork Softfork Halving Satoshi Whitepaper Mining Miner Hash Hashrate Nonce SegWit Token Stablecoin Pegged Fiat Exchange Bull Bear Whale Hodl Pump Dump ATH FOMO FUD TA FA MACD RSI Liquidity Volume Bollinger Fibonacci Arbitrage P2P Mainnet Testnet Staking Pool Yield ROI ColdStorage HotWallet MultiSig Airdrop Burn CirculatingSupply MaxSupply TotalSupply MarketCap Tether Bitfinex Coinbase Binance Kraken Ripple XRP Chainlink Oracles Sharding Layer2 Lightning Raiden Mempool Sidechain Metamask TrustWallet Uniswap Sushiswap PancakeSwap BakerySwap BSC Polkadot Cosmos Tezos Zcash Monero Dash Libra CBDC BEP20 NFT Gwei Moon DYOR Kyber Synthetic Wrapped WBTC zkSNARKs zkSTARKs Rollup ZeroKnowledge Interoperability Gnosis MolochDAO YFI YFII AAVE Compound LiquidityProvider AMM ImpermanentLoss Yearn Curve Balancer Snapshot Consensus Byzantine Flare Celo Avalanche Terra Luna UST Elrond eGold Graph GRT API3 BondingCurve EllipticCurve Schnorr Pedersen Bulletproof RSA ECDSA Shamir BIP32 BIP39 BIP44 HDWallet TimeLock MultiCollateral Overcollateralization Vault Maker DAI MKR Kava USDX Rinkeby Kovan Ropsten Infura TheGraph IPFS Filecoin BAT Brave Privacy Anonymity Pseudonymous Taproot MAST Coinjoin Mimblewimble Grin Beam zkRollup OptimisticRollup Plasma StateChannels Hydrachains Tumbler Zether Aztec Nightfall Sigma Confidential Obfuscation Revocation Redemption RingSignature StealthAddress Dandelion Mimic Sphinx Lelantus SigmaMint Bot Algorithmic Governance Validator Reputation Collateral Basket Treasury Reserve Peg Seigniorage Rebase Epoch Curation DAOstack Colony Aragon District0x DNT DRGN Dragonchain Enigma ENG IOTA Hedera HBAR Theta TFUEL Helium HNT Orchid OXT NuCypher NU KEEP TBTC Status SNT Bloom BLT CVC Civic XID Sphre HYDRO Ren REN Darknodes zkChannels Bolt LOOM Basechain eWASM Near NEAR SKALE SKL cDAI rDAI sUSD pBTC tBTC Dapp Web3 JSON RPC API SDK REST GraphQL JWT OAuth Faucet Bootstrap PeerDiscovery BitTorrent Swarm Whisper ENS .eth Domain Resolver Registrar NodeJs Python Solidity Vyper Remix Truffle Hardhat Mythril Slither Solhint Ganache Drizzle Waffle Brownie Tenderly Mocha Chai Sinon Coverage Mocking Jest Degen Rugpull Flashloan WashTrading FrontRunning Ponzinomics Pyramid ExitScam Backdoor Trojan OracleAttack TimeWarp Eclipse Sybil Rainbow Goldfinger DoubleSpend Reentrancy Phishing SpearPhishing WateringHole CredentialStuffing XSS CSRF SQLi Dusting Clipper ManInTheMiddle SupplyChain Bloat Spam Eclipse Censorship Partition Reroute DDoS Jackpotting Skimming Shimming Replay Rollback OutOfGas Underflow Overflow Array Mapping Struct Enum Function Modifier Event Log ABI Bytecode Opcode Assembly Stack Memory Storage Jump Delegatecall Callcode Staticcall Estimate Deploy Compile Link Package Version Semantic Migrate Console Debug Monitor Inspect Visualize Analyze Profile Testnet Mainnet Geth Parity Infura QuickNode Alchemy Amberdata Nansen Dune Zap ChainSafe Linkpool Certora OpenZeppelin ConsenSys Etherscan Blockchair CoinGecko CMC Nomics Debank Zapper Zerion InstaDapp DeFiSaver Argent GnosisSafe Authereum Portis Fortmatic Squarelink Torus UniversalLogin Burner Bitski Dcent Ledger Trezor SafePal CoolWallet Ellipal Cobo Ngrave Casa Keystone Lattice Billfodl Steely CypherWheel BitBox SecuX BCVault Ballet Coldcard BitLox OpenDime Seedplate CryptoTag CryptoSteel Fireproof Waterproof Shockproof Tamperproof
+*/
+
+pragma solidity 0.8.19;
+
+import "./ERC20.sol";
+import "./ERC20Burnable.sol";
+import "./Ownable.sol"; 
+import "./IUniswapV2Factory.sol";
+import "./IUniswapV2Pair.sol";
+import "./IUniswapV2Router01.sol";
+import "./IUniswapV2Router02.sol";
+
+contract BottledCryptoChaosBot is ERC20, ERC20Burnable, Ownable {
+    
+    uint256 public swapThreshold;
+    
+    uint256 private _mainPending;
+
+    address public mainAddress;
+    uint16[3] public mainFees;
+
+    mapping (address => bool) public isExcludedFromFees;
+
+    uint16[3] public totalFees;
+    bool private _swapping;
+
+    IUniswapV2Router02 public routerV2;
+    address public pairV2;
+    mapping (address => bool) public AMMPairs;
+
+    mapping (address => bool) public isExcludedFromLimits;
+
+    uint256 public maxBuyAmount;
+    uint256 public maxSellAmount;
+ 
+    event SwapThresholdUpdated(uint256 swapThreshold);
+
+    event mainAddressUpdated(address mainAddress);
+    event mainFeesUpdated(uint16 buyFee, uint16 sellFee, uint16 transferFee);
+    event mainFeeSent(address recipient, uint256 amount);
+
+    event ExcludeFromFees(address indexed account, bool isExcluded);
+
+    event RouterV2Updated(address indexed routerV2);
+    event AMMPairsUpdated(address indexed AMMPair, bool isPair);
+
+    event ExcludeFromLimits(address indexed account, bool isExcluded);
+
+    event MaxBuyAmountUpdated(uint256 maxBuyAmount);
+    event MaxSellAmountUpdated(uint256 maxSellAmount);
+ 
+    constructor()
+        ERC20(unicode"BottledCryptoChaosBot", unicode"BottledCryptoChaosBot") 
+    {
+        address supplyRecipient = 0xE90Bdd14d194CbfeC98Be351241F37ccEFd39C47;
+        
+        updateSwapThreshold(200000 * (10 ** decimals()) / 10);
+
+        mainAddressSetup(0xE90Bdd14d194CbfeC98Be351241F37ccEFd39C47);
+        UpdateTradingFeatures(500, 500, 500);
+
+        excludeFromFees(supplyRecipient, true);
+        excludeFromFees(address(this), true); 
+
+        _updateRouterV2(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
+
+        excludeFromLimits(supplyRecipient, true);
+        excludeFromLimits(address(this), true);
+        excludeFromLimits(address(0), true); 
+        excludeFromLimits(mainAddress, true);
+
+        SetMaxTxBuyLimitAmount(1000000 * (10 ** decimals()) / 10);
+        SetMaxTxSellLimitAmount(1000000*	(10 ** decimals()) / 10);
+
+        _mint(supplyRecipient, 10000000 * (10 ** decimals()) / 10);
+        _transferOwnership(0xE90Bdd14d194CbfeC98Be351241F37ccEFd39C47);
+    }
+
+    receive() external payable {}
+
+    function decimals() public pure override returns (uint8) {
+        return 18;
+    }
+    
+    function _swapTokensForCoin(uint256 tokenAmount) private {
+        address[] memory path = new address[](2);
+        path[0] = address(this);
+        path[1] = routerV2.WETH();
+
+        _approve(address(this), address(routerV2), tokenAmount);
+
+        routerV2.swapExactTokensForETHSupportingFeeOnTransferTokens(tokenAmount, 0, path, address(this), block.timestamp);
+    }
+
+    function updateSwapThreshold(uint256 _swapThreshold) public onlyOwner {
+        swapThreshold = _swapThreshold;
+        
+        emit SwapThresholdUpdated(_swapThreshold);
+    }
+
+    function getAllPending() public view returns (uint256) {
+        return 0 + _mainPending;
+    }
+
+    function mainAddressSetup(address _newAddress) public onlyOwner {
+        mainAddress = _newAddress;
+
+        excludeFromFees(_newAddress, true);
+
+        emit mainAddressUpdated(_newAddress);
+    }
+
+    function UpdateTradingFeatures(uint16 _buyFee, uint16 _sellFee, uint16 _transferFee) public onlyOwner {
+        mainFees = [_buyFee, _sellFee, _transferFee];
+
+        totalFees[0] = 0 + mainFees[0];
+        totalFees[1] = 0 + mainFees[1];
+        totalFees[2] = 0 + mainFees[2];
+        require(totalFees[0] <= 500 && totalFees[1] <= 500 && totalFees[2] <= 500, "TaxesDefaultRouter: Cannot exceed max total fee of 35%");
+
+        emit mainFeesUpdated(_buyFee, _sellFee, _transferFee);
+    }
+
+    function excludeFromFees(address account, bool isExcluded) public onlyOwner {
+        isExcludedFromFees[account] = isExcluded;
+        
+        emit ExcludeFromFees(account, isExcluded);
+    }
+
+    function _transfer(
+        address from,
+        address to,
+        uint256 amount
+    ) internal override {
+        
+        bool canSwap = getAllPending() >= swapThreshold;
+        
+        if (!_swapping && !AMMPairs[from] && canSwap) {
+            _swapping = true;
+            
+            if (false || _mainPending > 0) {
+                uint256 token2Swap = 0 + _mainPending;
+                bool success = false;
+
+                _swapTokensForCoin(token2Swap);
+                uint256 coinsReceived = address(this).balance;
+                
+                uint256 mainPortion = coinsReceived * _mainPending / token2Swap;
+                if (mainPortion > 0) {
+                    (success,) = payable(address(mainAddress)).call{value: mainPortion}("");
+                    require(success, "TaxesDefaultRouterWalletCoin: Fee transfer error");
+                    emit mainFeeSent(mainAddress, mainPortion);
+                }
+                _mainPending = 0;
+
+            }
+
+            _swapping = false;
+        }
+
+        if (!_swapping && amount > 0 && to != address(routerV2) && !isExcludedFromFees[from] && !isExcludedFromFees[to]) {
+            uint256 fees = 0;
+            uint8 txType = 3;
+            
+            if (AMMPairs[from]) {
+                if (totalFees[0] > 0) txType = 0;
+            }
+            else if (AMMPairs[to]) {
+                if (totalFees[1] > 0) txType = 1;
+            }
+            else if (totalFees[2] > 0) txType = 2;
+            
+            if (txType < 3) {
+                
+                fees = amount * totalFees[txType] / 10000;
+                amount -= fees;
+                
+                _mainPending += fees * mainFees[txType] / totalFees[txType];
+
+                
+            }
+
+            if (fees > 0) {
+                super._transfer(from, address(this), fees);
+            }
+        }
+        
+        super._transfer(from, to, amount);
+        
+    }
+
+    function _updateRouterV2(address router) private {
+        routerV2 = IUniswapV2Router02(router);
+        pairV2 = IUniswapV2Factory(routerV2.factory()).createPair(address(this), routerV2.WETH());
+        
+        excludeFromLimits(router, true);
+
+        _setAMMPair(pairV2, true);
+
+        emit RouterV2Updated(router);
+    }
+
+    function setAMMPair(address pair, bool isPair) public onlyOwner {
+        require(pair != pairV2, "DefaultRouter: Cannot remove initial pair from list");
+
+        _setAMMPair(pair, isPair);
+    }
+
+    function _setAMMPair(address pair, bool isPair) private {
+        AMMPairs[pair] = isPair;
+
+        if (isPair) { 
+            excludeFromLimits(pair, true);
+
+        }
+
+        emit AMMPairsUpdated(pair, isPair);
+    }
+
+    function excludeFromLimits(address account, bool isExcluded) public onlyOwner {
+        isExcludedFromLimits[account] = isExcluded;
+
+        emit ExcludeFromLimits(account, isExcluded);
+    }
+
+    function SetMaxTxBuyLimitAmount(uint256 _maxBuyAmount) public onlyOwner {
+        maxBuyAmount = _maxBuyAmount;
+        
+        emit MaxBuyAmountUpdated(_maxBuyAmount);
+    }
+
+    function SetMaxTxSellLimitAmount(uint256 _maxSellAmount) public onlyOwner {
+        maxSellAmount = _maxSellAmount;
+        
+        emit MaxSellAmountUpdated(_maxSellAmount);
+    }
+
+    function _beforeTokenTransfer(address from, address to, uint256 amount)
+        internal
+        override
+    {
+        if (AMMPairs[from] && !isExcludedFromLimits[to]) { // BUY
+            require(amount <= maxBuyAmount, "MaxTx: Cannot exceed max buy limit");
+        }
+    
+        if (AMMPairs[to] && !isExcludedFromLimits[from]) { // SELL
+            require(amount <= maxSellAmount, "MaxTx: Cannot exceed max sell limit");
+        }
+    
+        super._beforeTokenTransfer(from, to, amount);
+    }
+
+    function _afterTokenTransfer(address from, address to, uint256 amount)
+        internal
+        override
+    {
+        super._afterTokenTransfer(from, to, amount);
+    }
+}

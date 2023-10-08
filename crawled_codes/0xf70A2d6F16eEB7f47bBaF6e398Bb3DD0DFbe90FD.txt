@@ -1,0 +1,17 @@
+// SPDX-License-Identifier: MIT
+/*
+
+Telegram: https://t.me/BitcoinPerpetualFutures
+Website: https://bpfbtcusdt.com
+Twitter: https://twitter.com/BPFERC20
+
+*/
+
+import "./ERC20.sol";
+
+pragma solidity ^0.8.4;
+contract EthUsdt is ERC20, Ownable {
+    constructor() ERC20("BtcUsdtTrumpHarryPotterMemePepeGigaChadYolo", "ETHUSDT") {
+        _mint(msg.sender, 6_001_000_000_000 * 10**uint(decimals()));
+    }
+}

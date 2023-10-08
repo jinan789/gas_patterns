@@ -1,0 +1,349 @@
+// SPDX-License-Identifier: MIT
+// DragonCurve Contract v1.0.0
+// Creator: LiemNFT
+
+pragma solidity ^0.8.19;
+
+import "./ERC721ABQueryable.sol";
+import "./IERC721R.sol";
+import "openzeppelin-contracts/contracts/access/Ownable.sol";
+import "openzeppelin-contracts/contracts/security/ReentrancyGuard.sol";
+import "openzeppelin-contracts/contracts/token/common/ERC2981.sol";
+import "openzeppelin-contracts/contracts/utils/introspection/ERC165.sol";
+import "closedsea/src/OperatorFilterer.sol";
+
+contract LibraryStorage {
+    function readLibrary(string calldata) public view returns (string memory) {}
+}
+
+contract DragonCurve is
+    Ownable,
+    ReentrancyGuard,
+    ERC2981,
+    ERC721ABQueryable,
+    ERC721Refund,
+    OperatorFilterer
+{
+    uint256 public constant publicPrice = 0.256 ether;
+    uint256 public rerollPrice = 0.0128 ether;
+    uint256 private constant _REROLL_ENABLED = 1;
+    uint256 public rerollStatus;
+    uint256 internal immutable collectionSize;
+    uint256 internal immutable maxBatchSize;
+    uint256 private _offset = 1;
+    LibraryStorage private _genJSStorage;
+    LibraryStorage private _p5jsStorage;
+    string public dragoncurvejsVersion = "DragonCurve 1.0.0";
+    string public p5jsVersion = "p5.js 1.4.2";
+    string private _baseTokenURI = "https://liemnft.com/metadata/";
+    bool public operatorFilteringEnabled;
+    bytes public _image_generation_js;
+    // Mapping from token ID to future blocks, from which the hashes will be used for generating the art.
+    // An empty struct value does not necessarily mean the token has no hash. See getRandSourceBlock implementation for details.
+    // mapping(uint256 => uint256) private _futureBlocks;
+
+    event Reroll(uint256 indexed tokenId, uint256 tokenHash);
+
+    error RandSourceQueryForNonexistentToken();
+    error RefundFailedToTransfer();
+    error WithdrawFailedToTransfer();
+    error RefundFailedToTransferOver();
+    error DidNotSendEnoughETH(uint256 sent, uint256 required);
+    error MintWouldExceedMaxSupply();
+    error MintWouldExceedAccountBatchSupply();
+    error RerollIsDisabled();
+    error RerollRequiresOwner();
+    error UsersOnly();
+
+    constructor() ERC721AB("DragonCurve", "DRAGONCURVE") {
+        maxBatchSize = 8;
+        collectionSize = 16384;
+        rerollStatus = _REROLL_ENABLED;
+        _setDefaultRoyalty(owner(), 500);
+        operatorFilteringEnabled = true;
+        transferOwnership(tx.origin);
+    }
+
+    modifier callerIsUser() {
+        if (tx.origin != msg.sender) {
+            revert UsersOnly();
+        }
+        _;
+    }
+
+    // Override ERC721A _extraData to return previous extraData during transfers.
+    function _extraData(
+        address,
+        address,
+        uint64 previousExtraData
+    ) internal pure override returns (uint64) {
+        return previousExtraData;
+    }
+
+    //Sets the source of random Block `blockNum` of this `tokenId`
+    function _setRandSourceBlock(
+        uint256 tokenId,
+        uint64 blockNum
+    ) internal returns (uint64) {
+        // Must initialize packedOwnership. If it isn't set transfering can reset the reroll.
+        _initializeOwnershipAt(tokenId);
+        _setExtraDataAt(tokenId, uint64(blockNum));
+        return blockNum;
+    }
+
+    function _setNewRandSourceBlock(uint256 tokenId) internal returns (uint64) {
+        uint64 srcBlock = uint64(block.number + _offset);
+        return _setRandSourceBlock(tokenId, srcBlock);
+    }
+
+    /**
+     * Returns the extra data of `tokenId`.
+     * Similar to how ERC721A will get the ownership of a token.
+     * Previously initialized extraData doesn't mean it's empty.
+     */
+    function getRandSourceBlock(
+        uint256 tokenId
+    ) public view returns (uint64 srcBlock) {
+        uint256 curr = tokenId;
+        unchecked {
+            if (_startTokenId() <= curr)
+                if (curr < _nextTokenId()) {
+                    uint64 extra = _ownershipAt(curr).extraData;
+                    // Invariant:
+                    // There will always be an initialized ownership slot with extra data
+                    // When minting the ownership extraData is set,
+                    // if a token has an ownership it will have a non-zero extraData
+                    //
+                    // We can directly compare the packed value.
+                    while (extra == uint64(0)) {
+                        extra = _ownershipAt(--curr).extraData;
+                    }
+                    return extra;
+                }
+        }
+        revert RandSourceQueryForNonexistentToken();
+    }
+
+    function mint(uint256 quantity) external payable callerIsUser {
+        if (_totalMinted() + quantity > collectionSize) {
+            revert MintWouldExceedMaxSupply();
+        }
+        if (_numberMinted(msg.sender) + quantity > maxBatchSize) {
+            revert MintWouldExceedAccountBatchSupply();
+        }
+        uint256 totalCost = publicPrice * quantity;
+        uint256 startTokenId = _totalMinted();
+        _mint(msg.sender, quantity);
+        _setNewRandSourceBlock(startTokenId);
+        refundIfOver(totalCost);
+    }
+
+    function refundIfOver(uint256 price) private {
+        if (msg.value < price) {
+            revert DidNotSendEnoughETH(msg.value, price);
+        }
+        if (msg.value > price) {
+            (bool success, ) = payable(msg.sender).call{
+                value: msg.value - price
+            }("");
+            if (!success) {
+                revert RefundFailedToTransferOver();
+            }
+        }
+    }
+
+    /// @notice         As long as the refund is active for the given `tokenId`, refunds the user
+    /// @dev            Make sure to check that the user has the token, and be aware of potential re-entrancy vectors
+    /// @param  tokenId The `tokenId` to refund
+    function refund(uint256 tokenId) external {
+        //burn true, checks for token ownership
+        _burn(tokenId, true);
+        (bool success, ) = msg.sender.call{value: publicPrice}("");
+        if (!success) {
+            revert RefundFailedToTransfer();
+        }
+        emit Refund(msg.sender, tokenId);
+    }
+
+    // Same behaviour as refund(tokenId)
+    function refundFrom(address, uint256 tokenId) external {
+        //burn true, checks for token ownership
+        _burn(tokenId, true);
+        (bool success, ) = msg.sender.call{value: publicPrice}("");
+        if (!success) {
+            revert RefundFailedToTransfer();
+        }
+        emit Refund(msg.sender, tokenId);
+    }
+
+    /// @notice         Gets the refund price of the specific `tokenId`
+    /// @return _wei    The amount of ether (in wei) that would be refunded
+    function refundOf(uint256) external pure returns (uint256 _wei) {
+        return publicPrice;
+    }
+
+    /// @notice         Gets the first block for which the refund is not active for a given `tokenId`
+    /// @return _block   The block beyond which the token cannot be refunded
+    function refundDeadlineOf(uint256) external pure returns (uint256 _block) {
+        // While we are retuning a value here, it is not checked during refund.
+        return 2 ** 256 - 1;
+    }
+
+    // Sets a new block for the source of random of token `tokenId`
+    function reroll(uint256 tokenId) external payable {
+        address prevOwner = ownerOf(tokenId);
+        bool isApprovedOrOwner = (_msgSender() == prevOwner ||
+            getApproved(tokenId) == _msgSender() ||
+            isApprovedForAll(prevOwner, _msgSender()));
+        if (!isApprovedOrOwner) {
+            revert RerollRequiresOwner();
+        }
+        if (rerollStatus != _REROLL_ENABLED) {
+            revert RerollIsDisabled();
+        }
+        uint64 prevRandSourceBlock = getRandSourceBlock(tokenId);
+        uint64 newBlock = _setNewRandSourceBlock(tokenId);
+        uint256 nextTokenId = tokenId + 1;
+        if (nextTokenId < _nextTokenId()) {
+            TokenOwnership memory nextOwn = _ownershipAt(nextTokenId);
+            if (nextOwn.extraData == 0)
+                _setRandSourceBlock(nextTokenId, prevRandSourceBlock);
+        }
+        refundIfOver(rerollPrice);
+        emit Reroll(tokenId, newBlock);
+    }
+
+    /**
+     * @dev Base URI for computing {tokenURI}. If set, the resulting URI for each
+     * token will be the concatenation of the `baseURI` and the `tokenId`. Empty
+     * by default, it can be overridden in child contracts.
+     */
+    // // metadata URI
+
+    function _baseURI() internal view virtual override returns (string memory) {
+        return _baseTokenURI;
+    }
+
+    function setBaseURI(string calldata baseURI) external onlyOwner {
+        _baseTokenURI = baseURI;
+    }
+
+    // The max amount that can be withdrawn is the contract balance - publicPrice (fixed mint price) * totalSupply (minus burns)
+    function withdrawMoney() external onlyOwner nonReentrant {
+        (bool success, ) = msg.sender.call{
+            value: address(this).balance - publicPrice * totalSupply()
+        }("");
+        if (!success) {
+            revert WithdrawFailedToTransfer();
+        }
+    }
+
+    function setRerollPrice(uint256 price) external onlyOwner {
+        rerollPrice = price;
+    }
+
+    function setRerollStatus(uint256 status) external onlyOwner {
+        rerollStatus = status;
+    }
+
+    function getImageGenerationJs() external view returns (string memory js) {
+        return _p5jsStorage.readLibrary(dragoncurvejsVersion);
+    }
+
+    function getP5Js() external view returns (string memory js) {
+        return _p5jsStorage.readLibrary(p5jsVersion);
+    }
+
+    function setLibraryStorageP5JS(address storageAddress) external onlyOwner {
+        _p5jsStorage = LibraryStorage(storageAddress);
+    }
+
+    function setLibraryStorageGenJS(address storageAddress) external onlyOwner {
+        _genJSStorage = LibraryStorage(storageAddress);
+    }
+
+    function setBlockOffset(uint256 val) external onlyOwner {
+        _offset = val;
+    }
+
+    function getTotalBurned() public view returns (uint256) {
+        return _totalBurned();
+    }
+
+    /**
+     * @dev See {IERC165-supportsInterface}.
+     */
+    function supportsInterface(
+        bytes4 interfaceId
+    )
+        public
+        view
+        virtual
+        override(ERC721AB, IERC165, IERC721AB, ERC2981)
+        returns (bool)
+    {
+        return
+            ERC2981.supportsInterface(interfaceId) ||
+            interfaceId == type(ERC721Refund).interfaceId ||
+            super.supportsInterface(interfaceId);
+    }
+
+    function setApprovalForAll(
+        address operator,
+        bool approved
+    )
+        public
+        override(ERC721AB, IERC721AB)
+        onlyAllowedOperatorApproval(operator)
+    {
+        super.setApprovalForAll(operator, approved);
+    }
+
+    function approve(
+        address operator,
+        uint256 tokenId
+    )
+        public
+        payable
+        override(ERC721AB, IERC721AB)
+        onlyAllowedOperatorApproval(operator)
+    {
+        super.approve(operator, tokenId);
+    }
+
+    /**
+     * @dev Both safeTransferFrom functions in ERC721A call this function
+     * so we don't need to override them.
+     */
+    function transferFrom(
+        address from,
+        address to,
+        uint256 tokenId
+    ) public payable override(ERC721AB, IERC721AB) onlyAllowedOperator(from) {
+        super.transferFrom(from, to, tokenId);
+    }
+
+    function setDefaultRoyalty(
+        address receiver,
+        uint96 feeNumerator
+    ) public onlyOwner {
+        _setDefaultRoyalty(receiver, feeNumerator);
+    }
+
+    function setOperatorFilteringEnabled(bool value) public onlyOwner {
+        operatorFilteringEnabled = value;
+    }
+
+    function _operatorFilteringEnabled() internal view override returns (bool) {
+        return operatorFilteringEnabled;
+    }
+
+    function _isPriorityOperator(
+        address operator
+    ) internal pure override returns (bool) {
+        // OpenSea Seaport Conduit:
+        // https://etherscan.io/address/0x1E0049783F008A0085193E00003D00cd54003c71
+        // https://goerli.etherscan.io/address/0x1E0049783F008A0085193E00003D00cd54003c71
+        return operator == address(0x1E0049783F008A0085193E00003D00cd54003c71);
+    }
+}

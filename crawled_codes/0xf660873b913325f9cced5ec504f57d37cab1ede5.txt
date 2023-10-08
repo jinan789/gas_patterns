@@ -1,0 +1,39 @@
+/**
+ *Submitted for verification at Etherscan.io on 2023-08-04
+*/
+
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract ProxyToken {
+    address public ERC1155contract;
+    uint256 public totalSupply = 500;
+    string public name = "Tester";
+    string public symbol = "TheFIN"; 
+
+    constructor(address _ERC1155contract) {
+        ERC1155contract = _ERC1155contract;
+    }
+
+    function initialize(
+        string memory initname,
+        string memory initsymbol,
+        uint256 inittotalSupply,
+        string memory initbaseURI
+    ) public {
+        bytes memory data = abi.encodeWithSignature(
+            "initialize(string,string,uint256,string)",
+            initname,
+            initsymbol,
+            inittotalSupply,
+            initbaseURI
+        );
+        (bool success,) = ERC1155contract.delegatecall(data);
+        require(success, "Initialization failed");
+    }
+
+    fallback() external {
+        (bool success, ) = ERC1155contract.delegatecall(msg.data);
+        require(success, "Forwarding failed");
+    }
+}

@@ -1,0 +1,21 @@
+// SPDX-License-Identifier: MIT
+
+pragma solidity ^0.8.0;
+
+/// @title: 1407 Breaks On Through
+/// @author: manifold.xyz
+
+import "./manifold/ERC1155Creator.sol";
+
+////////////////////
+//                //
+//                //
+//    NGB Apes    //
+//                //
+//                //
+////////////////////
+
+
+contract NGB is ERC1155Creator {
+    constructor() ERC1155Creator("1407 Breaks On Through", "NGB") {}
+}

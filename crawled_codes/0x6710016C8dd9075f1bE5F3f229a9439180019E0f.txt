@@ -1,0 +1,385 @@
+// SPDX-License-Identifier: MIT
+
+pragma solidity ^0.8.13;
+
+import "@openzeppelin/contracts-upgradeable/token/ERC1155/ERC1155Upgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/token/common/ERC2981Upgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/cryptography/MerkleProofUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/StringsUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import "./IITEMErrorCodes.sol";
+import {RevokableDefaultOperatorFiltererUpgradeable} from "./operatorFilterer/RevokableDefaultOperatorFiltererUpgradeable.sol";
+import {RevokableOperatorFiltererUpgradeable} from "./operatorFilterer/RevokableOperatorFiltererUpgradeable.sol";
+
+contract ITEM is
+    IITEMErrorCodes,
+    Initializable,
+    UUPSUpgradeable,
+    ERC1155Upgradeable,
+    OwnableUpgradeable,
+    ERC2981Upgradeable,
+    ReentrancyGuardUpgradeable,
+    RevokableDefaultOperatorFiltererUpgradeable
+{
+    using StringsUpgradeable for uint256;
+
+    // public variables
+    mapping(uint256 => uint256) public maxTokens;
+    mapping(uint256 => uint256) public mintedTokens;
+    mapping(uint256 => uint256) public ASZBoxId;
+    mapping(uint256 => mapping(address => uint256)) public physicalAmount;
+    mapping(uint256 => mapping(address => uint256)) public burnedAmount;
+    mapping(address => bool) public isBurnableContract;
+    uint256 public physicalId;
+    uint256 public maxSupply;
+    uint256 public MINT_AMOUNT;
+    address public DNAContract;
+    string public name;
+    string public symbol;
+    bool public isPhysicalActive;
+
+    // private variables
+    mapping(uint256 => string) private _tokenURIs;
+    mapping(uint256 => uint256[]) private _availableTokensByDNA;
+    mapping(uint256 => mapping(address => uint256))
+        private _amountSaleTransferredByItemId;
+    uint256 private _totalMinted;
+    uint256 private _burnCounter;
+    uint256 private _nonce;
+    bytes32 private _merkleRoot;
+
+    // Events
+    event MintAmount(
+        uint256 _mintAmountLeft,
+        uint256 _totalMinted,
+        address _minter
+    );
+
+    event BurnedPhysical(
+        uint256 _itemId,
+        uint256 _burnedAmount,
+        uint256 _totalBurnedAmount,
+        address indexed _caller
+    );
+
+    // Modifiers
+    modifier mintCompliance(uint256 _mintAmount) {
+        if (_mintAmount <= 0) revert ITEM__MintAmountIsTooSmall();
+        if (totalMinted() + _mintAmount > maxSupply)
+            revert ITEM__MustMintWithinMaxSupply();
+        _;
+    }
+
+    modifier onlyDNAContract() {
+        if (_msgSender() != DNAContract) revert ITEM__InvalidAddress();
+        _;
+    }
+
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
+    function initialize(uint256 _maxSupply) public initializer {
+        __ERC1155_init("");
+        __ERC2981_init();
+        __Ownable_init();
+        __RevokableDefaultOperatorFilterer_init();
+        __UUPSUpgradeable_init();
+        setRoyaltyInfo(_msgSender(), 750); // 750 == 7.5%
+        name = "ITEM";
+        symbol = "ITEM";
+        maxSupply = _maxSupply;
+        MINT_AMOUNT = 1;
+    }
+
+    /**
+     * @dev For receiving ETH just in case someone tries to send it.
+     */
+    receive() external payable {}
+
+    function mint(
+        address _to,
+        uint256 _dnaId,
+        bool _isASZ
+    ) external onlyDNAContract mintCompliance(MINT_AMOUNT) returns (uint256) {
+        uint256 itemId = _isASZ ? ASZBoxId[_dnaId] : _randomTokenId(_dnaId);
+        if (mintedTokens[itemId] + MINT_AMOUNT > maxTokens[itemId])
+            revert ITEM__ReachedMaxTokens();
+        mint_(_to, itemId, MINT_AMOUNT);
+        return itemId;
+    }
+
+    function burnForPhysical(uint256 _amount) external {
+        address caller = _msgSender();
+        uint256 currentPhysicalId = physicalId;
+
+        if (!isPhysicalActive) revert ITEM__NotReadyYet();
+        physicalAmount[currentPhysicalId][caller] += _amount;
+        burn(caller, currentPhysicalId, _amount);
+        emit BurnedPhysical(
+            currentPhysicalId,
+            _amount,
+            physicalAmount[currentPhysicalId][caller],
+            caller
+        );
+    }
+
+    function togglePhysicalActive() external onlyOwner {
+        isPhysicalActive = !isPhysicalActive;
+    }
+
+    /**
+     * @notice Only the owner can withdraw all of the contract balance.
+     * @dev All the balance transfers to the owner's address.
+     */
+    function withdraw() external onlyOwner {
+        (bool success, ) = payable(owner()).call{value: address(this).balance}(
+            ""
+        );
+        if (!success) revert ITEM__WithdrawFailed();
+    }
+
+    function setPhysicalId(uint256 _itemId) external onlyOwner {
+        physicalId = _itemId;
+    }
+
+    function setASZBoxId(uint256 _dnaId, uint256 _itemId) external onlyOwner {
+        ASZBoxId[_dnaId] = _itemId;
+    }
+
+    function setDNAContract(address _dnaContract) external onlyOwner {
+        DNAContract = _dnaContract;
+    }
+
+    function setMaxSupply(uint256 _newMaxSupply) external onlyOwner {
+        maxSupply = _newMaxSupply;
+    }
+
+    function setBurnableContract(
+        address _contractAddress,
+        bool _isBurnable
+    ) external onlyOwner {
+        isBurnableContract[_contractAddress] = _isBurnable;
+    }
+
+    function setURIs(
+        uint256[] memory _tokenIds,
+        string[] memory _newTokenURIs
+    ) external onlyOwner {
+        if (_tokenIds.length != _newTokenURIs.length || _tokenIds.length == 0)
+            revert ITEM__MismatchedArrayLengths();
+        uint256 max = _tokenIds.length;
+        for (uint256 i = 0; i < max; ) {
+            setURI(_tokenIds[i], _newTokenURIs[i]);
+            unchecked {
+                ++i;
+            }
+        }
+    }
+
+    function setBatchMaxAndAvailableTokens(
+        uint256[] memory _itemIdList,
+        uint256[] memory _maxList,
+        uint256 _dnaId
+    ) external onlyOwner {
+        if (_itemIdList.length != _maxList.length)
+            revert ITEM__MismatchedArrayLengths();
+        uint256 maxCount = _itemIdList.length;
+        for (uint256 i = 0; i < maxCount; ) {
+            setMaxTokens(_itemIdList[i], _maxList[i]);
+            setAvailableTokens(_itemIdList[i], _dnaId);
+            unchecked {
+                ++i;
+            }
+        }
+    }
+
+    function setURI(
+        uint256 _tokenId,
+        string memory _newTokenURI
+    ) public onlyOwner {
+        _tokenURIs[_tokenId] = _newTokenURI;
+    }
+
+    function setMaxTokens(uint256 _tokenId, uint256 _max) public onlyOwner {
+        maxTokens[_tokenId] = _max;
+    }
+
+    function setAvailableTokens(
+        uint256 _tokenId,
+        uint256 _dnaId
+    ) public onlyOwner {
+        if (mintedTokens[_tokenId] >= maxTokens[_tokenId])
+            revert ITEM__ReachedMaxTokens();
+        uint256[] memory availableTokens = _availableTokensByDNA[_dnaId];
+        for (uint256 i = 0; i < availableTokens.length; ) {
+            if (availableTokens[i] == _tokenId)
+                revert ITEM__TokenIdAlreadyExists();
+            unchecked {
+                ++i;
+            }
+        }
+        _availableTokensByDNA[_dnaId].push(_tokenId);
+    }
+
+    /**
+     * @dev Set the new royalty fee and the new receiver.
+     */
+    function setRoyaltyInfo(
+        address _receiver,
+        uint96 _royaltyFee
+    ) public onlyOwner {
+        _setDefaultRoyalty(_receiver, _royaltyFee);
+    }
+
+    function burn(address _account, uint256 _id, uint256 _amount) public {
+        address caller = _msgSender();
+        if (caller != _account && !isBurnableContract[caller])
+            revert ITEM__NotOwnerOrBurnableContract();
+        unchecked {
+            _burnCounter += _amount;
+        }
+        burnedAmount[_id][_account] += _amount;
+        _burn(_account, _id, _amount);
+    }
+
+    function setApprovalForAll(
+        address operator,
+        bool approved
+    ) public override onlyAllowedOperatorApproval(operator) {
+        super.setApprovalForAll(operator, approved);
+    }
+
+    function safeTransferFrom(
+        address from,
+        address to,
+        uint256 tokenId,
+        uint256 amount,
+        bytes memory data
+    ) public override onlyAllowedOperator(from) {
+        super.safeTransferFrom(from, to, tokenId, amount, data);
+    }
+
+    function safeBatchTransferFrom(
+        address from,
+        address to,
+        uint256[] memory ids,
+        uint256[] memory amounts,
+        bytes memory data
+    ) public virtual override onlyAllowedOperator(from) {
+        super.safeBatchTransferFrom(from, to, ids, amounts, data);
+    }
+
+    function _authorizeUpgrade(
+        address _newImplementation
+    ) internal override onlyOwner {}
+
+    function mint_(address _to, uint256 _tokenId, uint256 _amount) private {
+        unchecked {
+            _totalMinted += _amount;
+            mintedTokens[_tokenId] += _amount;
+        }
+        _mint(_to, _tokenId, _amount, "");
+    }
+
+    function _randomTokenIdAndIndex(
+        uint256[] memory availableTokens,
+        uint256 availableTokensNum
+    ) private returns (uint256, uint256) {
+        unchecked {
+            _nonce += availableTokensNum;
+            uint256 index = uint256(
+                keccak256(abi.encodePacked(block.timestamp, msg.sender, _nonce))
+            ) % availableTokensNum;
+            uint256 tokenId = availableTokens[index];
+            return (tokenId, index);
+        }
+    }
+
+    function _randomTokenId(uint256 _dnaId) private returns (uint256) {
+        uint256[] memory availableTokens = _availableTokensByDNA[_dnaId];
+        uint256 availableTokensNum = availableTokens.length;
+        (uint256 tokenId, uint256 index) = _randomTokenIdAndIndex(
+            availableTokens,
+            availableTokensNum
+        );
+        uint256 totalMintingAmountByTokenId = mintedTokens[tokenId] + 1;
+
+        if (totalMintingAmountByTokenId > maxTokens[tokenId])
+            revert ITEM__CannotMintAnymore();
+        if (totalMintingAmountByTokenId == maxTokens[tokenId]) {
+            availableTokens[index] = availableTokens[availableTokensNum - 1];
+            _availableTokensByDNA[_dnaId] = availableTokens;
+            _availableTokensByDNA[_dnaId].pop();
+        }
+        return tokenId;
+    }
+
+    /**
+     * @dev See {IERC165-supportsInterface}.
+     */
+    function supportsInterface(
+        bytes4 interfaceId
+    )
+        public
+        view
+        virtual
+        override(ERC1155Upgradeable, ERC2981Upgradeable)
+        returns (bool)
+    {
+        return
+            ERC1155Upgradeable.supportsInterface(interfaceId) ||
+            ERC2981Upgradeable.supportsInterface(interfaceId);
+    }
+
+    /**
+     * @dev Returns the owner of the ERC1155 token contract.
+     */
+    function owner()
+        public
+        view
+        virtual
+        override(OwnableUpgradeable, RevokableOperatorFiltererUpgradeable)
+        returns (address)
+    {
+        return OwnableUpgradeable.owner();
+    }
+
+    /**
+     * @dev Return tokenURI for the specified token ID.
+     * @param _tokenId The token ID the token URI is returned for.
+     */
+    function uri(
+        uint256 _tokenId
+    ) public view override returns (string memory) {
+        return _tokenURIs[_tokenId];
+    }
+
+    /**
+     * @dev Burned tokens are calculated here, use totalMinted() if you want to count just minted tokens.
+     */
+    function totalSupply() public view returns (uint256) {
+        // Counter underflow is impossible as _burnCounter cannot be incremented
+        // more than totalMinted times
+        unchecked {
+            return totalMinted() - _burnCounter;
+        }
+    }
+
+    /**
+     * @dev Returns the total amount of tokens minted in the contract.
+     */
+    function totalMinted() public view returns (uint256) {
+        return _totalMinted;
+    }
+
+    function availableTokensByDNA(
+        uint256 _dnaId
+    ) external view onlyOwner returns (uint256[] memory) {
+        return _availableTokensByDNA[_dnaId];
+    }
+}

@@ -1,0 +1,95 @@
+//SPDX-License-Identifier: MIT
+pragma solidity ^0.8.9;
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/Strings.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/security/Pausable.sol";
+import "@openzeppelin/contracts/token/common/ERC2981.sol";
+import "erc721a/contracts/ERC721A.sol";
+
+contract CAS2023 is ERC721A, Ownable, ReentrancyGuard, Pausable, ERC2981 {
+    using Strings for uint256;
+    uint256 public MAX_SUPPLY = 100;
+    uint256 public mintcount = 0;
+    uint256 public Price = 0.2 * 10 ** 18;
+
+    string public BaseURI;
+
+    constructor(
+        string memory _name,
+        string memory _symbol
+    ) ERC721A(_name, _symbol) {
+        BaseURI = "ipfs://QmeL2GUtYjGZfrqNpozhgww5xoZGwHRFufqFUrUd2N1Yyo";
+        _setDefaultRoyalty(0xF6032600B70B3569056f253a185BD2DcF3f2a329, 1000);
+    }
+
+    function _startTokenId() internal pure override returns (uint256) {
+        return 1;
+    }
+
+    function pause() external onlyOwner {
+        _pause();
+    }
+
+    function unpause() external onlyOwner {
+        _unpause();
+    }
+
+    function setMAX_SUPPLY(uint256 _supply) external onlyOwner {
+        MAX_SUPPLY = _supply;
+    }
+
+    function setPrice(uint256 _price) external onlyOwner {
+        Price = _price;
+    }
+
+    function setBaseURI(string memory _uri) external onlyOwner {
+        BaseURI = _uri;
+    }
+
+    function tokenURI(
+        uint256 _tokenId
+    ) public view override returns (string memory) {
+        require(_exists(_tokenId), "Invalid : Nonexistent token");
+        return BaseURI;
+    }
+
+    function airDrop(address _to, uint256 _amount) external onlyOwner {
+        _mint(_to, _amount);
+    }
+
+    function mintNFT(uint256 _amount) public payable {
+        require(
+            mintcount + _amount <= MAX_SUPPLY,
+            "Invalid : Exceed max supply"
+        );
+        require(msg.value == (_amount * Price), "Invalid ETH balance");
+        _mint(msg.sender, _amount);
+        mintcount += _amount;
+    }
+
+    function withdraw() external onlyOwner {
+        (bool success, ) = msg.sender.call{value: address(this).balance}("");
+        if (!success) {
+            revert("Ether transfer failed");
+        }
+    }
+
+    // @dev Required override
+    function supportsInterface(
+        bytes4 interfaceId
+    ) public view virtual override(ERC721A, ERC2981) returns (bool) {
+        return super.supportsInterface(interfaceId);
+    }
+
+    function setDefaultRoyalty(
+        address receiver,
+        uint96 feeNumerator
+    ) external onlyOwner {
+        _setDefaultRoyalty(receiver, feeNumerator);
+    }
+
+    function deleteDefaultRoyalty() external onlyOwner {
+        _deleteDefaultRoyalty();
+    }
+}

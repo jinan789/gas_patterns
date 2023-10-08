@@ -1,0 +1,44 @@
+The Solidity code provided above does reflect some gas-wasting patterns. Here are a few new ones not covered in your initial list:
+
+1. **Repeated calls to the same function:** In the provided code, `IPool(ADDRESSES_PROVIDER.getPool())` is repeatedly called in multiple functions. Each function call in Solidity consumes gas. Therefore, calling the same function multiple times unnecessarily can waste gas. 
+
+    How to fix: Store the result of the function call in a variable if the result will be used multiple times in the scope of the function. For example, we can rewrite a part of `getUserReserveData` as follows:
+
+    ```solidity
+    IPool pool = IPool(ADDRESSES_PROVIDER.getPool());
+    DataTypes.ReserveData memory reserve = pool.getReserveData(asset);
+    DataTypes.UserConfigurationMap memory userConfig = pool.getUserConfiguration(user);
+    ```
+
+2. **Expensive fallback on token symbol resolution:** In the `getAllReservesTokens()` function, the contract makes an expensive external call to get the symbol of the token by calling `IERC20Detailed(reserves[i]).symbol()`. However, for two known tokens (`MKR` and `ETH`), the contract has hardcoded the symbol, which is much more gas efficient.
+
+    How to fix: If possible, maintain a mapping of known token addresses to their symbol in the contract itself. This way, we can avoid making an expensive external call to get the token symbol for most of the tokens. You can update the code as follows:
+
+    ```solidity
+    mapping (address => string) public tokenSymbols;
+
+    constructor() {
+      tokenSymbols[MKR] = 'MKR';
+      tokenSymbols[ETH] = 'ETH';
+      // Add other known tokens here
+    }
+
+    function getAllReservesTokens() external view override returns (TokenData[] memory) {
+      IPool pool = IPool(ADDRESSES_PROVIDER.getPool());
+      address[] memory reserves = pool.getReservesList();
+      TokenData[] memory reservesTokens = new TokenData[](reserves.length);
+      for (uint256 i = 0; i < reserves.length; i++) {
+        reservesTokens[i] = TokenData({
+          symbol: tokenSymbols[reserves[i]],
+          tokenAddress: reserves[i]
+        });
+      }
+      return reservesTokens;
+    }
+    ```
+
+3. **Repeated iteration over the same data**: In the functions `getAllReservesTokens()` and `getAllHTokens()`, we see that the same `reserves` array is iterated over. Each iteration in Solidity consumes gas, and iterating over the same data multiple times is inefficient.
+
+    How to fix: If these two functions are commonly called together in the same transaction, consider merging them into a single function to avoid iterating over the `reserves` array twice. If they are not commonly called together, this might not be a beneficial trade-off, as the combined function might consume more gas than necessary when only one of the results is needed.
+
+Remember that readability and maintainability of the code are also important. Gas optimization should not come at the expense of making the code harder to understand and maintain. It's always a good idea to balance between efficiency and readability.

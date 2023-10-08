@@ -1,0 +1,299 @@
+// SPDX-License-Identifier: MIT
+
+/*
+                                                 .
+        .-=-:    ..:  .:::::::  ::::::---:     -##++*+*.::----:  -==-   ---.--::---=.
+      =#=-=+=+#=@+=+%##=#@=--%+##=@*-=##==#=-*#==*#= :%@*-:**+=#*@-=@%-+@:@@+-:+**=#=
+     =%..%@@@--@@+.-@=+@@@@=.:%%-@@*::@@+.+@@::*@@@#=.#@#::@@%..@@=.:*@@@.@@#. %=-+=
+     [email protected]..*@@@@@@*:::.*@@@@@+..-@@@#:.#*-:*@@.-@@@@%=:=@#:.*=:+%@@=+=.:%@:@@#..%*++:
+      *@*-..-+@@@+.-@=.-%@@@@.:#@@@*:-@@@=.*@-.+*@@@:.+@#.:@%::#@@=*@#:.*:@@#..=+=%-
+     -#*@@%=-:.%@*.-@@#-.:=#%==++@@*..#%#:=%@%-.:--.:#@@*..@@@-.-#+*@@@-..@@%..#+:.
+     +*.@@@@#..#@=::@@@@%*+=--=+%@@@@@@@@@@@@@@@%##%@@@@@%%@@@@%=-::--#@*.@@%..*+..:
+      %*=+*+:=*@@@@@@@@%#%##****##**+++*###+##*###**+++**#*****#%##@@@@@@@@@@#*+**+%+
+       -#@@@@@@@@@@%%%%%%#*++**%%#++++*#%*******#%#*+++*#%%#*++*#%%%#%%@@@@@@@@@@@%#
+     :+***+++***@@@%###*****#@@#**#@@@@%**#@@#***#****#@@@@%**+**#%@@###%@@@@%#******%+
+   .#*-:::---:::%@@@-:--====:@@@-::=@@@@=:#@@@-:=+++++-@@%-:=+++--=@@#::@@@#=::----::-@
+  :@+::=#@@@@@%*+@@@-:*@@@@@@%@@--=--%@@=-+@@@-:#@@@@%@@@+--%@@@@@+@@%::@@%-:=@@@@@%#=%-
+  %*::+@@@@%%%%%#%@@=--====-@@@@--##-:#@=-*@@%--:::::=@@@@+-::-=+#@@@#-:@@%--:=+*#%@@@%*
+ .@+--*@@@@------%@@=-+**#**@@@@=-%@%=-+=-*@@@=-#%%%%#@@@#@@%##*=--%@#-:@@@@*+=---::[email protected]
+ .@#---@@@%%@@+--@@@=-*@@@@@%%@%=-%@@@+-==*@@@==+*###**#@*-*#%@@%=-+@#--@@*%@@@@@%#+---@
+  +@+--=#@@@@%+=-@@@==------=%@%==*@@@@*+++@@%+*+++++++@@@++=---==*@@#=-@@%-=*#%@%%*=-=@:
+   *@#+==----====%@%##%%%%%@@@@@@%%%#*#####**##*#########%##@@@@@@#%@%#*#@@*===---===*@*
+    :*@%##**##%@%#=+==--::..                                  ..    :-==+=%@@@%%%%%@%*-
+       :-=++=-:                                                            .  .:--:.
+*/
+
+pragma solidity 0.8.17;
+
+import "@openzeppelin/contracts-upgradeable/access/AccessControlEnumerableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import "@openzeppelin/contracts/interfaces/IERC165.sol";
+
+import "../../../thirdparty/falkor-contracts/tokens/utils/interfaces/ITriggerableMetadata.sol";
+import "../../../thirdparty/falkor-contracts/utils/vrf/IVRFKeeper.sol";
+import "../../../thirdparty/falkor-contracts/tokens/utils/LockableUpgradeable.sol";
+
+import { IERC4906 } from "../interfaces/IERC4906.sol";
+import { ERC721AUpgradeable } from "../../../thirdparty/opensea/seadrop-upgradeable/lib/erc721a-upgradeable/contracts/ERC721AUpgradeable.sol";
+import { ERC721ContractMetadataUpgradeable } from "../../../thirdparty/opensea/seadrop-upgradeable/src/ERC721ContractMetadataUpgradeable.sol";
+import { COLLECTION_ADMIN_ROLE, MINTER_ROLE } from "../../WLRoleConstants.sol";
+import { DefaultOperatorFiltererUpgradeable } from "operator-filter-registry/src/upgradeable/DefaultOperatorFiltererUpgradeable.sol";
+
+import "../interfaces/IERC721ASafeMintable.sol";
+
+/**
+ * @title Immortals post-mint upgrade enabling locking features
+ */
+contract ImmortalsV2 is
+	Initializable,
+	ERC721ContractMetadataUpgradeable,
+	AccessControlEnumerableUpgradeable,
+	UUPSUpgradeable,
+	IERC721ASafeMintable,
+	DefaultOperatorFiltererUpgradeable,
+	LockableUpgradeable
+{
+	// ====================================================
+	// ERRORS
+	// ====================================================
+	error Unauthorized();
+	error AlreadyRevealed();
+	error NotFullyMinted();
+	error InvalidToken();
+	error MintQuantityExceedsMaxSupply(uint256 total, uint256 maxSupply);
+
+	// ====================================================
+	// STATE V1: this block MUST NOT be modified
+	// ====================================================
+	IVRFKeeper public vrfKeeperContract;
+
+	/// @notice See {ERC721SeaDropRandomOffset}
+	uint256 public constant _FALSE = 1;
+	uint256 public constant _TRUE = 2;
+
+	uint256 public revealed;
+	uint256 public randomOffset;
+
+	// ====================================================
+	// STATE V2
+	// ====================================================
+	address private _trustedForwarder;
+
+	// ====================================================
+	// CONSTRUCTOR
+	// ====================================================
+	/// @custom:oz-upgrades-unsafe-allow constructor
+	constructor() {
+		_disableInitializers();
+	}
+
+	/**
+	 * Todo:  See {reinitializer}
+	 */
+	function initialize() external reinitializer(2) {
+		__DefaultOperatorFilterer_init();
+
+		__Lockable_init();
+	}
+
+	// ====================================================
+	// OVERRIDES
+	// ====================================================
+
+	/**
+	 * @dev See {IERC721-setApprovalForAll}.
+	 */
+	function setApprovalForAll(address operator, bool approved) public override onlyAllowedOperatorApproval(operator) {
+		super.setApprovalForAll(operator, approved);
+	}
+
+	/**
+	 * @dev See {IERC721-approve}.
+	 */
+	function approve(address operator, uint256 tokenId) public override onlyAllowedOperatorApproval(operator) {
+		super.approve(operator, tokenId);
+	}
+
+	/**
+	 * @dev See {IERC721-transferFrom}.
+	 */
+	function transferFrom(address from, address to, uint256 tokenId) public override onlyAllowedOperator(from) {
+		super.transferFrom(from, to, tokenId);
+	}
+
+	/**
+	 * @dev See {IERC721-safeTransferFrom}.
+	 */
+	function safeTransferFrom(address from, address to, uint256 tokenId) public override onlyAllowedOperator(from) {
+		super.safeTransferFrom(from, to, tokenId);
+	}
+
+	/**
+	 * @dev  {IERC721-safeTransferFrom}.
+	 */
+	function safeTransferFrom(
+		address from,
+		address to,
+		uint256 tokenId,
+		bytes memory data
+	) public override onlyAllowedOperator(from) {
+		super.safeTransferFrom(from, to, tokenId, data);
+	}
+
+	function _startTokenId() internal view virtual override returns (uint256) {
+		return 1;
+	}
+
+	function supportsInterface(
+		bytes4 interfaceId
+	)
+		public
+		view
+		override(AccessControlEnumerableUpgradeable, ERC721ContractMetadataUpgradeable, LockableUpgradeable)
+		returns (bool)
+	{
+		return
+			AccessControlEnumerableUpgradeable.supportsInterface(interfaceId) ||
+			ERC721ContractMetadataUpgradeable.supportsInterface(interfaceId) ||
+			LockableUpgradeable.supportsInterface(interfaceId) ||
+			super.supportsInterface(interfaceId);
+	}
+
+	/// @dev UUPSUpgradeable override
+	function _authorizeUpgrade(address newImplementation) internal virtual override onlyRole(COLLECTION_ADMIN_ROLE) {}
+
+	/// @dev Enable transfers only when token is unlocked (not being used in game)
+	/// 	 _quantity Equals 1 during transfers but can be more than one for mint
+	function _beforeTokenTransfers(
+		address _from,
+		address _to,
+		uint256 _startToken,
+		uint256 _quantity
+	) internal virtual override(ERC721AUpgradeable) onlyWhenUnlocked(_startToken) {
+		super._beforeTokenTransfers(_from, _to, _startToken, _quantity);
+	}
+
+	function enableTokenLocking() public override onlyRole(COLLECTION_ADMIN_ROLE) {
+		super.enableTokenLocking();
+	}
+
+	function disableTokenLocking() public override onlyRole(COLLECTION_ADMIN_ROLE) {
+		super.disableTokenLocking();
+	}
+
+	function enableOverrideLock() public override onlyRole(COLLECTION_ADMIN_ROLE) {
+		super.enableOverrideLock();
+	}
+
+	function disableOverrideLock() public override onlyRole(COLLECTION_ADMIN_ROLE) {
+		super.disableOverrideLock();
+	}
+
+	function lockToken(uint256 tokenId) public override {
+		address sender = _txMsgSender();
+
+		if (ownerOf(tokenId) == sender || hasRole(COLLECTION_ADMIN_ROLE, sender)) {
+			super.lockToken(tokenId);
+		} else revert Unauthorized();
+	}
+
+	function lockToken(uint256 tokenId, uint256 lockDuration) public override {
+		address sender = _txMsgSender();
+
+		if (ownerOf(tokenId) == sender || hasRole(COLLECTION_ADMIN_ROLE, sender)) {
+			super.lockToken(tokenId, lockDuration);
+		} else revert Unauthorized();
+	}
+
+	function unlockToken(uint256 tokenId) public override {
+		address sender = _txMsgSender();
+
+		if (ownerOf(tokenId) == sender || hasRole(COLLECTION_ADMIN_ROLE, sender)) {
+			super.unlockToken(tokenId);
+		} else revert Unauthorized();
+	}
+
+	// ====================================================
+	// ROLE GATED
+	// ====================================================
+
+	function triggerBatchMetadataUpdate(
+		uint256 _fromTokenId,
+		uint256 _toTokenId
+	) public onlyRole(COLLECTION_ADMIN_ROLE) {
+		emit BatchMetadataUpdate(_fromTokenId, _toTokenId);
+	}
+
+	function safeMint(address to, uint256 quantity) public onlyRole(MINTER_ROLE) {
+		if (_totalMinted() + quantity > maxSupply()) {
+			revert MintQuantityExceedsMaxSupply(_totalMinted() + quantity, maxSupply());
+		}
+
+		_safeMint(to, quantity);
+	}
+
+	// ====================================================
+	// ERC2771
+	// ====================================================
+
+	function getTrustedForwarder() public view virtual returns (address forwarder) {
+		return _trustedForwarder;
+	}
+
+	function setTrustedForwarder(address _forwarder) public onlyRole(COLLECTION_ADMIN_ROLE) {
+		_trustedForwarder = _forwarder;
+	}
+
+	function isTrustedForwarder(address forwarder) public view returns (bool) {
+		return forwarder == _trustedForwarder;
+	}
+
+	/// @dev To avoid collision with OZ _msgSender, we only use _txMsgSender
+	///      for lockables.
+	/// @notice ERC721 uses _msgSenderERC721A to determine sender
+	function _txMsgSender() internal view returns (address ret) {
+		if (msg.data.length >= 20 && isTrustedForwarder(msg.sender)) {
+			// At this point we know that the sender is a trusted forwarder,
+			// so we trust that the last bytes of msg.data are the verified sender address.
+			// extract sender address from the end of msg.data
+			assembly {
+				ret := shr(96, calldataload(sub(calldatasize(), 20)))
+			}
+		} else {
+			ret = msg.sender;
+		}
+	}
+
+	function _txMsgData() internal view returns (bytes calldata ret) {
+		if (msg.data.length >= 20 && isTrustedForwarder(msg.sender)) {
+			return msg.data[0:msg.data.length - 20];
+		} else {
+			return msg.data;
+		}
+	}
+
+	// ====================================================
+	// PUBLIC API
+	// ====================================================
+	function tokenURI(uint256 tokenId) public view override returns (string memory) {
+		if (!_exists(tokenId)) {
+			revert InvalidToken();
+		}
+
+		if (revealed == _FALSE) {
+			string memory baseURI = _baseURI();
+
+			if (bytes(baseURI)[bytes(baseURI).length - 1] != bytes("/")[0]) {
+				return baseURI;
+			}
+			return super.tokenURI(tokenId);
+		}
+		uint256 id = ((tokenId + randomOffset) % maxSupply()) + _startTokenId();
+		return super.tokenURI(id);
+	}
+
+	function startTokenId() public view returns (uint256) {
+		return _startTokenId();
+	}
+}

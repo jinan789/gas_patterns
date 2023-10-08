@@ -1,0 +1,38 @@
+// SPDX-License-Identifier: BUSL-1.1
+pragma solidity >=0.8.19;
+
+import { IBasicTokenURIFacet } from "./IBasicTokenURIFacet.sol";
+import { BasicTokenURIStorage }  from "./BasicTokenURIStorage.sol";
+import { UsingAccessControl } from '../../facets/AccessControl/UsingAccessControl.sol';
+
+import { ERC721AUpgradeableInternal } from "../ERC721A/ERC721AUpgradeableInternal.sol";
+import { StringsUpgradeable } from "@openzeppelin/contracts-upgradeable/utils/StringsUpgradeable.sol";
+import { MetadataUpdate4906Lib } from '../MetadataUpdate4906/MetadataUpdate4906Lib.sol';
+
+/// @title BasicTokenURIStorage
+/// @author Martin Wawrusch for Roji Inc.
+/// @notice Implements the facet for a basic token URI storage implementation. See `setBaseTokenURI` for details.
+contract BasicTokenURIERC721AFacet is ERC721AUpgradeableInternal, UsingAccessControl, IBasicTokenURIFacet  {
+   using StringsUpgradeable for uint256;
+ 
+    /// @inheritdoc IBasicTokenURIFacet
+    function tokenURI(uint256 tokenId) public view returns (string memory)
+    {
+        if(!_exists(tokenId)) {revert URIQueryForNonexistentToken(); }
+        return string(abi.encodePacked(BasicTokenURIStorage.layout().baseTokenURI, tokenId.toString(), ".json"));
+    }
+
+    /// @inheritdoc IBasicTokenURIFacet
+    function baseTokenURI() public view returns (string memory) {
+        return BasicTokenURIStorage.layout().baseTokenURI;
+    }
+
+    /// @inheritdoc IBasicTokenURIFacet
+    function setBaseTokenURI(string calldata baseTokenURI_) external onlyAccessControlAdmin {
+        BasicTokenURIStorage.layout().baseTokenURI = baseTokenURI_;
+
+        if(_nextTokenId() > _startTokenId()) {
+            MetadataUpdate4906Lib._notifyBatchMetadataUpdated(_startTokenId(), _nextTokenId() - 1);
+        }
+    }
+}

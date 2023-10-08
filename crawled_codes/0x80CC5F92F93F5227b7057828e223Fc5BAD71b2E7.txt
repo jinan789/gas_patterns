@@ -1,0 +1,66 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+import "../../../policy/Policy.sol";
+import "../../../currency/ECO.sol";
+import "./Proposal.sol";
+import {ICrossDomainMessenger} from "@eth-optimism/contracts/libraries/bridge/ICrossDomainMessenger.sol";
+import {IL1ERC20Bridge} from "@eth-optimism/contracts/L1/messaging/IL1ERC20Bridge.sol";
+
+contract BindStaticMarketMaker is Policy, Proposal {
+    ICrossDomainMessenger public immutable messenger;
+
+    IL1ERC20Bridge public immutable l1Bridge;
+
+    address public immutable marketMaker;
+
+    address public immutable priceSetter;
+
+    address public immutable l1Eco;
+
+    address public immutable l2Eco;
+
+    uint256 public immutable amount;
+
+    string public constant name =
+        "Bind Static Market Maker to Trustee Subcommittee Multisig";
+
+    string public constant description =
+        "This proposal binds the vending machine contract (static market maker) on Optimism to a Trustee subcommittee";
+
+    string public constant url =
+        "https://forums.eco.org/t/pre-egp-discussion-vending-machine-subcommittee/280";
+
+    constructor(
+        ICrossDomainMessenger _messenger,
+        IL1ERC20Bridge _l1Bridge,
+        address _l1Eco,
+        address _l2Eco,
+        address _marketMaker,
+        address _priceSetter,
+        uint256 _amount
+    ) {
+        messenger = _messenger;
+        l1Bridge = _l1Bridge;
+        l1Eco = _l1Eco;
+        l2Eco = _l2Eco;
+        marketMaker = _marketMaker;
+        priceSetter = _priceSetter;
+        amount = _amount;
+    }
+
+    function enacted(address _self) external {
+        bytes memory message = abi.encodeWithSelector(
+            bytes4(keccak256("setPriceSetter(address,bool)")),
+            priceSetter,
+            true
+        );
+
+        messenger.sendMessage(marketMaker, message, 0);
+
+        ECO eco = ECO(policyFor(keccak256("ECO")));
+        eco.approve(address(l1Bridge), amount);
+
+        l1Bridge.depositERC20To(l1Eco, l2Eco, marketMaker, amount, 0, "");
+    }
+}

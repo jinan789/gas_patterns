@@ -1,0 +1,165 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "./MultiSignContract.sol";
+
+contract CryptoFast is ReentrancyGuard, MultiSigner {
+    uint256 private taxFee = 1;
+
+    struct paymentInfo {
+        string paymentId;
+        address token;
+        address from;
+        address to;
+        uint256 amount;
+    }
+
+    mapping(string => paymentInfo) public _payment;
+    mapping(address => string[]) private _userPaymentsReceived;
+    mapping(address => string[]) private _userPaymentsSent;
+    string[] public payments;
+
+    event logNativePayment(address indexed _to, uint256 _tokenAmount);
+    event logTokenPayment(
+        address indexed _token,
+        address indexed _to,
+        uint256 _tokenAmount
+    );
+
+    constructor(address[] memory initialSigners) payable {
+        _initializeSigners(initialSigners);
+    }
+
+    function addPayment(
+        string memory paymentId,
+        address token,
+        address from,
+        address to,
+        uint256 amount
+    ) private returns (paymentInfo memory) {
+        _payment[paymentId] = paymentInfo(paymentId, token, from, to, amount);
+
+        _userPaymentsSent[from].push(paymentId);
+        _userPaymentsReceived[to].push(paymentId);
+        payments.push(paymentId);
+
+        return _payment[paymentId];
+    }
+
+    function getPaymentsReceived(
+        address user
+    ) public view returns (paymentInfo[] memory) {
+        paymentInfo[] memory ret = new paymentInfo[](
+            _userPaymentsReceived[user].length
+        );
+
+        for (uint256 i = 0; i < _userPaymentsReceived[user].length; i++) {
+            ret[i] = _payment[_userPaymentsReceived[user][i]];
+        }
+
+        return ret;
+    }
+
+    function getPaymentsSent(
+        address user
+    ) public view returns (paymentInfo[] memory) {
+        paymentInfo[] memory ret = new paymentInfo[](
+            _userPaymentsSent[user].length
+        );
+
+        for (uint256 i = 0; i < _userPaymentsSent[user].length; i++) {
+            ret[i] = _payment[_userPaymentsSent[user][i]];
+        }
+
+        return ret;
+    }
+
+    function calculateAmountWithFee(
+        uint256 _amount
+    ) internal view returns (uint256) {
+        if (whitelist[msg.sender]) return _amount;
+
+        uint256 amountFee = (_amount * taxFee) / 100;
+        return _amount - amountFee;
+    }
+
+    function _nativePayment(
+        address from,
+        address to,
+        uint256 amount,
+        string memory paymentId
+    ) internal returns (paymentInfo memory) {
+        uint256 amountToSend = calculateAmountWithFee(amount);
+        payable(to).transfer(amountToSend);
+
+        emit logNativePayment(to, amount);
+        return addPayment(paymentId, address(0), from, to, amount);
+    }
+
+    function _tokenPayment(
+        address from,
+        address tokenAddress,
+        address to,
+        uint256 amount,
+        string memory paymentId
+    ) internal returns (paymentInfo memory) {
+        IERC20 iToken = IERC20(tokenAddress);
+        require(
+            iToken.allowance(msg.sender, address(this)) >= amount,
+            "Insufficient allowance"
+        );
+        require(iToken.transferFrom(msg.sender, address(this), amount));
+
+        uint256 amountToSend = calculateAmountWithFee(amount);
+        require(iToken.transfer(to, amountToSend));
+
+        emit logTokenPayment(tokenAddress, to, amount);
+        return addPayment(paymentId, tokenAddress, from, to, amount);
+    }
+
+    function generateNativePayment(
+        address from,
+        address to,
+        uint256 amount,
+        string memory paymentId
+    ) public payable nonReentrant returns (paymentInfo memory) {
+        require(from != address(0), "Invalid from address");
+        require(to != address(0), "Invalid recipient address");
+        require(amount > 0, "Invalid payment amount");
+        require(
+            msg.value == amount,
+            "No valid ETH amount sent with the transaction"
+        );
+
+        paymentInfo memory paymentData = _nativePayment(
+            from,
+            to,
+            amount,
+            paymentId
+        );
+        return paymentData;
+    }
+
+    function generateTokenPayment(
+        address from,
+        address to,
+        uint256 amount,
+        address tokenAddress,
+        string memory paymentId
+    ) public nonReentrant returns (paymentInfo memory) {
+        require(from != address(0), "Invalid from address");
+        require(to != address(0), "Invalid recipient address");
+        require(amount > 0, "Invalid payment amount");
+
+        paymentInfo memory paymentData = _tokenPayment(
+            from,
+            tokenAddress,
+            to,
+            amount,
+            paymentId
+        );
+        return paymentData;
+    }
+}

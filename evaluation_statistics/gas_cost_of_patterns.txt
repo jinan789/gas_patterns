@@ -1,0 +1,412 @@
+1. Repeated computation of the same expression 
+*******************************************************
+Deployment Transaction: 231938, 220290,
+Deployment Execution: 166408, 155602,
+Message Call Transaction: 27154, 26391,
+Message Call Execution: 6090, 5327,
+*******************************************************
+Deployment Input: N/A
+Message Call Input: N/A
+Address: 0x0586638503CCaA365cD8a1338f3b84C54BAe65B3
+Contract: OperaBaseTokenTaxed
+Function: tokenSwap
+*******************************************************
+
+
+2. Extractable code chunks
+*******************************************************
+Deployment Transaction:  590280, 518438,
+Deployment Execution:  500672,  433810,
+Message Call Transaction: 30306 ,  30369,
+Message Call Execution:  7958,  8021,
+*******************************************************
+Deployment Input: N/A
+Message Call Input: (0x257dab74AB23BBF2018C088A29991714ee124F97, 0x257dab74AB23BBF2018C088A29991714ee124F97, 0, 0x0001)
+Address: 0x257dab74AB23BBF2018C088A29991714ee124F97
+Contract:IOperatorFilterRegistry
+Function: beforeSafeTransfer
+*******************************************************
+
+
+
+
+3. State Variable Refactoring
+*******************************************************
+Deployment Transaction:  207710, 197484,
+Deployment Execution: 146106 ,  130506,
+Message Call Transaction:  34046,  24173,
+Message Call Execution:  12982,  3109,
+*******************************************************
+Deployment Input:  (0, 999999999, 0, 999999999, 0)
+Message Call Input: N/A
+Address: 0xE3C7b06e06EAc93C9E3B11ea315C838A90CFB4ab
+Contract: PumpNft
+Function: currentStage
+*******************************************************
+
+
+4. Redundant operations with same effects
+*******************************************************
+Deployment Transaction: 275399 , 275399,
+Deployment Execution:  206851,  206851,
+Message Call Transaction:  23647,  23631,
+Message Call Execution:  1847,  1831,
+*******************************************************
+Deployment Input: N/A
+Message Call Input:(0x62700eA68B3DF1Bff05c596734f976f0AD901A4E, 0x62700eA68B3DF1Bff05c596734f976f0AD901A4E)
+Address: 0x62700eA68B3DF1Bff05c596734f976f0AD901A4E
+Contract: InitialFairOffering
+Function:  _initializePool
+*******************************************************
+
+
+5. Pre-computable operations on constants
+*******************************************************
+Deployment Transaction: 305335 , 293031,
+Deployment Execution: 234675 , 223263 ,
+Message Call Transaction:  23584, 23288 ,
+Message Call Execution: 2028 , 1732 ,
+*******************************************************
+Deployment Input: N/A
+Message Call Input: ("DEFAULT")
+Address:0x7f5C649856F900d15C83741f45AE46f5C6858234
+Contract:UNCX_ProofOfReservesV2_UniV3
+Function: removeFee
+*******************************************************
+
+
+6. Deterministic conditional checks
+*******************************************************
+Deployment Transaction:  243762, 240078,
+Deployment Execution: 177820 , 174420 ,
+Message Call Transaction:  23691,  23651,
+Message Call Execution: 2487 , 2447 ,
+*******************************************************
+Deployment Input: N/A
+Message Call Input: (1)
+Address:0x62700eA68B3DF1Bff05c596734f976f0AD901A4E
+Contract:InitialFairOffering
+Function: addLiquidity
+*******************************************************
+
+7. Conditional statements with simpler equivalents
+*******************************************************
+Deployment Transaction: 232355 , 228254,
+Deployment Execution: 166957 ,  163150,
+Message Call Transaction: 24142 , 24094 ,
+Message Call Execution: 2798 , 2750 ,
+*******************************************************
+Deployment Input: N/A
+Message Call Input: (1,2)
+Address:0x846bB98EA9BD5e766d5FDB1a415E0cf0202D3801
+Contract:presale
+Function: owner
+*******************************************************
+
+8. Replacing item-by-item iterated arrays by a map
+*******************************************************
+Deployment Transaction:  630622, 475076,
+Deployment Execution: 536968 ,  392430,
+Message Call Transaction: 96842 , 93068 ,
+Message Call Execution: 99428 , 94711 ,
+*******************************************************
+Deployment Input: N/A
+Message Call Input: ([1,2,3,4,5,6,7,8,9,10])
+Address:0x077B1BB5Aa45A907866cd8338592b6B2080EF747
+Contract:DigiMonkzStaking
+Function: gen1IndividualUnstake
+*******************************************************
+
+
+9. Repeated security checks across function calls
+*******************************************************
+Deployment Transaction: 428902 , 381781,
+Deployment Execution:  350386,  306143,
+Message Call Transaction: 26312 ,  26242,
+Message Call Execution: 4384 , 4314 ,
+*******************************************************
+Deployment Input: N/A
+Message Call Input: (0x0586638503CCaA365cD8a1338f3b84C54BAe65B3, 0x0586638503CCaA365cD8a1338f3b84C54BAe65B3, 0)
+Address: 0x0586638503CCaA365cD8a1338f3b84C54BAe65B3
+Contract:OperaBaseTokenTaxed
+Function: transferFrom
+*******************************************************
+
+10. Unnecessarily introducing variables
+*******************************************************
+Deployment Transaction: 287979 , 276947,
+Deployment Execution:  218263,  208051,
+Message Call Transaction: 24966 ,  24852,
+Message Call Execution: 1790 ,  1676,
+*******************************************************
+Deployment Input: N/A
+Message Call Input: (0x3a42ddc676f6854730151750f3dbd0ebfe3c6cd3, "s", 0, 0x3a42ddc676f6854730151750f3dbd0ebfe3c6cd3, 0x00, 0x00)
+Address:0x3a42ddc676f6854730151750f3dbd0ebfe3c6cd3
+Contract:Donate3
+Function: donateERC20
+*******************************************************
+
+
+11. Unnecessary overflow/underflow validation since Solidity 0.8.0
+*******************************************************
+Deployment Transaction: 273423 , 246758,
+Deployment Execution: 204845 , 179826 ,
+Message Call Transaction:  37597,  36997,
+Message Call Execution:13553  , 12953 ,
+*******************************************************
+Deployment Input: N/A
+Message Call Input: ([0x3D6AfE2fB73fFEd2E3dD00c501A174554e147a43, 0x3D6AfE2fB73fFEd2E3dD00c501A174554e147a43, 0x3D6AfE2fB73fFEd2E3dD00c501A174554e147a43, 0x3D6AfE2fB73fFEd2E3dD00c501A174554e147a43, 0x3D6AfE2fB73fFEd2E3dD00c501A174554e147a43], [0,0,0,0,0])
+Address:0x3D6AfE2fB73fFEd2E3dD00c501A174554e147a43
+Contract:KSElasticLMV2
+Function: withdrawUnusedRewards
+*******************************************************
+
+12. Redundant memory array initialization
+*******************************************************
+Deployment Transaction:  153465, 100093,
+Deployment Execution:  93541, 43293 ,
+Message Call Transaction: 21755 ,  21463,
+Message Call Execution:  691, 399 ,
+*******************************************************
+Deployment Input: N/A
+Message Call Input: N/A
+Address:0x331c27d9daf6d8f6a2dbf3c16b5c5733da1b4431
+Contract:AaveV2Strategy
+Function: assetRatio
+*******************************************************
+
+13. Placement of require statements
+*******************************************************
+Deployment Transaction: 431521 , 431533,
+Deployment Execution: 352233 ,  352233,
+Message Call Transaction: 31680 ,  30834,
+Message Call Execution:  4444, 3598 ,
+*******************************************************
+Deployment Input: 
+Message Call Input: (['0', '1','2','3',4','5'], [0x00,0x01,0x02,0x03,0x04,0x05],0x3EEdb6277Db18af72af365a33c6d239981255cD7)
+Address:
+Contract:
+Function: 
+*******************************************************
+
+
+14. Avoid no-op writes to state variables
+*******************************************************
+Deployment Transaction: 152253 , 153969,
+Deployment Execution: 92541 , 94141 ,
+Message Call Transaction:  24065, 23974 ,
+Message Call Execution:  3001, 2910 ,
+*******************************************************
+Deployment Input: N/A
+Message Call Input: N/A
+Address:0x1892038be4bd3968f4a8574593032d61c88dcacb
+Contract:IdleStrategy
+Function: _getYieldPercentage
+*******************************************************
+
+
+15. Reordering conditional checks for short-circuiting
+*******************************************************
+Deployment Transaction: 353980 , 353980,
+Deployment Execution:  280518,  280518,
+Message Call Transaction:  23078,  22947,
+Message Call Execution:1150  ,  1019,
+*******************************************************
+Deployment Input: N/A
+Message Call Input: (0x3D6AfE2fB73fFEd2E3dD00c501A174554e147a43, 0x2f8fD77D037C0778E98fF160168995CD14634eaE, 10)
+Address:0x2f8fD77D037C0778E98fF160168995CD14634eaE
+Contract:DEVGPT
+Function: _transfer
+*******************************************************
+
+16. Combinable events
+*******************************************************
+Deployment Transaction: 206618 , 178025,
+Deployment Execution: 142990 ,  116565,
+Message Call Transaction: 26732 , 25092 ,
+Message Call Execution:  5668,  4028,
+*******************************************************
+Deployment Input: N/A
+Message Call Input: N/A
+Address:0x111ACf72AA4A1fdA8500ED9f1Ba3F2374c02a21e
+Contract:LEGO
+Function: loggingOnChain
+*******************************************************
+
+
+17. add constant modifier for non-changing variables
+*******************************************************
+Deployment Transaction:  823085, 867805,
+Deployment Execution:  724419,  768627,
+Message Call Transaction:  56032,  50528,
+Message Call Execution:  34092,  28588,
+*******************************************************
+Deployment Input: N/A
+Message Call Input: (0x340de5cb9b177ff1e3d00e6aa3082f979fca621e, 0x340de5cb9b177ff1e3d00e6aa3082f979fca621e,10)
+Address:0x340de5cb9b177ff1e3d00e6aa3082f979fca621e
+Contract:BBB
+Function: _transfer
+*******************************************************
+
+
+18. Function visibility
+*******************************************************
+Deployment Transaction:  418790, 418790,
+Deployment Execution: 339980 ,  339980,
+Message Call Transaction: 47316 , 27416 ,
+Message Call Execution:  25712,  5812,
+*******************************************************
+Deployment Input: N/A
+Message Call Input: ("test string")
+Address:0x7e9F2D2583FEF83aF0dDA74E457B6320228B20dE
+Contract:AkshunSeasonPassNft
+Function: updateContractURI
+*******************************************************
+
+
+19. Dead codes
+*******************************************************
+Deployment Transaction: 158393 , 149733,
+Deployment Execution: 97947 ,  89941,
+Message Call Transaction: 22351 ,  22073,
+Message Call Execution:1147  ,869  ,
+*******************************************************
+Deployment Input: N/A
+Message Call Input: (10)
+Address: N/A
+Contract:N/A
+Function: N/A
+*******************************************************
+
+
+20. Using revert instead of require for error handling
+*******************************************************
+Deployment Transaction:261062  ,210431 ,
+Deployment Execution: 197220 , 150171 ,
+Message Call Transaction:  22312,  22024,
+Message Call Execution:  980,  692,
+*******************************************************
+Deployment Input: N/A
+Message Call Input: (0,200)
+Notes: https://medium.com/coinmonks/how-custom-errors-in-solidity-save-gas-3c499aa22745
+Address:0xfC31f0457DaB6A52432a033f13111981f464b74a
+Contract:DOLLARAI
+Function: setFee
+*******************************************************
+
+21. Minimization of event message string
+*******************************************************
+Deployment Transaction: 178025 , 137837,
+Deployment Execution: 116565 ,  78529,
+Message Call Transaction: 25092 , 23152 ,
+Message Call Execution:  4028, 2088 ,
+*******************************************************
+Deployment Input: N/A
+Message Call Input: N/A
+Notes:This is a continuation of 21. Note that we used a separator that does not lose any information.
+Address: 0x111ACf72AA4A1fdA8500ED9f1Ba3F2374c02a21e
+Contract:LEGO
+Function: loggingOnChain
+*******************************************************
+
+
+22. Replacing MUL/DIV of powers of 2 by SHL/SHR
+*******************************************************
+Deployment Transaction: 172617 ,144589 ,
+Deployment Execution: 111759 , 85335 ,
+Message Call Transaction: 21847 , 21604 ,
+Message Call Execution: 783 ,  540,
+*******************************************************
+Deployment Input: N/A
+Message Call Input:N/A
+Notes:Verified gas saving, even if unchecked is used.
+Address:0x708d6c06df93fafd08f64f20564cebcc70dee12e
+Contract:PancakeChainlinkOracle
+Function:latestAnswer
+*******************************************************
+
+
+
+23. Struct variable reordering
+*******************************************************
+Deployment Transaction: 276923 , 276959,
+Deployment Execution: 207451 , 207451 ,
+Message Call Transaction: 91601 ,  89701,
+Message Call Execution: 70537 , 68637 ,
+*******************************************************
+Deployment Input: N/A
+Message Call Input: N/A
+Notes: codes taken (and modified) from Nguyen2022gassaver.
+Address:N/A
+Contract:N/A
+Function: N/A
+*******************************************************
+
+24. Loop invariant codes
+*******************************************************
+Deployment Transaction: 215033 , 216353,
+Deployment Execution:  153571, 154771 ,
+Message Call Transaction: 101534 ,  63135,
+Message Call Execution:  80330,  41931,
+*******************************************************
+Deployment Input: N/A
+Message Call Input: (100)
+Notes: codes taken from Chen2017underoptimized
+Address:N/A
+Contract:N/A
+Function: N/A
+*******************************************************
+
+
+25. Avoid expensive operations inside loops
+*******************************************************
+Deployment Transaction: 170799 , 171435,
+Deployment Execution:109559  ,  110159,
+Message Call Transaction: 102621 ,  80848,
+Message Call Execution:  81417, 59644 ,
+*******************************************************
+Deployment Input: N/A
+Message Call Input: (100)
+Notes: codes taken from Chen2017underoptimized. Mention that this, together with pattern 32, are small tradeoffs in the sense that if the loop only gets executed very few times (e.g. 1), then we might lose gas. But that's an extreme case. Also make sure to mention that we took 100 loops.
+Address:N/A
+Contract:N/A
+Function: N/A
+*******************************************************
+
+
+
+26. Struct refactoring by usage frequency
+*******************************************************
+Deployment Transaction: 382703 , 376915,
+Deployment Execution: 305793 , 300387 ,
+Message Call Transaction:  101011,  100891,
+Message Call Execution: 79807 ,  79687,
+*******************************************************
+Deployment Input: N/A
+Message Call Input:(20)
+Notes: This is because that the offset must be computed for each struct access. This is taken from the 
+Address:N/A
+Contract:N/A
+Function:N/A
+*******************************************************
+
+
+
+27. Using bytes32 for string representation
+
+*******************************************************
+Deployment Transaction: 535430 , 407026,
+Deployment Execution: 449628 , 330316 ,
+Message Call Transaction: 33697 ,29939  ,
+Message Call Execution: 11341 ,  8191,
+*******************************************************
+Deployment Input: N/A
+Message Call Input: ('this is a test string', 100, '100'), (0x0000000000000000000000746869732069732061207465737420737472696e67, 100, 0x0000000000000000000000000000000000000000000000000000000000313030)
+Address:0xb9250f2dc0706f172F3565c11fcF9f7CFB2F27A7
+Contract:VoteForLaunch
+Function:newVote
+*******************************************************
+
+
+
+

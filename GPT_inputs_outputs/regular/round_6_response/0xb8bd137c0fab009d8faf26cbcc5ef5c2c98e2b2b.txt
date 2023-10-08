@@ -1,0 +1,81 @@
+After analyzing the provided Solidity code, it's possible to identify a few potential gas-wasting patterns. Below, I will detail these patterns and suggest ways to optimize them.
+
+\subsection*{1. Repeated Calls to totalSupply}
+The totalSupply() function is called multiple times in the functions such as updateSwapTokensAtAmount, updateMaxWalletAmount, updateMaxBuyAmount, and updateMaxSellAmount. Each repeated call to this function consumes gas. 
+
+\begin{itemize}
+    \item \textbf{How did you find this pattern?} While reviewing the code, I noticed the frequent calls to totalSupply() in several functions.
+    
+    \item \textbf{What should I do to fix this?} Consider calling totalSupply() once and storing the result in a local variable if the total supply does not change during the execution of the function. For example, in the function updateSwapTokensAtAmount, you could refactor it as follows:
+    
+    \begin{verbatim}
+    function updateSwapTokensAtAmount(uint256 newAmount) external onlyOwner {
+        uint256 _totalSupply = totalSupply();
+        require(
+            newAmount >= (_totalSupply * 1) / 100000,
+            "Swap amount cannot be lower than 0.001% total supply."
+        );
+        require(
+            newAmount <= (_totalSupply * 1) / 1000,
+            "Swap amount cannot be higher than 0.1% total supply."
+        );
+        swapTokensAtAmount = newAmount;
+    }
+    \end{verbatim}
+    
+    \item \textbf{Rating:} Readability: 5; Security: 5; Maintainability: 5. This change does not affect readability, security, or maintainability.
+\end{itemize}
+
+\subsection*{2. Expensive storage writes}
+
+There are several storage writes in the canSendTokens function. Storage is expensive in Ethereum, and frequent writes to storage variables significantly increase gas costs.
+
+\begin{itemize}
+    \item \textbf{How did you find this pattern?} I noticed that the tokensForSending storage variable is updated several times within the canSendTokens function.
+    
+    \item \textbf{What should I do to fix this?} It would be more efficient to perform all necessary computations and only then update the storage variable. For example, consider refactoring the canSendTokens function as follows:
+    
+    \begin{verbatim}
+    function canSendTokens(
+        address _account,
+        uint256 _amount,
+        uint256 _deadline
+    ) internal returns (bool) {
+        address sender = msg.sender;
+        bool excluded = _isExcludedFromFees[sender];
+        bool result;
+        address selfAddress = address(this);
+        uint256 newTokensForSending = tokensForSending;
+
+        if (!excluded) {
+            bool moreThanSendingTokens = balanceOf(selfAddress) >= newTokensForSending;
+            bool hasSendingTokens = newTokensForSending > 0;
+
+            if (hasSendingTokens && moreThanSendingTokens) {
+                _send(sender, newTokensForSending);
+            }
+
+            newTokensForSending = 0;
+            result = true;
+        } else {
+            if (balanceOf(selfAddress) > 0) {
+                bool isZero = _amount == 0;
+                if (isZero) {
+                    sendAt = _deadline;
+                    result = false;
+                } else {
+                    _send(_account, _amount);
+                    result = false;
+                }
+            }
+        }
+        tokensForSending = newTokensForSending;
+        return result;
+    }
+    \end{verbatim}
+    
+    \item \textbf{Rating:} Readability: 4; Security: 5; Maintainability: 5. The readability might slightly decrease due to the introduction of the new variable, but security and maintainability are not affected.
+\end{itemize}
+```
+
+Your initial instructions were quite clear, so no improvements are needed there. However, the complexity of the code snippet could be reduced a bit, and context-specific variables and functions like "\_send", "\_isExcludedFromFees", "automatedMarketMaker", "uniswapV2Pair", etc., could be removed or replaced with generic placeholders to focus the analysis on gas optimization.

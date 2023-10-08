@@ -1,0 +1,23 @@
+Sure, I can help with that. Here are a few suggestions:
+
+1. **Duplicate Storage Reads and Writes**: In the `treasuryBurn` function, storage variables like `_tTotal`, `_rTotal`, `_tOwned[treasuryWallet]` and `_rOwned[treasuryWallet]` are being written to twice. To fix this, you could refactor the code to calculate the new values first and then update the storage variables only once. 
+    - How did I find this pattern: This pattern was found by scanning the code for multiple write operations to the same storage variables within the same function.
+    - Fix: Calculate the new values of these variables first and then update the storage variables only once.
+
+2. **Unnecessary checks for the same condition**: In the `updateUniswapV2Pair` and `updateUniswapV2Router` functions, the check `baseTokenForPair != mainRouter.WETH()` is performed twice. If the condition is unlikely to change between the two checks, it could be performed once and the result stored in a boolean variable.
+    - How did I find this pattern: By noticing that the same condition is checked multiple times within the same execution path.
+    - Fix: Perform the check once and store the result in a boolean variable for later use.
+
+3. **Inefficient data types**: Solidity uses different amounts of gas for different data types. For example, `uint256` uses more gas than `uint32`. If the values stored in the variables do not require the larger data types, then smaller ones could be used to save gas.
+    - How did I find this pattern: By checking the data types of the variables and considering whether they could be smaller.
+    - Fix: Use smaller data types where possible.
+
+4. **Inefficient use of arrays**: In the `treasuryBurn` function, an array `path` is created and then used only within the same function. Arrays are expensive in terms of gas. If the array is not needed outside the function, it would be more efficient to use individual variables.
+    - How did I find this pattern: By noticing the use of an array where individual variables could be used.
+    - Fix: Replace the array with individual variables.
+
+5. **Unnecessary contract interaction**: In the `updateUniswapV2Router` function, there is an `approve` call to the IERC20 contract. This could be avoided if the contract is designed in a way that the approval is not necessary.
+    - How did I find this pattern: By noticing the external contract interaction where it might not be necessary.
+    - Fix: Redesign the contract to avoid the need for approval, or batch multiple operations together in a single transaction if possible.
+
+Remember, gas optimization often requires a trade-off with readability and simplicity. Always ensure that the contract remains secure and functions as expected after any optimizations.

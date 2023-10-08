@@ -1,0 +1,25 @@
+In reviewing the Solidity code you provided, I found a few patterns that might contribute to gas inefficiency. Here are my findings:
+
+1. **Excessive use of `require` statements**: In the `createStream` function, there are many `require` statements to validate the inputs. While these are necessary for security, it's worth noting that each `require` statement consumes gas. A potential optimization could be to group similar `require` statements together, or use external libraries like OpenZeppelin's SafeMath library to handle checks automatically.
+    * How to find and fix: Review the code for `require` statements and evaluate if any can be combined or eliminated. Remember, security should always be prioritized over gas optimization.
+    * Impact: Readability: 4; Security: 3; Maintainability: 4
+
+2. **Repeated access to storage**: In the `getStream` and `balanceOf` functions, the code fetches the `Stream` object from the `_streams` mapping multiple times. As storage is expensive in terms of gas, this is inefficient. A solution is to fetch the `Stream` object once and store it in a local `memory` variable for subsequent use.
+    * How to find and fix: Look for repeated access to storage variables. Replace with a single fetch into a local `memory` variable.
+    * Impact: Readability: 5; Security: 5; Maintainability: 5
+
+3. **Excessive use of temporary variables**: In the `createStream` function, there's a use of temporary variables `vars.duration` and `vars.ratePerSecond` that could be simplified or removed to save gas.
+    * How to find and fix: Look for temporary variables and evaluate if they can be eliminated or simplified.
+    * Impact: Readability: 4; Security: 5; Maintainability: 4
+
+4. **Excessive condition checks**: In the `balanceOf` function, the code checks if `who` is the `stream.recipient` or the `stream.sender` and returns different balances accordingly. However, if the `who` is neither the `stream.recipient` nor the `stream.sender`, it returns `0` which might be an unnecessary check and gas-consuming.
+    * How to find and fix: Review the conditions where the code checks multiple conditions and evaluate if they can be optimized.
+    * Impact: Readability: 4; Security: 4; Maintainability: 4
+
+5. **Repeated function calls**: In the `balanceOf` function, it calls `deltaOf(streamId)` which then fetches the `Stream` object from the `_streams` mapping again. This repeated function call and storage access can be gas-consuming.
+    * How to find and fix: Look for repeated function calls and evaluate if they can be replaced by single fetch and store in local variable.
+    * Impact: Readability: 5; Security: 5; Maintainability: 5
+
+To improve on this task in the future, it's important to have a deep understanding of how Ethereum works particularly in relation to gas computation. A solid understanding of Solidity and common coding patterns is also essential. Lastly, using tools like gas profilers and solhint can help identify potential areas of inefficiency. 
+
+As for the prompt, it was clear and well-written. However, it might be beneficial to provide a specific range or goal for gas optimization, as optimizing for gas can sometimes lead to less readable or maintainable code, and it's important to strike the right balance.

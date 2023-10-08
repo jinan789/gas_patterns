@@ -1,0 +1,35 @@
+**Pattern 3: Use of Arrays Where Mapping Would Be More Efficient**
+
+1. **Discovery**: Depending on the provided Solidity code, usage of arrays where mapping could be more efficient can be an issue. Arrays are great for storing ordered data but can be gas-inefficient when used for lookups and deletions. If a variable's value is frequently looked up or deleted based on some key (like an address), then a mapping would be more appropriate.
+
+2. **Fix**: Replace arrays with mappings if the primary use case is lookup or deletion. For example, if you have an array of users and you often need to find a user by address, you should use a mapping instead:
+   `````solidity
+   mapping(address => User) public users;
+   ```
+   Then, you can easily and efficiently retrieve a user by their address:
+   ````solidity
+   User storage user = users[userAddress];
+   ```
+   Note that mappings do not have a length or an order, so if you need to keep track of the total number or the order of the users, you'll need an additional data structure, like an array or a counter.
+
+3. **Impact**:
+   - Readability: 3 (Mapping usage can be less intuitive for developers not familiar with them, but comments can help)
+   - Security: 5 (No impact on security)
+   - Maintainability: 4 (May require additional code to maintain an order or count)
+
+**Pattern 4: Using `msg.sender` Repeatedly**
+
+1. **Discovery**: If `msg.sender` is used repeatedly within a function, it can contribute to gas inefficiency. This is because `msg.sender` is an opcode that requires the client to read data from the transaction, which costs gas.
+
+2. **Fix**: If `msg.sender` is used multiple times in a function, it's more gas efficient to store it in a local variable at the beginning of the function:
+   ````solidity
+   address sender = msg.sender;
+   ```
+   Then, you can use the `sender` variable in the rest of the function.
+
+3. **Impact**:
+   - Readability: 5 (No impact on readability)
+   - Security: 5 (No impact on security)
+   - Maintainability: 5 (No impact on maintainability)
+
+The potential improvements in gas efficiency must be balanced against the readability, security, and maintainability of your code. It's also worth noting that what's most gas efficient can change over time as the Ethereum protocol evolves and optimizes different operations.

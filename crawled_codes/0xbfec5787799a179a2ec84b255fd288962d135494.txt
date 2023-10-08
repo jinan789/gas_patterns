@@ -1,0 +1,392 @@
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.17;
+
+import "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
+import "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import { IVault, IAsset } from "@balancer-labs/v2-interfaces/contracts/vault/IVault.sol";
+import "@openzeppelin/contracts/utils/Address.sol";
+import "../interfaces/IWETH.sol";
+import "../Migratable.sol";
+import "./OracleReader.sol";
+import "./Utils.sol";
+import "./Distributor.sol";
+import "./DexTracker.sol";
+
+import "hardhat/console.sol";
+
+/**
+ * @title contract for swapping tokens
+ * @notice use this contract for only the most basic simulation
+ * @dev function calls are currently implemented without side effects
+ * @notice multicall was not included here because sender
+ * is less relevant outside of a swap
+ * which already allows for multiple swaps
+ */
+contract InternetMoneySwapRouter is Utils, Migratable, OracleReader, Distributor, DexTracker {
+    using Address for address payable;
+    using SafeERC20 for IERC20;
+    /** a single dex entry */
+
+    error NativeMissing(uint256 pathIndex);
+    error FeeMissing(uint256 expected, uint256 provided, string message);
+    error ValueMismatch(uint256 consumed, uint256 provided);
+    error FunderMismatch(address expected, address provided);
+    error Deadline();
+
+    /**
+     * sets up the wallet swap contract
+     * @param _destination where native currency will be sent
+     * @param _wNative the address that is used to wrap and unwrap tokens
+     * @notice wNative does not have to have the name wNative
+     * it is just a placeholder for wrapped native currency
+     * @notice the destination address must have a receive / fallback method
+     * to receive native currency
+     */
+    constructor(
+        address payable _destination, address payable _wNative, uint96 _fee
+    )
+        Utils(_wNative, _destination, _fee)
+    {}
+
+    /**
+     * this method transfers funds from the sending address
+     * and returns the delta of the balance of this contracat
+     * @param sourceTokenId is the token id to transfer from the sender
+     * @param amountIn is the amount that you desire to transfer from the sender
+     * @return delta the amount that was actually transferred, using a `balanceOf` check
+     */
+    function collectFunds(address sourceTokenId, uint256 amountIn) internal returns(uint256) {
+        uint256 balanceBefore = IERC20(sourceTokenId).balanceOf(address(this));
+        IERC20(sourceTokenId).safeTransferFrom(msg.sender, address(this), amountIn);
+        return IERC20(sourceTokenId).balanceOf(address(this)) - balanceBefore;
+    }
+
+    function _wNativeFromDex(address payable _wNative) internal view returns(address payable) {
+        return _wNative == address(0) ? wNative : _wNative;
+    }
+
+    function swapBalancerV2(
+        uint256 dexId,
+        IVault.SingleSwap memory singleSwap,
+        IVault.FundManagement memory funds,
+        uint256 limit,
+        uint256 deadline
+    ) external payable {
+        Dex memory dex = dexInfo[uint128(dexId)];
+        if (dex.disabled) {
+            revert DexDisabled();
+        }
+        uint256 msgValue = msg.value;
+        address payable _wNative = _wNativeFromDex(dex.wNative);
+        address payable recipient = funds.recipient;
+        bool outIsNative = address(singleSwap.assetOut) == address(0)
+            || address(singleSwap.assetOut) == _wNative;
+        uint256 feeAmount;
+        if (address(singleSwap.assetIn) == address(0)) {
+            uint256 nativeFee = msgValue * fee / feeDenominator;
+            msgValue -= nativeFee;
+        } else if (address(singleSwap.assetIn) == _wNative) {
+            feeAmount = singleSwap.amount * fee / feeDenominator;
+            msgValue = 0;
+        } else if (!outIsNative) {
+            // attempt to price fee from oracle
+            address[] memory _path = new address[](2);
+            _path[0] = address(singleSwap.assetIn);
+            _path[1] = address(singleSwap.assetOut);
+            (, uint256 minimum) = _getFeeMinimum(
+                IUniswapV2Router02(dexInfo[dexId >> 128].router).factory(),
+                singleSwap.amount,
+                _path
+            );
+            _feeWithTolerance(msgValue, minimum);
+        }
+        if (funds.sender != address(this)) {
+            // sender must be this contract
+            revert FunderMismatch(address(this), funds.sender);
+        }
+        if (outIsNative) {
+            funds.recipient = payable(address(this));
+        }
+        if (address(singleSwap.assetIn) != address(0)) {
+            singleSwap.amount = collectFunds(address(singleSwap.assetIn), singleSwap.amount) - feeAmount;
+            IERC20(address(singleSwap.assetIn)).approve(dex.router, singleSwap.amount);
+        }
+        uint256 amountOut = IVault(dex.router).swap{
+            value: msgValue
+        }(singleSwap, funds, limit, deadline);
+        if (address(singleSwap.assetOut) == _wNative) {
+            IERC20(address(singleSwap.assetOut))
+                .safeTransfer(recipient, _removeFees(amountOut));
+        } else if (address(singleSwap.assetOut) == address(0)) {
+            recipient.sendValue(_removeFees(amountOut));
+        }
+    }
+
+    function swapUniswapV3(
+        uint256 dexId,
+        ISwapRouter.ExactInputSingleParams memory singleSwapParams
+    ) external payable {
+        Dex memory dex = dexInfo[uint128(dexId)];
+        if (dex.disabled) {
+            revert DexDisabled();
+        }
+        uint256 msgValue = msg.value;
+        address tokenIn = singleSwapParams.tokenIn;
+        address tokenOut = singleSwapParams.tokenOut;
+        address payable _wNative = _wNativeFromDex(dex.wNative);
+        bool outIsNative = tokenOut == address(0) || tokenOut == _wNative;
+        uint256 amountIn = singleSwapParams.amountIn;
+        address recipient = singleSwapParams.recipient;
+        uint256 requiredFee;
+        if (tokenIn == address(0)) {
+            uint256 nativeFee = (msgValue * fee) / feeDenominator;
+            msgValue -= nativeFee;
+        } else if (tokenIn == _wNative) {
+            requiredFee = (amountIn * fee) / feeDenominator;
+        } else if (!outIsNative) {
+            // attempt to price fee from oracle
+            address[] memory _path = new address[](2);
+            _path[0] = tokenIn;
+            _path[1] = tokenOut;
+            (, uint256 minimum) = _getFeeMinimum(
+                IUniswapV2Router02(dexInfo[dexId >> 128].router).factory(),
+                amountIn,
+                _path
+            );
+            _feeWithTolerance(msgValue, minimum);
+        }
+        if (tokenIn == address(0)) {
+            tokenIn = _wNative;
+            singleSwapParams.tokenIn = _wNative;
+            amountIn = msgValue;
+            singleSwapParams.amountIn = amountIn;
+            IWETH(_wNative).deposit{ value: amountIn }();
+        } else {
+            // dealing with erc20 contract
+            amountIn = collectFunds(tokenIn, amountIn) - requiredFee;
+            singleSwapParams.amountIn = amountIn;
+        }
+        // if native is coming out, make a pit stop to collect fees
+        if (outIsNative) {
+            singleSwapParams.recipient = address(this);
+        }
+        // if tokenOut is address(0) use the address that the factory understands
+        if (tokenOut == address(0)) {
+            singleSwapParams.tokenOut = wNative;
+        }
+        // does not handle native so we have to approve
+        IERC20(tokenIn).approve(dex.router, amountIn);
+        // do swap
+        uint256 amountOut = ISwapRouter(dex.router)
+            .exactInputSingle(singleSwapParams);
+        if (tokenOut == _wNative) {
+            if (msgValue > 0) {
+                revert FeeMissing(0, msgValue, "fees paid from output");
+            }
+            IERC20(tokenOut).safeTransfer(recipient, _removeFees(amountOut));
+        } else if (tokenOut == address(0)) {
+            _sendNativeTokensOutAfterUnwrap(_wNative, _removeFees(amountOut), payable(recipient));
+        }
+    }
+    function _removeFees(uint256 amountOut) internal view returns(uint256) {
+        return amountOut - (amountOut * fee) / feeDenominator;
+    }
+    function _sendNativeTokensOutAfterUnwrap(
+        address payable _wNative,
+        uint256 amountOut,
+        address payable recipient
+    ) internal {
+        uint256 balance = IERC20(_wNative).balanceOf(address(this));
+        if (balance > 1) {
+            IWETH(_wNative).withdraw(balance - 1);
+        }
+        recipient.sendValue(amountOut);
+    }
+
+    /**
+     * @notice Swap erc20 token, end with erc20 token
+     * @param _dexId ID of the Dex
+     * @param recipient address to receive funds
+     * @param _path Token address array
+     * @param _amountIn Input amount
+     * @param _minAmountOut Output token amount
+     * @param _deadline the time at which this transaction can no longer be run
+     * @notice anything extra in msg.value is treated as a donation
+     * @notice anyone using this method will be costing themselves more
+     * than simply going through the router they wish to swap through
+     * so anything that comes through really acts like a high yeilding voluntary donation box
+     * @notice if wNative is passed in as the first or last step of the path
+     * then fees will be calculated from that number available at that time
+     * @notice fee is only paid via msg.value if and only if the
+     * first and last of the path are not a wrapped token
+     * @notice if first or last of the path is wNative
+     * then msg.value is required to be zero
+     */
+    function swapTokenV2(
+        uint256 _dexId,
+        address recipient,
+        address[] calldata _path,
+        uint256 _amountIn,
+        uint256 _minAmountOut,
+        uint256 _deadline
+    ) external payable {
+        _swapTokenV2(msg.value, _dexId, recipient, _path, _amountIn, _minAmountOut, _deadline);
+    }
+
+    function _feeWithTolerance(uint256 msgValue, uint256 _minimum) internal pure returns(uint256 minimum) {
+        // introduce fee tolerance here
+        minimum = (_minimum * 9) / 10;
+        if (minimum == 0) {
+            revert FeeMissing(0, msgValue, "unable to compute fees");
+        }
+        if (msgValue < minimum) {
+            revert FeeMissing(minimum, msgValue, "not enough fee value");
+        }
+    }
+
+    function _swapTokenV2(
+        uint256 msgValue,
+        uint256 _dexId,
+        address recipient,
+        address[] calldata _path,
+        uint256 _amountIn,
+        uint256 _minAmountOut,
+        uint256 _deadline
+    ) internal {
+        address first = _path[0];
+        address last = _path[_path.length - 1];
+        address payable _wNative = _wNativeFromDex(dexInfo[_dexId].wNative);
+        uint256 nativeFee = 0;
+        if (first == _wNative) {
+            nativeFee = (_amountIn * fee) / feeDenominator;
+            if (msgValue != 0) {
+                revert FeeMissing(0, msgValue, "fees paid from input");
+            }
+        } else if (last != _wNative) {
+            (, uint256 minimum) = _getFeeMinimum(
+                IUniswapV2Router02(dexInfo[_dexId].router).factory(),
+                _amountIn,
+                _path
+            );
+            _feeWithTolerance(msgValue, minimum);
+        }
+        // run transfer as normal
+        uint256 actualAmountIn = collectFunds(first, _amountIn) - nativeFee;
+        uint256 actualAmountOut = swapExactTokenForTokenV2(
+            _dexId,
+            _path,
+            actualAmountIn,
+            _minAmountOut,
+            _deadline
+        );
+        uint256 actualAmountOutAfterFees = actualAmountOut;
+        if (last == _wNative) {
+            actualAmountOutAfterFees -= (actualAmountOut * fee) / feeDenominator;
+            if (msgValue != 0) {
+                revert FeeMissing(0, msgValue, "fees paid from output");
+            }
+        }
+        IERC20(last).safeTransfer(recipient, actualAmountOutAfterFees);
+    }
+
+    /**
+     * wraps the provided msg value to be used as a token
+     * useful when chaining calls together
+     */
+    function wrap(address payable _wNative) public payable {
+        IWETH(_wNative).deposit{value: msg.value}();
+        IWETH(_wNative).transfer(msg.sender, msg.value);
+    }
+
+    /**
+     * @notice Swap native currency, end with erc20 token
+     * @param _dexId ID of the Dex
+     * @param recipient address to receive funds
+     * @param _path Token address array
+     * @param _amountIn Input amount
+     * @param _minAmountOut Output token amount
+     * @param _deadline the time at which this transaction can no longer be run
+     * @notice anything extra in msg.value is treated as a donation
+     * @notice this method does not require an approval step from the user
+     * @notice because of use of msg.value if this method is used with internal
+     * delegatecall to chain calls together, it will, in most cases, not have any msg.value to use
+     */
+    function swapNativeToV2(
+        uint256 _dexId,
+        address recipient,
+        address[] calldata _path,
+        uint256 _amountIn,
+        uint256 _minAmountOut,
+        uint256 _deadline
+    ) external payable {
+        uint256 minimal = (msg.value * fee) / feeDenominator;
+        address payable _wNative = _wNativeFromDex(dexInfo[_dexId].wNative);
+        if (msg.value != _amountIn + minimal) {
+            revert FeeMissing(_amountIn + minimal, msg.value, "amount + fees must = total");
+        }
+        if (_path[0] != _wNative) {
+            revert NativeMissing(0);
+        }
+        // convert native to wNative
+        IWETH(_wNative).deposit{value: _amountIn}();
+        uint256 actualAmountOut = swapExactTokenForTokenV2(_dexId, _path, _amountIn, _minAmountOut, _deadline);
+        IERC20(_path[_path.length - 1]).safeTransfer(recipient, actualAmountOut);
+    }
+
+    /**
+     * @notice Swap ERC-20 Token, end with native currency
+     * @param _dexId ID of the Dex
+     * @param recipient address to receive funds
+     * @param _path Token address array
+     * @param _amountIn Input amount
+     * @param _minAmountOut Output token amount
+     * @param _deadline the time at which this transaction can no longer be run
+     * @notice anything extra in msg.value is treated as a donation
+     */
+    function swapToNativeV2(
+        uint256 _dexId,
+        address payable recipient,
+        address[] calldata _path,
+        uint256 _amountIn,
+        uint256 _minAmountOut,
+        uint256 _deadline
+    ) external payable {
+        address payable _wNative = _wNativeFromDex(dexInfo[_dexId].wNative);
+        if (_path[_path.length - 1] != _wNative) {
+            revert NativeMissing(_path.length - 1);
+        }
+        uint256 actualAmountIn = collectFunds(_path[0], _amountIn);
+        uint256 actualAmountOut = swapExactTokenForTokenV2(_dexId, _path, actualAmountIn, _minAmountOut, _deadline);
+        uint256 minimal = (actualAmountOut * fee) / feeDenominator;
+        uint256 actualAmountOutAfterFee = actualAmountOut - minimal;
+        _sendNativeTokensOutAfterUnwrap(_wNative, actualAmountOutAfterFee, recipient);
+    }
+
+    function swapExactTokenForTokenV2(
+        uint256 dexId,
+        address[] calldata _path,
+        uint256 _amountIn, // this value has been checked
+        uint256 _minAmountOut, // this value will be met
+        uint256 _deadline
+    ) internal returns (uint256) {
+        Dex memory dex = dexInfo[dexId];
+        if (dex.disabled) {
+            revert DexDisabled();
+        }
+        address last = _path[_path.length - 1];
+        // approve router to swap tokens
+        IERC20(_path[0]).approve(dex.router, _amountIn);
+        // call to swap exact tokens
+        uint256 balanceBefore = IERC20(last).balanceOf(address(this));
+        IUniswapV2Router02(dex.router).swapExactTokensForTokensSupportingFeeOnTransferTokens(
+            _amountIn,
+            _minAmountOut,
+            _path,
+            address(this),
+            _deadline
+        );
+        return IERC20(last).balanceOf(address(this)) - balanceBefore;
+    }
+}

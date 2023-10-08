@@ -1,0 +1,23 @@
+Sure, here are some potential gas-wasting patterns in the provided Solidity code:
+
+1. **Redundant storage reads**: In the `getStream` function, the code reads each field of the `_streams[streamId]` struct individually from storage, which will cost gas for each read operation. 
+
+   **Fix**: Instead of reading each field one by one, we could read the struct into memory all at once using `Stream memory stream = _streams[streamId];` and then assign the individual fields from the memory struct. This will cost less gas as memory operations are less expensive than storage operations.
+
+2. **Duplicate function calls**: The `balanceOf` function calls `deltaOf(streamId)` which reads the `Stream` struct from storage. Then, it reads the `Stream` struct from storage again directly after. 
+
+   **Fix**: The struct could be read into memory once and reused, saving unnecessary storage read operations.
+
+3. **Unnecessary conditional checks**: The `balanceOf` function checks if `who` equals `stream.recipient` and `stream.sender` after calculating `vars.recipientBalance`. However, it doesn't use `vars.recipientBalance` if `who` is not `stream.recipient`. 
+
+   **Fix**: The calculation of `vars.recipientBalance` should be moved inside the condition where `who` equals `stream.recipient`. This way, the calculation only happens when necessary.
+
+4. **Repetitive code**: The code has repeated checks for the validity of `streamId` in `getStream`, `deltaOf`, and `balanceOf` functions.
+
+   **Fix**: Consider wrapping these checks in a modifier and apply it to functions that need it. This would make the code more DRY (Don't Repeat Yourself) and easier to maintain.
+
+5. **Overuse of security check**: The `createStream` function has a `onlyFundsAdmin` modifier. If this function is only ever called by other functions within the contract that already have this modifier, then it is redundant.
+
+   **Fix**: Ensure that the `onlyFundsAdmin` modifier is only applied at the highest necessary function call. If it is applied at a lower level, it will still be checked when the lower function is called, resulting in wasted gas.
+
+These points go beyond the given list of gas-wasting patterns, involving issues like redundant storage reads, duplicate function calls, unnecessary conditional checks, repetitive code, and overuse of security checks. Each of these patterns can result in unnecessary gas costs, slowing down the contract and making it more expensive to operate.

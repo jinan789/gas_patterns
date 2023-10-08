@@ -1,0 +1,53 @@
+1. Repeated computation of the same expression {} <Keerthi2021smart, Kong2022characterizing> 
+
+2. Extractable code chunks{} <> 
+
+3. State Variable Refactoring{} <Lodovica2020design>
+
+4. Redundant operations with same effects{Lodovica2020design} <Kong2022characterizing, park2017saving, sorbo2022profiling, zhao2023gassaver>
+
+5. Pre-computable operations on constants{} <Chen2017underoptimized>
+
+6. Deterministic conditional checks{Keerthi2021smart, Chen2017underoptimized, zhao2023gassaver} <>
+
+7. Conditional statements with simpler equivalents{Nguyen2022gassaver} <>
+
+8. Replacing item-by-item iterated arrays by a map{Lodovica2020design, sorbo2022profiling} <>
+
+9. Repeated security checks across function calls{} <zhao2023gassaver>
+
+10. Unnecessarily introducing variables{} <>
+
+11. Unnecessary overflow/underflow validation since Solidity 0.8.0{} <>
+
+12. Redundant memory array initialization{} <>
+
+13. Placement of require statements{} <>
+
+14. Avoid no-op writes to state variables{} <Lodovica2020design>
+
+15. Reordering conditional checks for short-circuiting{Lodovica2020design} <Kong2022characterizing, zhao2023gassaver>
+
+16. Combinable events{} <>
+
+17. add constant modifier for non-changing variables{park2017saving, Nguyen2022gassaver} <>
+
+18. Function visibility{Lodovica2020design, Kong2022characterizing, Nguyen2022gassaver} <park2017saving, sorbo2022profiling>
+
+19. Dead codes{Chen2017underoptimized, zhao2023gassaver} <>
+
+20. Using revert instead of require for error handling{} <>
+
+21. Minimization of event message string{} <>
+
+22. Replacing MUL/DIV of powers of 2 by SHL/SHR{} <>
+
+23. Struct variable reordering{Nguyen2022gassaver} <Lodovica2020design, Kong2022characterizing, park2017saving>
+
+24. Loop invariant codes{Keerthi2021smart, Chen2017underoptimized, Nguyen2022gassaver, zhao2023gassaver} <>
+
+25. Avoid expensive operations inside loops{Chen2017underoptimized} <Keerthi2021smart, sorbo2022profiling, zhao2023gassaver>
+
+26. Struct refactoring by usage frequency{}<chen2022synthesispowered>
+
+27. Using bytes32 for string representation{zhao2023gassaver, sorbo2022profiling}<>

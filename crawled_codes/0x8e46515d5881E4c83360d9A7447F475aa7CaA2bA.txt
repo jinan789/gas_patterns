@@ -1,0 +1,408 @@
+// SPDX-License-Identifier: MIT
+
+pragma solidity ^0.8.0;
+
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+
+import "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
+import "@uniswap/v2-core/contracts/interfaces/IUniswapV2Factory.sol";
+
+
+contract WDUMT is Ownable, IERC20 {
+  
+    // Token name
+    string private _name;
+
+    // Token symbol
+    string private _symbol;
+
+    // Token decimals
+    uint256 private _decimals;
+
+    // Token Total Supply
+    uint256 private _totalSupply;
+
+    // Mapping from address to amount of Token
+    mapping(address => uint256) private _balances;
+
+    // Mapping from owner to operator's allowances
+    mapping(address => mapping(address => uint256)) private _allowances;
+
+    // Flag to check if in swap
+    bool inSwap;
+
+    // Uniswap V2 Router
+    IUniswapV2Router02 public dexRouter;
+    
+    // Buy Tax and Sell Tax when trading.
+    uint256 public buyTax = 100;
+    uint256 public sellTax = 200;
+    
+    // Tax Divisor
+    uint256 public taxDivisor = 10000;
+
+    // Max wallet size
+    uint256 private _maxWalletSize;
+
+    // Thresold to add liquidity
+    uint256 public swapThreshold = 100 * 10 ** 18;
+    uint256 public swapETHThreshold = 0.05 ether;
+
+    // Pair address with ETH on Uniswap V2
+    address public pairETH;
+
+    // Mapping from address to flag to verify if it's pair
+    mapping(address => bool) private _isPair;
+
+    // Mapping from address to flag to verify if it's fee exempt
+    mapping(address => bool) private _isFeeExempt;
+
+    // Mapping from address to flag to verify if it's fee exempt
+    mapping(address => bool) private _isLimitExempt;
+
+    // Null addresses
+    address constant private ZERO = 0x0000000000000000000000000000000000000000;
+    address constant private DEAD = 0x000000000000000000000000000000000000dEaD;
+
+    // Address list of team wallets
+    address constant public teamWallet1 = 0xC6B0486F0F298573105f311ccBA9158d1D184BFF;
+    address constant public teamWallet2 = 0x193Ef8019d0ECf92591437908E37e14874384951;
+    address constant public teamWallet3 = 0x82701b74c79269F27391D7A0d0b9Fc7Affdc607E;
+    address constant public teamWallet4 = 0x1f54ECaD6c0200d4227884745f9116c8e1EACa33;
+
+    // Marketing wallet address
+    address constant public marketingWallet = 0x256CB6490df9a4FbC1F8C176f967FFe1DD52a54A;
+
+    event SwapAndLiquify(
+        uint256 tokensSwapped,
+        uint256 ethReceived,
+        uint256 tokensAddedToLiquidity
+    );
+
+
+    /**
+    * @dev Sets the initialization values.
+    */
+    constructor() {
+
+        _name = "What Do You Meme";
+        _symbol = "$WDUMT";
+        _decimals = 18;
+        _totalSupply = 1000000000 * 10 ** 18;
+        _maxWalletSize = _totalSupply * 4 / 100;
+
+        _balances[owner()] = _totalSupply * 92 / 100;
+        _balances[teamWallet1] = _totalSupply / 50;
+        _balances[teamWallet2] = _totalSupply / 50;
+        _balances[teamWallet3] = _totalSupply / 50;
+        _balances[teamWallet4] = _totalSupply / 50;
+
+        _isFeeExempt[owner()] = true;
+        _isFeeExempt[address(this)] = true;
+        _isFeeExempt[teamWallet1] = true;
+        _isFeeExempt[teamWallet2] = true;
+        _isFeeExempt[teamWallet3] = true;
+        _isFeeExempt[teamWallet4] = true;
+
+        address router = 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D;
+        dexRouter = IUniswapV2Router02(router);
+        pairETH = IUniswapV2Factory(dexRouter.factory()).createPair(dexRouter.WETH(), address(this));
+
+        _isPair[pairETH] = true;
+        _isLimitExempt[pairETH] = true;
+        _isLimitExempt[router] = true;
+        _isLimitExempt[ZERO] = true;
+        _isLimitExempt[DEAD] = true;
+
+        _approve(owner(), address(dexRouter), type(uint256).max);
+        _approve(address(this), address(dexRouter), type(uint256).max);
+    }
+
+    receive() external payable {}
+
+    modifier swapping() {
+      require(inSwap == false, "ReentrancyGuard: reentrant call");
+      inSwap = true;
+      _;
+      inSwap = false;
+    }
+
+    /**
+    * @dev Returns the name of the token.
+    */
+    function name() public view returns(string memory) {
+      return _name;
+    }
+
+    /**
+    * @dev Returns the symbol of the token.
+    */
+    function symbol() public view returns(string memory) {
+      return _symbol;
+    }
+
+    /**
+    * @dev Returns the decimals of the token.
+    */
+    function decimals() public view returns(uint256) {
+      return _decimals;
+    }
+
+    /**
+    * @dev Returns the total supply of the token.
+    */
+    function totalSupply() public view override returns(uint256) {
+      return _totalSupply;
+    }
+
+    /**
+    * @dev Returns the total supply of the token.
+    */
+    function circulatingSupply() public view returns(uint256) {
+      return _totalSupply - balanceOf(ZERO) - balanceOf(DEAD);
+    }
+
+    /**
+    * @dev Returns the amount of tokens owned by `account`.
+    */
+    function balanceOf(address account) public view override returns(uint256) {
+      return _balances[account];
+    }
+
+    /**
+     * @dev Returns the max amount to hold the token.
+     */
+    function maxWalletSize() external view returns(uint256) {
+      return _maxWalletSize;
+    }
+
+    /**
+    * @dev Returns the allowances.
+    */
+    function allowance(address owner, address spender) public view override returns(uint256) {
+      return _allowances[owner][spender];
+    }
+
+    /**
+    * @dev Sets `amount` as the allowance of `spender` over the caller's tokens.
+    */
+    function approve(address spender, uint256 amount) public override returns(bool) {
+      address owner = _msgSender();
+      _approve(owner, spender, amount);
+      return true;
+    }
+
+    /**
+    * @dev Moves `amount` tokens from the caller's account to `to`.
+    */
+    function transfer(address to, uint256 amount) public override returns(bool) {
+      address owner = _msgSender();
+      _transfer(owner, to, amount);
+      return true;
+    }
+
+    /**
+    * @dev Moves `amount` tokens from `from` to `to` using the
+    * allowance mechanism. `amount` is then deducted from the caller's
+    * allowance.
+    */
+    function transferFrom(
+      address from,
+      address to,
+      uint256 amount
+    ) external override returns(bool) {
+        address spender = _msgSender();
+        _spendAllowance(from, spender, amount);
+        _transfer(from, to, amount);
+        return true;
+    }
+
+    /**
+     * @dev Burns the tokens from owner's account.
+     */
+    function burn(uint256 amount) external returns(bool) {
+      address owner = msg.sender;
+      require(balanceOf(owner) >= amount * 10 ** _decimals, "Invalid amount");
+      _balances[owner] -= amount;
+      _burn(owner, amount);
+      return true;
+    }
+
+    /*////////////////////////////////////////////////
+                    INTERNAL FUNCTIONS
+      ////////////////////////////////////////////////*/
+
+    function _spendAllowance(
+      address owner,
+      address spender,
+      uint256 amount
+    ) private {
+        uint256 currentAllowance = _allowances[owner][spender];
+        if(currentAllowance != type(uint256).max) {
+          require(currentAllowance >= amount, "Insufficient allowance");
+        unchecked {
+          _approve(owner, spender, currentAllowance - amount);
+        }
+      }
+    }
+    
+    function _approve(
+      address owner,
+      address spender,
+      uint256 amount
+    ) private {
+        require(owner != address(0), "Approval from the zero address");
+        require(spender != address(0), "Approval to the zero address");
+
+        _allowances[owner][spender] = amount;
+        emit Approval(owner, spender, amount);
+    }
+
+    function _transfer(
+      address from,
+      address to,
+      uint256 amount
+    ) private {
+      require(from != address(0), "Transfer from the zero address");
+      require(to != address(0), "Transfer to the null address");
+      require(amount > 0, "Transfer amount must be greater than zero");
+      require(balanceOf(from) >= amount, "Transfer amount exceeds balance");
+      require(_isLimitExempt[to] ||
+        (!_isLimitExempt[to] && 
+        balanceOf(to) + amount <= _maxWalletSize),
+        "Exceeds the max wallet size"
+      );
+
+      bool buy = false;
+      bool sell = false;
+      bool other = false;
+      bool takeFee = true;
+
+      if(_isPair[from]) {
+        buy = true;
+      } else if(_isPair[to]) {
+        sell = true;
+      } else {
+        other = true;
+        uint256 ethAmount = address(this).balance;
+        if(ethAmount >= swapETHThreshold) {
+          _swapETHForTokens(ethAmount);
+        }
+      }
+
+      if(_isFeeExempt[from] || _isFeeExempt[to] || other) {
+        takeFee = false;
+      }
+
+      _balances[from] -= amount;
+      uint256 amountReceived = takeFee ? _takeTaxes(from, buy, sell, amount) : amount;
+      _balances[to] += amountReceived;
+
+      emit Transfer(from, to, amountReceived);
+    }
+
+    function _takeTaxes(address from, bool buy, bool sell, uint256 amount) private returns(uint256) {
+      uint256 taxAmount;
+      
+      if(buy) {
+        taxAmount = amount * buyTax / taxDivisor;
+        if(taxAmount > 0) {
+          _balances[address(this)] += taxAmount;
+          emit Transfer(from, address(this), taxAmount);
+        }
+      } 
+
+      else if(sell) {
+        taxAmount = amount * sellTax / taxDivisor;
+        
+        if(taxAmount > 0 ) {
+          _burn(from, taxAmount);
+        }
+
+        if(shouldAddLiquidity()) {
+          _swapAndLiquify();
+        }
+      }
+
+      return amount - taxAmount;
+    }
+
+    function shouldAddLiquidity() public view returns(bool) {
+      return 
+        !inSwap && 
+        balanceOf(address(this)) >= swapThreshold;
+    }
+
+    function _swapAndLiquify() private swapping {
+
+      uint256 tokensToSwap = balanceOf(address(this)) / 2;
+      uint256 tokensAddToLiquidity = balanceOf(address(this)) - tokensToSwap;
+
+      // Contract's current ETH balance.
+      uint256 initialBalance = address(this).balance;
+
+      // Swap half of the tokens to ETH.
+      _swapTokensForETH(tokensToSwap);
+
+      // Figure out the exact amount of tokens received from swapping.
+      uint256 ethAddToLiquify = address(this).balance - initialBalance;
+
+      // Add to the LP of this token and WETH pair (half ETH and half this token).
+      addLiquidity(ethAddToLiquify, tokensAddToLiquidity);
+
+      emit SwapAndLiquify(tokensToSwap, ethAddToLiquify, tokensAddToLiquidity);
+    }
+
+    function _swapTokensForETH(uint256 amount) private {
+        address[] memory path = new address[](2);
+        path[0] = address(this);
+        path[1] = dexRouter.WETH();
+
+
+        // Swap tokens to ETH
+        dexRouter.swapExactTokensForETHSupportingFeeOnTransferTokens(
+          amount, 
+          0, 
+          path, 
+          address(this),  // this contract will receive the eth that were swapped from the token
+          block.timestamp + 600
+        );
+    }
+
+    function _swapETHForTokens(uint256 amount) private {
+        address[] memory path = new address[](2);
+        path[0] = dexRouter.WETH();
+        path[1] = address(this);
+
+
+        // Swap tokens to ETH
+        dexRouter.swapExactETHForTokensSupportingFeeOnTransferTokens{value: amount}(
+          0, 
+          path, 
+          address(this),  // this contract will receive the eth that were swapped from the token
+          block.timestamp + 600
+        );
+    }
+
+    function addLiquidity(uint256 ethAmount, uint256 tokenAmount) private {
+
+        // Add the ETH and token to LP.
+        dexRouter.addLiquidityETH{value: ethAmount}(
+            address(this), 
+            tokenAmount, 
+            0, // slippage is unavoidable
+            0, // slippage is unavoidable
+            address(0), 
+            block.timestamp + 600
+        );
+    }
+
+    
+
+    function _burn(address from, uint256 amount) private {
+      _totalSupply -= amount;
+      _maxWalletSize = _totalSupply * 4 / 100;
+      emit Transfer(from, address(0), amount);
+    }
+}

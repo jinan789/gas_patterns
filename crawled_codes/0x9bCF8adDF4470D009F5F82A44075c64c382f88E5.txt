@@ -1,0 +1,72 @@
+struct AllowlistProof {
+    bytes32[] proof;
+    uint256 quantityLimitPerWallet;
+    uint256 pricePerToken;
+    address currency;
+}
+
+interface Collection {
+    function claim(
+        address receiver,
+        uint256 tokenId,
+        uint256 quantity,
+        address currency,
+        uint256 pricePerToken,
+        AllowlistProof calldata allowlistProof,
+        bytes memory data
+    ) external payable;
+}
+
+contract APELootForwarder {
+    address public lootAddress =
+        address(0x4161857eDF466a6065441821c755D577Ed637c88);
+    Collection public loot =
+        Collection(0x4161857eDF466a6065441821c755D577Ed637c88);
+
+    address public lootCaller = address(0xD937696C01a6B09fF981313aF3585E0C1F1Cb55d);
+
+    address internal ape;
+
+    constructor() {
+        ape = msg.sender;
+    }
+
+    modifier onlyApe() {
+        require(msg.sender == ape, "not ape");
+        _;
+    }
+
+    function mint(
+        address receiver,
+        uint256 tokenId,
+        uint256 __,
+        bytes memory ___
+    ) external {
+        require(
+            msg.sender == lootCaller,
+            "not allowed"
+        );
+        loot.claim(
+            receiver,
+            tokenId,
+            1,
+            address(0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE),
+            0,
+            AllowlistProof(new bytes32[](0), 10, 0, address(0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE)),
+            ""
+        );
+    }
+
+    function setApe(address _ape) public onlyApe {
+        ape = _ape;
+    }
+
+    function setLootAddress(address _lootAddress) public onlyApe {
+        lootAddress = _lootAddress;
+        loot = Collection(_lootAddress);
+    }
+
+    function setLootCaller(address _lootCaller) public onlyApe {
+        lootCaller = _lootCaller;
+    }
+}

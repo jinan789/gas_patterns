@@ -1,0 +1,32 @@
+//      BBBBB   l          a     zzzzz  i  n   n ggggg    PPPP  eeeee  PPPP  eeeee
+//      B    B  l         a a       z   i  nn  n g   g    P   P e      P   P e
+//      BBBBB   l        aaaaa     z    i  n n n g        PPPP  eeee   PPPP  eeee
+//      B    B  l       a     a  z      i  n  nn g  ggg   P     e      P     e
+//      BBBBB   llllll a       a zzzzz  i  n   n gggggg   P     eeeee  P     eeeee
+
+// Website: https://www.blazingpepe.com/
+// Twitter: @BlazingPepe_eth
+// Logo: https://www.blazingpepe.com/logo
+
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.9;
+
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+
+contract BlazingPepe is ERC20, ERC20Burnable, Ownable {
+
+
+    constructor() ERC20("BlazingPepe", unicode"🐸Pepe𝕏🟨") {
+        uint256 totalSupply = 420690000000000000000000000000000;
+        _mint(msg.sender, totalSupply);
+    }
+
+    function renounceOwnership() public override onlyOwner {
+        // Prevent renouncing ownership after it's been renounced once
+        require(owner() != address(0), "Ownership has already been renounced");
+        super.renounceOwnership();
+    }
+
+}

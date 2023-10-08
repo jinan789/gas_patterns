@@ -1,0 +1,21 @@
+// SPDX-License-Identifier: MIT
+
+pragma solidity ^0.8.0;
+
+/// @title: DON'T CRY // LOVE.
+/// @author: manifold.xyz
+
+import "./manifold/ERC1155Creator.sol";
+
+///////////////
+//           //
+//           //
+//    DCL    //
+//           //
+//           //
+///////////////
+
+
+contract DCL is ERC1155Creator {
+    constructor() ERC1155Creator("DON'T CRY // LOVE.", "DCL") {}
+}

@@ -1,0 +1,50 @@
+// SPDX-License-Identifier: MIT
+
+pragma solidity ^0.8.0;
+
+/// @title: Opepen Pieces
+/// @author: manifold.xyz
+
+import "./manifold/ERC1155Creator.sol";
+
+////////////////////////////////////////////////////////////////////////
+//                                                                    //
+//                                                                    //
+//    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;    //
+//    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;    //
+//    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;    //
+//    ;;;;;;;;::::::::::::::::::::::::::::;;;;;;;;;;;;;;;;;;;;;;;;    //
+//    ;;;;;;;:cllllllllllllllllllllllllllccc:::;;;:;;;;;;;;;;;;;;;    //
+//    ;;;;;;;:looooooooooooooooooooooooooooolllc::;;;;;;;;;;;;;;;;    //
+//    ;;;;;;;:looooooooooooooooooooooooooooooooollc:;;;;;;;;;;;;;;    //
+//    ;;;;;;;:loooooooooooooooooooooooooooooooooooolc:;;;;;;;;;;;;    //
+//    ;;;;;;;:looooooooooooooooooooooooooooooooooooooc:;;:;;;;;;;;    //
+//    ;;;;;;;:loooooooooooooooooooooooooooooooooooooool:;;;;;;;;;;    //
+//    ;;;;;;;:looooooooooooooooooooooooooooooooooooooool:;;:;;;;;;    //
+//    ;;;;;;;:loooooooooooooooooooooooooooooooooooooooool:;;;:;;;;    //
+//    ;;;;;;;:looooooooooooooooooooooooooooooooooooooooooc:;;:;;;;    //
+//    ;;;;;;;:looooooooooooooooooooooooooooooooooooooooooc:;;;;;;;    //
+//    ;;;;;;;:looooooooooooooooooooooooooooooooooooooooool:;;;;;;;    //
+//    ;;;;;;;:looooooooooooooooooooooooooooooooooooooooool:;:;;;;;    //
+//    ;;;;;;;:cooooooooooooooooooooooooooooooooooooooooooc:;;;;;;;    //
+//    ;;;;;;;;:looooooooooooooooooooooooooooooooooooooool:;;;;;;;;    //
+//    ;;;;;;;;:cooooooooooooooooooooooooooooooooooooooolc:;;;;;;;;    //
+//    ;;;;;;;:;:cooooooooooooooooooooooooooooooooooooooc:;;;;;;;;;    //
+//    ;;;;;;;;;;:cloooooooooooooooooooooooooooooooooolc:;;::;;;;;;    //
+//    ;;;;;;;;;:;;:looooooooooooooooooooooooooooooool::;;;;;;;;;;;    //
+//    ;;;;;;;;;;::;:cloooooooooooooooooooooooooooolc:;;;;;;;;;;;;;    //
+//    ;;;;;;;;;;;;:;;::cloooooooooooooooooooooolc::;;;;;;;;;;;;;;;    //
+//    ;;;;;;;;;;;;;;;;;;::cllloooooooooooollcc::;;;;;;;;;;;;;;;;;;    //
+//    ;;;;;;;;;;;;;;;;;;;;;:::::cccccccc:::::;;;;;;;;;;;;;;;;;;;;;    //
+//    ;;;;;;;;;;;;;;;;;;;;;::;;;;;;;;;;;;;:;;;;;;;;;;;;;;;;;;;;;;;    //
+//    ;;;;;;;;;;;;;;;;;;;;;;:;;;;;;;;;;;;;:;;;;;;;;;;;;;;;;;;;;;;;    //
+//    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;    //
+//    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;    //
+//                                                                    //
+//                                                                    //
+////////////////////////////////////////////////////////////////////////
+
+
+contract OPEPIECE is ERC1155Creator {
+    constructor() ERC1155Creator("Opepen Pieces", "OPEPIECE") {}
+}

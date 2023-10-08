@@ -1,0 +1,27 @@
+Here are some potential new gas-wasting patterns you might find in these Solidity codes:
+
+1. **Repeated External Calls**: External calls are more expensive than internal calls or operations within the contract. In the given code, there are many external calls to different contracts such as `IPool`, `IHopeOracle`, `IERC20Detailed`, `IStableDebtToken`, `IVariableDebtToken`, and `DefaultReserveInterestRateStrategy`. Some of these calls are repeated multiple times which can be costly in terms of gas.
+
+    To fix this, you could store the results of those calls in memory variables and reuse them when needed. However, be aware that any state changes in the external contracts between calls won't be reflected in your contract if you're reusing the old values.
+
+2. **Unnecessary Storage Reads**: There are several places in the code where the same stored data is read multiple times. For example, `reserveData.underlyingAsset` is often read in the loop. Each read from storage is more expensive than reading from memory.
+
+    This can be improved by storing `reserveData.underlyingAsset` in a memory variable and reusing it within the loop.
+
+3. **Unnecessary Conditional Checks**: The code contains some conditional checks that may not be necessary. For instance, there's a check for the symbol of the $MKR asset, which might be unnecessary if the symbol is known beforehand or the token standard mandates a specific type for the symbol.
+
+    To improve this, reconsider the necessity of these checks. If they are indeed required, consider refactoring the way they're implemented to reduce gas costs.
+
+4. **Large Amount of Data in Memory**: Solidity stores variables in memory or storage. Memory is cheaper, but it's wiped out between external function calls. In the given code, there's a large amount of data stored in memory arrays like `reservesData`. If this data is not used frequently, it could be a waste of gas.
+
+    To fix this, consider if all the stored data is necessary. If not, try to minimize the amount of data you hold in memory.
+
+5. **Exception Handling with Empty Catch Blocks**: There are many instances of `try-catch` blocks where the catch block is empty. Solidity does not support a "finally" block, so if an exception is thrown, the execution stops, and all gas provided is consumed.
+
+    To improve this, you should avoid using `try-catch` blocks unnecessarily. If you need to handle exceptions, ensure the `catch` block contains necessary logic or reverts the transaction, so the remaining gas is not wasted.
+
+6. **Unclear Function Role and Long Functions**: The function `getReservesData` and `getUserReservesData` are quite long and seem to be doing multiple things. Long functions increase the complexity and the likelihood of mistakes that can lead to inefficient gas usage.
+
+    To fix this, consider breaking down these functions into smaller, more specific functions, each performing a clear role. This can make the functions easier to understand, less error-prone, and potentially more gas-efficient.
+
+Remember, these are potential gas-wasting patterns based on the given example code. Actual gas costs can vary depending on the Ethereum network's current gas prices and how the contract interacts with others on the blockchain. Always profile and test your contract in different scenarios to find the most gas-efficient solutions.

@@ -1,0 +1,66 @@
+// SPDX-License-Identifier: MIT
+
+pragma solidity ^0.8.0;
+
+/// @title: AFTER LIFE💀
+/// @author: manifold.xyz
+
+import "./manifold/ERC1155Creator.sol";
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//                                                                                                            //
+//                                                                                                            //
+//    GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG    //
+//    GGGGGGGGGGGGGGGGGGGGBBBGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG    //
+//    GGGGGGGGGGGGGGGGGGGGBBGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG    //
+//    GGGGGGGGGGGGGGGGGGGGBGBGGGGGBBBGGB##BBGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG    //
+//    GGGGGGGGGGGGGGGGGGGGBGGBBGGGBBBBGBBB##BGGBGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG    //
+//    GGGGGGGGGGGGGGGGGGGGGGGGGGGBBBGBBBBGGBBBGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG    //
+//    GGGGGGGGGGGGGGGGGGGGGGBGBBBBBBBBGBBBBGGGBGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG    //
+//    GGGGGGGGGGGGGGGGB##&&B&#&&B#BBBBBGGGBGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG    //
+//    GGGGGGGGGGGGGGGB#&&##B#BB#B##B&&##&#BBBGBBGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG    //
+//    GGGGGGGGGGGGGGGGBB#&&#BGGGGGGGGBBB###&&BGBB###&&&&&&&&&#GBBGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG    //
+//    GGGGGGGGGGGGGGGGGGGBB#&#GGGGGGGGGGGGGB####&&@@@@@@@@@@@&#&&&&######BGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG    //
+//    GGGGGGGGGGGGBB#BB#B#####BB##B#BBBBBB#&&&&@@@@@@@@@@@@@@@@&&&&@@@@@@@&#BGGGGGGGGGGGGGGGGGGGGGGGGGGGGG    //
+//    GGGGGGGGGGGGB&@&&@&&@&&@&#&&#&&&@@@@@@@@@@@@@@@@@@@@@@@@@@@&###B&&&&&@@#BGGGGGGGGGGGGGGGGGGGGGGGGGGG    //
+//    GGGGGGGGGGGGB#&&#&#B##B##BBBBBBB@@@@@@@@@@@@@@@@@@@@@@@@@@@&#B#@&#BBB#&@&BGGGGGGGGGGGGGGGGGGGGGGGGGG    //
+//    GGGGGGGGGGGGGGGGGBBBBBBBBBBBBBB&@@@@@@@@@@@@&@@@@@@@@@@@@@@@@#B#BBBBBBB#@&####BBBBGGGGGGGGGGGGGGGGGG    //
+//    GGGGGGGGGGGGGGGGGBBBBBBBBBBBBB&@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@&&&&######&@@@@@@@@#GGGGGGGGGGGGGGGGGG    //
+//    GGGGGGGGGGGGG#BBGBBBBBB###B##&@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@&#BB#&@@@@@@@&BGGGGGGGGGGGGGGGGGGG    //
+//    GGGGGGGGGGGB&@@@&#BBBB&@@@#&&@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@&###&@@@@@#BBGGGGGGGGGGGGGGGGGGGGG    //
+//    GGGGGGGGGG#&##&@@@@&B&@&##&@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@&&@@@@@@@#GGGGGB##BGGGGGGGGGGGGG    //
+//    GGGGGGGGGGBBB&@BB#@&G#@@&@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@&&&@@@@@@@BGB#&@@@@&#BGGGGGGGGGG    //
+//    GGGGGGGGGGGG#@@###@&BB&@&&@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@&##@@@@@@&B&@@@@@@@@@@&#BGGGGGGG    //
+//    GGGGGGGGGGGGB&@@@@@@#B#@&G&@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@&&&@@@@@&GB@@@@&BB&@@@@@#GGGGGGG    //
+//    GGGGGGGGGGGBB#@&BB#@#B#@@B#@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@&B#@@@@&BGG&@@@#GGG&@@#BGGGGGGGG    //
+//    GGGGGGGGGGBB#B@&GB#@&BB@@&&@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@&@@@@@#GGG&@@@&GB&@#BGGGGGGGGGG    //
+//    GGGGGGGGGGBBBB@&B#B&@&B&@@@@@@@@@@@@@@@@@@@@&&@@@@@@@@@@@@@@@@@@@@@@@@@@@@@BGGG&@@@@&&#BGGGGGGGGGGGG    //
+//    [email protected]##G#@@@@@@@@@@@@@@@@@@@@@&@@@@@@@@@@@@@@@@@@@@@@&BB@@@@BGGG@@@@@@#BBBBBBGGGGGGGG    //
+//    GGGGGGGGGGGGG#&GGGGGGGG#@@@@@@@@@@@@@@@@@@@@@@@@@@@@@####&@@#BB#@@@#GGB@@@#GGGB&&@@@@@@@@@&BGGGGGGGG    //
+//    GGGGGGGGGGGGGBBGGGGGGGG#&BBBBBB###B#BBB#@@@@@@@@@@@@&GGGGBBBGGGGB#BGGGB@@&GGGGGGGB##&@@@@#GGGGGGGGGG    //
+//    GGGGGGGGGGGGGGGGGGGGGGGBBGGGGGGGBBBB###&@@@@@@@@@@@@&BGGGGGGGGGGGGGGGG#@@BGGGGGGGGGGGBB#BGGGGGGGGGGG    //
+//    GGGGGGGGGGGGGGGGGGGGGGGGGG#&&&&@@@@@@@@@@@@@@@@@@@@@@BGGGGGGGGGGGGGGGG&@#GGGGGGGGGGGGGGGGGGGGGGGGGGG    //
+//    GGGGGGGGGGGGGGGGGGGGGGGGGG#@@@@@@@@@@@@@@@@@@@@@@@@@#GGGGGGGGGGGGGGGGB@&GGGGGGGGGGGGGGGGGGGGGGGGGGGG    //
+//    GGGGGGGGGGGGGGGGGGGGGGGGGGB@@@@@@@@@@@@@@@@@@@@&&#BBGGGGGGGGGGGGGGGGGGBBGGGGGGGGGGGGGGGGGGGGGGGGGGGG    //
+//    GGGGGGGGGGGGGGGGGGGGGGGGGGB&@@@@@@@@@@@@&&##BBBGGGGGBGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG    //
+//    GGGGGGGGGGGGGGGGGGGGGGGGGGG&@@@@&&&##BBBGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG    //
+//    GGGGGGGGGGGGGGGGGGGGGGGGGGGBBBBBGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG    //
+//    GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG    //
+//    GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG    //
+//    GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG    //
+//    GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG    //
+//    BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB    //
+//    BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB    //
+//    BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB    //
+//    ####################################################################################################    //
+//    &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&    //
+//    @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@    //
+//    @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@    //
+//                                                                                                            //
+//                                                                                                            //
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+contract LIFE is ERC1155Creator {
+    constructor() ERC1155Creator(unicode"AFTER LIFE💀", "LIFE") {}
+}

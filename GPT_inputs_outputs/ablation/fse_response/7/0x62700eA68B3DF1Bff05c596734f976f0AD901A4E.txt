@@ -1,0 +1,94 @@
+Let's dive into the provided Solidity code and discuss some of the potential gas-wasting patterns and possible solutions for them. 
+
+#### Pattern 1: Redundant Assignment
+```Solidity
+_token0 = _token;
+_token1 = _weth;
+...
+if (_token < _weth) {
+    ...
+} else {
+    _token0 = _weth;
+    _token1 = _token;
+    ...
+}
+```
+Here, `_token0` and `_token1` are assigned values twice, which is unnecessary and results in additional gas usage.
+
+##### Discovery
+The reasoning behind this discovery is based on the observation that `_token0` and `_token1` are initially assigned the values of `_token` and `_weth` respectively. However, within the condition block, their values may be reassigned, causing the initial assignment to become redundant.
+
+##### Solution
+To fix this, you should only assign values to `_token0` and `_token1` once, inside the appropriate condition block. 
+```Solidity
+if (_token < _weth) {
+    _token0 = _token;
+    _token1 = _weth;
+    ...
+} else {
+    _token0 = _weth;
+    _token1 = _token;
+    ...
+}
+```
+##### Impact
+- Readability: 5
+- Security: 5
+- Maintainability: 5
+
+The changes made do not affect the readability, security, or maintainability of the code. In fact, they improve the overall conciseness of the code.
+
+#### Pattern 2: Repeated External Calls
+```Solidity
+require(
+    IInscription(token.addr).totalRollups() >= token.maxRollups,
+    "mint not finished"
+);
+...
+IInscription(token.addr).totalRollups() < token.maxRollups,
+```
+The same external call `IInscription(token.addr).totalRollups()` is used twice in different parts of the code. External calls are expensive in terms of gas.
+
+##### Discovery
+This pattern was identified by noticing the same external function call being made multiple times. Using an external function call more than once can be costly, as each external call consumes more gas than an internal call or local operation.
+
+##### Solution
+Reducing the number of external calls can optimize the gas usage. You can store the result of the function call in a local variable and use it where needed.
+```Solidity
+uint256 totalRollups = IInscription(token.addr).totalRollups();
+require(
+    totalRollups >= token.maxRollups,
+    "mint not finished"
+);
+...
+totalRollups < token.maxRollups,
+```
+##### Impact
+- Readability: 5
+- Security: 5
+- Maintainability: 5
+
+The changes made do not affect the readability, security, or maintainability of the code. They just reduce the number of external calls, thereby optimizing gas usage.
+
+#### Pattern 3: Unnecessary Use of Storage
+```Solidity
+token = _token;
+```
+The assignment `token = _token` writes to storage, which is expensive in terms of gas.
+
+##### Discovery
+The discovery of this potential inefficiency comes from understanding that writing to storage variables in Solidity is costly in terms of gas. 
+
+##### Solution
+If the `token` variable is not used elsewhere in the contract outside of the `initialize` function, it's more efficient to make it a local variable within the function instead of a state variable. If it is used in other places, consider whether its value needs to be stored persistently or whether it can be passed as a function argument when needed.
+
+##### Impact
+- Readability: 5
+- Security: 4
+- Maintainability: 4
+
+Moving a variable from storage to memory or function parameters does not impact readability. However, it might have a minor impact on security and maintainability, as the variable's accessibility and lifetime changes, which could affect other parts of the contract if not handled carefully.
+
+Please note that these refactorings are based on generic gas optimization techniques. The actual benefit depends on the specific use case and the overall contract logic. Always test thoroughly after making these changes. 
+
+As for improvements in the reasoning process, the key is to keep the unique cost model of Ethereum in mind when looking for inefficiencies: storage is expensive, external calls are expensive, unnecessary computations are expensive. By focusing on these key areas, it's easier to identify potential improvements.

@@ -1,0 +1,75 @@
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.17;
+
+import "@openzeppelin/contracts/access/AccessControl.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+
+contract Multicall is AccessControl, ReentrancyGuard {
+
+    constructor(address[] memory managers) {
+        _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
+        
+        uint8 length = uint8(managers.length);
+
+        for (uint8 i = 0; i < length; i++) {
+            require(managers[i] != address(0), "Zero address not allowed");
+            _setupRole(MANAGER_ROLE, managers[i]);
+        }
+    }
+
+    modifier onlyManager() {
+        require(hasRole(MANAGER_ROLE, msg.sender), "Access Denied: Caller is not manager");
+        _;
+    }
+
+    bytes32 public constant MANAGER_ROLE = keccak256("MANAGER_ROLE");
+
+    function getSelector(address _to, uint _value) public pure returns (bytes memory) {
+        return abi.encodeCall(IERC20.transfer, (_to, _value));
+    }
+
+    function executeTokenTransferMulticall(address token, address[] calldata targets, uint256[] calldata amounts) external onlyManager nonReentrant returns (bytes[] memory) {
+        require(targets.length <= 100 && amounts.length <= 100, "Batch limit exceeds");
+        require(targets.length == amounts.length, "Length not equal");
+        bytes[] memory results = new bytes[](targets.length);
+
+        uint totalAmount = 0;
+
+        for (uint8 i = 0; i < amounts.length; i++) {
+            totalAmount += amounts[i];
+        }
+
+        require(totalAmount > 0, "Cannot process zero amount");
+        (bool tokenTransferStatus) = IERC20(token).transferFrom(msg.sender, address(this), totalAmount);
+        require(tokenTransferStatus, "Token transfer failed");
+
+        for (uint8 j = 0; j < targets.length; j++) {
+            bytes memory data = getSelector(targets[j], amounts[j]);
+
+            (bool success, bytes memory result) = token.call(data);
+
+            require(success, "external call failed");
+
+            results[j] = (result);
+        }
+
+        return results;
+    }
+
+    function executeMulticall(address[] calldata targets, bytes[] calldata data) external onlyManager nonReentrant returns (bytes[] memory) {
+        require(targets.length == data.length, "Length not equal");
+        bytes[] memory results = new bytes[](targets.length);
+
+
+        for (uint i = 0; i < targets.length; i++) {
+            (bool success, bytes memory result) = targets[i].call(data[i]);
+
+            require(success, "external call failed");
+
+            results[i] = (result);
+        }
+
+        return results;
+    }
+}

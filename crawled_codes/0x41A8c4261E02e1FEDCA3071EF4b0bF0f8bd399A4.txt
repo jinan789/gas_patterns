@@ -1,0 +1,224 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/security/Pausable.sol";
+import "@openzeppelin/contracts/access/AccessControlDefaultAdminRules.sol";
+import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
+
+import "./IWater.sol";
+
+contract Water is ERC20, Pausable, AccessControlDefaultAdminRules, IWater {
+    using EnumerableSet for EnumerableSet.AddressSet;
+
+    bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
+    bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
+    bytes32 public constant DELEGATE_ROLE = keccak256("DELEGATE_ROLE");
+    bytes32 public constant APPROVE_ROLE = keccak256("APPROVE_ROLE");
+
+    mapping(uint256 => DelegatePayment) public delegatePayments;
+    mapping(address => uint256[]) public delegateAccountPayments;
+
+    uint256 private  _countDelegate = 0;
+
+    mapping(bytes32 => EnumerableSet.AddressSet) private _roleMembers;
+
+
+    constructor(string memory name, string memory symbol, address owner, address[] memory approves, address[] memory delegatesAddress, uint256[] memory delegatesAmount, uint[] memory delegatesWithdrawTime) ERC20(name, symbol) AccessControlDefaultAdminRules(3 days, owner) {
+        _grantRole(PAUSER_ROLE, owner);
+        _grantRole(MINTER_ROLE, owner);
+        _grantRole(DELEGATE_ROLE, owner);
+
+        for (uint i = 0; i < approves.length; i++) {
+            _grantRole(APPROVE_ROLE, approves[i]);
+        }
+
+        for (uint i = 0; i < delegatesAddress.length; i++) {
+
+            DelegatePayment memory newDelegatePayment = DelegatePayment({
+                id: _countDelegate,
+                to: delegatesAddress[i],
+                withdrawTime: delegatesWithdrawTime[i],
+                amount: delegatesAmount[i],
+                isMint: true,
+                approve: approves,
+                newWithdrawTime: delegatesWithdrawTime[i],
+                approveNewWithdrawTime: new address[](0)
+            });
+
+            delegatePayments[_countDelegate] = newDelegatePayment;
+            delegateAccountPayments[delegatesAddress[i]].push(_countDelegate);
+            _mint(newDelegatePayment.to, newDelegatePayment.amount);
+
+            emit DelegatedPayment(newDelegatePayment.id, newDelegatePayment.to, newDelegatePayment.amount, newDelegatePayment.withdrawTime, newDelegatePayment.approve, newDelegatePayment.newWithdrawTime, newDelegatePayment.approveNewWithdrawTime);
+            _countDelegate++;
+        }
+
+    }
+
+    function pause() public onlyRole(PAUSER_ROLE) {
+        _pause();
+    }
+
+    function unpause() public onlyRole(PAUSER_ROLE) {
+        _unpause();
+    }
+
+    function mint(address to, uint256 amount) public onlyRole(MINTER_ROLE) {
+        _mint(to, amount);
+    }
+
+    function getRoleMember(bytes32 role, uint256 index) public view virtual returns (address) {
+        return _roleMembers[role].at(index);
+    }
+
+    /**
+     * @dev Returns the number of accounts that have `role`. Can be used
+     * together with {getRoleMember} to enumerate all bearers of a role.
+     */
+    function getRoleMemberCount(bytes32 role) public view virtual returns (uint256) {
+        return _roleMembers[role].length();
+    }
+
+    /**
+     * @dev Overload {_grantRole} to track enumerable memberships
+     */
+    function _grantRole(bytes32 role, address account) internal virtual override {
+        super._grantRole(role, account);
+        _roleMembers[role].add(account);
+    }
+
+    /**
+     * @dev Overload {_revokeRole} to track enumerable memberships
+     */
+    function _revokeRole(bytes32 role, address account) internal virtual override {
+        super._revokeRole(role, account);
+        _roleMembers[role].remove(account);
+    }
+
+
+    function _beforeTokenTransfer(address from, address to, uint256 amount) internal whenNotPaused override
+    {
+        if (from != address(0)) {
+            uint256 balance = super.balanceOf(from);
+            uint256 waitingBalanceOf = _waitingBalanceOf(from);
+            require(balance - waitingBalanceOf >= amount, "Water: transfer amount exceeds balance");
+        }
+        super._beforeTokenTransfer(from, to, amount);
+    }
+
+    function _waitingBalanceOf(address account) internal view returns (uint256){
+        uint256 amount = 0;
+        uint256[] memory paymentsIds = delegateAccountPayments[account];
+        for (uint i = 0; i < paymentsIds.length; i++) {
+            if (delegatePayments[paymentsIds[i]].isMint && delegatePayments[paymentsIds[i]].withdrawTime > block.timestamp) {
+                amount += delegatePayments[paymentsIds[i]].amount;
+            }
+        }
+        return amount;
+    }
+
+    function delegate(address to, uint256 amount, uint withdrawTime) public virtual whenNotPaused onlyRole(DELEGATE_ROLE) returns (bool success){
+        require(to != address(0), "Water: to address is zero");
+        require(withdrawTime > block.timestamp, "Water: current date is later than withdraw time");
+        require(amount > 0, "Water: amount is zero");
+
+
+        DelegatePayment memory newDelegatePayment = DelegatePayment({
+            id: _countDelegate,
+            to: to,
+            withdrawTime: withdrawTime,
+            amount: amount,
+            isMint: false,
+            approve: new address[](1),
+            newWithdrawTime: withdrawTime,
+            approveNewWithdrawTime: new address[](0)
+        });
+
+        newDelegatePayment.approve[0] = _msgSender();
+
+
+        delegatePayments[_countDelegate] = newDelegatePayment;
+        delegateAccountPayments[to].push(_countDelegate);
+
+        _checkApprove(_countDelegate);
+
+        emit DelegatedPayment(newDelegatePayment.id, newDelegatePayment.to, newDelegatePayment.amount, newDelegatePayment.withdrawTime, newDelegatePayment.approve, newDelegatePayment.newWithdrawTime, newDelegatePayment.approveNewWithdrawTime);
+        _countDelegate++;
+
+        return true;
+    }
+
+    function approveDelegate(uint256 id) public virtual whenNotPaused onlyRole(APPROVE_ROLE) returns (bool success){
+        DelegatePayment storage delegatePayment = delegatePayments[id];
+        require(delegatePayment.amount > 0, "Water: not found payment");
+        require(delegatePayment.isMint == false, "Water: token already full approved");
+
+        bool isUserApproved = false;
+        for (uint i = 0; i < delegatePayment.approve.length; i++) {
+            if (delegatePayment.approve[i] == _msgSender())
+                isUserApproved = true;
+        }
+
+        require(isUserApproved == false, "Water: you already approved");
+
+        delegatePayment.approve.push(_msgSender());
+
+        _checkApprove(id);
+
+        emit UpdatedPayment(id, delegatePayment.to, delegatePayment.amount, delegatePayment.withdrawTime, delegatePayment.approve, delegatePayment.newWithdrawTime, delegatePayment.approveNewWithdrawTime, _msgSender());
+        return true;
+    }
+
+    function updateWithdrawTime(uint256 id, uint time) public virtual whenNotPaused onlyRole(DELEGATE_ROLE) returns (bool success){
+        DelegatePayment storage delegatePayment = delegatePayments[id];
+
+        require(delegatePayment.amount > 0, "Water: not found payment");
+        require(time > block.timestamp, "Water: current date is later than withdraw time");
+
+
+        delegatePayment.newWithdrawTime = time;
+        delegatePayment.approveNewWithdrawTime = [_msgSender()];
+
+        _checkApprove(id);
+
+        emit UpdatedPayment(id, delegatePayment.to, delegatePayment.amount, delegatePayment.withdrawTime, delegatePayment.approve, delegatePayment.newWithdrawTime, delegatePayment.approveNewWithdrawTime, _msgSender());
+        return true;
+    }
+
+    function approveWithdrawTime(uint256 id) public virtual whenNotPaused onlyRole(APPROVE_ROLE) returns (bool success){
+        DelegatePayment storage delegatePayment = delegatePayments[id];
+        require(delegatePayment.amount > 0, "Water: not found payment");
+        require(delegatePayment.withdrawTime != delegatePayment.newWithdrawTime, "Water: token already full approved");
+
+        bool isUserApproved = false;
+        for (uint i = 0; i < delegatePayment.approveNewWithdrawTime.length; i++) {
+            if (delegatePayment.approveNewWithdrawTime[i] == _msgSender())
+                isUserApproved = true;
+        }
+
+        require(isUserApproved == false, "Water: you already approved");
+
+        delegatePayment.approveNewWithdrawTime.push(_msgSender());
+
+        _checkApprove(id);
+
+        emit UpdatedPayment(id, delegatePayment.to, delegatePayment.amount, delegatePayment.withdrawTime, delegatePayment.approve, delegatePayment.newWithdrawTime, delegatePayment.approveNewWithdrawTime, _msgSender());
+        return true;
+    }
+
+    function _checkApprove(uint256 id) internal virtual {
+        DelegatePayment storage delegatePayment = delegatePayments[id];
+
+        if (delegatePayment.approve.length + 1 >= getRoleMemberCount(APPROVE_ROLE)) {
+            delegatePayment.isMint = true;
+            _mint(delegatePayment.to, delegatePayment.amount);
+        }
+
+        if (delegatePayment.withdrawTime != delegatePayment.newWithdrawTime && delegatePayment.approveNewWithdrawTime.length + 1 >= getRoleMemberCount(APPROVE_ROLE)) {
+            delegatePayment.withdrawTime = delegatePayment.newWithdrawTime;
+        }
+
+    }
+
+}

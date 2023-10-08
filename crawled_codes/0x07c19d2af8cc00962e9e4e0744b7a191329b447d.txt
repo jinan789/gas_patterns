@@ -1,0 +1,152 @@
+// SPDX-License-Identifier: BUSL-1.1
+pragma solidity ^0.8.0;
+
+import {IHashnoteVault, IMarginEngine, IVaultShare} from "../../../../interfaces/IHashnoteVault.sol";
+import {ActionUtil} from "../../../../libraries/ActionUtil.sol";
+
+import {ActionArgs} from "../../../../config/types.sol";
+
+import {Balance, Collateral, DepositReceipt, Position, VaultState} from "../../../../config/types.sol";
+import "../../../../config/constants.sol";
+import "../../../../config/errors.sol";
+
+struct ReturnDetails {
+    uint256 totalSupply;
+    uint256 managementFee;
+    address feeRecipient;
+    uint8 primaryCollateralId;
+}
+
+contract PhysicalReturnProcessor {
+    using ActionUtil for ActionArgs[];
+
+    uint8 constant ACTION_COLLATERAL_REMOVE = 1;
+    uint8 constant ACTION_SETTLE_PHYSICAL = 7;
+
+    function returnOnExercise(address[] calldata _depositors, uint256[] calldata _shares) external virtual {
+        IHashnoteVault vault = IHashnoteVault(msg.sender);
+
+        // + exerciseWindow?
+        if (vault.expiry(vault.vaultState().round) > block.timestamp) revert POV_OptionNotExpired();
+
+        IMarginEngine marginEngine = vault.marginEngine();
+
+        Balance[] memory collaterals = _verifyAndSettle(marginEngine);
+
+        ActionArgs[] memory totalActions = _createWithdraws(
+            collaterals,
+            _depositors,
+            _shares,
+            ReturnDetails(
+                vault.share().totalSupply(msg.sender), vault.managementFee(), vault.feeRecipient(), vault.getCollaterals()[0].id
+            )
+        );
+
+        marginEngine.execute(msg.sender, totalActions);
+    }
+
+    function _createWithdraws(
+        Balance[] memory _collaterals,
+        address[] calldata _depositors,
+        uint256[] calldata _shares,
+        ReturnDetails memory _details
+    ) internal pure returns (ActionArgs[] memory totalActions) {
+        uint256 depositorsCount = _depositors.length;
+        uint256 i;
+
+        // starting in first position, because we do not return primary collateral
+        if (_collaterals[0].collateralId == _details.primaryCollateralId) i = 1;
+
+        for (i; i < _collaterals.length;) {
+            uint256 totalFees;
+
+            // if fees taken then include a tx for it
+            ActionArgs[] memory actions = new ActionArgs[](_details.managementFee > 0 ? depositorsCount + 1 : depositorsCount);
+
+            for (uint256 x; x < depositorsCount;) {
+                uint256 feeAmount;
+                (actions[x], feeAmount) = _createAction(
+                    _collaterals[i].collateralId,
+                    _collaterals[i].amount,
+                    _depositors[x],
+                    _shares[x],
+                    _details.totalSupply,
+                    _details.managementFee
+                );
+
+                totalFees += feeAmount;
+
+                unchecked {
+                    ++x;
+                }
+            }
+
+            if (totalFees > 0) {
+                actions[depositorsCount] = ActionArgs({
+                    action: ACTION_COLLATERAL_REMOVE,
+                    data: abi.encode(uint80(totalFees), _details.feeRecipient, _collaterals[i].collateralId)
+                });
+            }
+
+            if (totalActions.length == 0) totalActions = actions;
+            else totalActions = totalActions.concat(actions);
+
+            unchecked {
+                ++i;
+            }
+        }
+    }
+
+    function _createAction(
+        uint8 _collateralId,
+        uint256 _collateralAmount,
+        address _depositor,
+        uint256 _shares,
+        uint256 _totalSupply,
+        uint256 _managementFee
+    ) internal pure returns (ActionArgs memory action, uint256 feeAmount) {
+        uint256 withdrawAmount = _collateralAmount * _shares / _totalSupply;
+
+        feeAmount = withdrawAmount * _managementFee / (100 * PERCENT_MULTIPLIER);
+
+        action = ActionArgs({
+            action: ACTION_COLLATERAL_REMOVE,
+            data: abi.encode(uint80(withdrawAmount - feeAmount), _depositor, _collateralId)
+        });
+    }
+
+    function _verifyAndSettle(IMarginEngine _marginEngine) internal returns (Balance[] memory collaterals) {
+        (Position[] memory shorts,,) = _marginEngine.marginAccounts(msg.sender);
+
+        bool isExercised;
+
+        for (uint256 i; i < shorts.length;) {
+            (,, uint80 totalPaid) = _marginEngine.tokenTracker(shorts[i].tokenId);
+
+            if (totalPaid > 0) {
+                isExercised = true;
+                break;
+            }
+
+            unchecked {
+                ++i;
+            }
+        }
+
+        if (!isExercised) revert POV_NotExercised();
+
+        // settle options if shorts are not empty
+        if (shorts.length > 0) {
+            ActionArgs[] memory actions = new ActionArgs[](1);
+
+            // _isCashSettled is false since the option is physically settled
+            actions[0] = ActionArgs({action: ACTION_SETTLE_PHYSICAL, data: ""});
+
+            _marginEngine.execute(msg.sender, actions);
+        }
+
+        (,, collaterals) = _marginEngine.marginAccounts(msg.sender);
+
+        if (collaterals.length == 0) revert OV_NoCollateral();
+    }
+}

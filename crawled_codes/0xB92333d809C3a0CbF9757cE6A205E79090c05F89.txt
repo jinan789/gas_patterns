@@ -1,0 +1,27 @@
+pragma solidity ^0.8.9;
+
+contract PondCoinSpawner {
+    event Spawned(address indexed invoker, string emotion, uint256 amount);
+
+    constructor() {
+
+    }
+
+    function spawn(address invoker, uint256 amount) external returns (bool) {
+        string memory emotion = _randomEmotion();
+        
+        emit Spawned(invoker, emotion, amount);
+
+        return true;
+    }
+
+    function _randomEmotion() internal view returns (string memory) {
+        uint256 randomNum = uint256(keccak256(abi.encodePacked(blockhash(block.number - 1), msg.sender))) % 2;
+
+        if (randomNum == 0) {
+            return "Happy Pepe";
+        } else {
+            return "Sad Pepe";
+        }
+    }
+}

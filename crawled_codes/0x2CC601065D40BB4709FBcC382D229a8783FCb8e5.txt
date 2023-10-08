@@ -1,0 +1,24 @@
+// SPDX-License-Identifier: BUSL-1.1
+pragma solidity >=0.8.19;
+
+import { IERC712UpdateFacet } from "./IERC712UpdateFacet.sol";
+import { ERC712Storage } from "../ERC712/ERC712Storage.sol";
+import { ERC712Storage } from '../ERC712/ERC712Storage.sol';
+import { ERC712Lib } from '../ERC712/ERC712Lib.sol';
+import { UsingAccessControl } from '../AccessControl/UsingAccessControl.sol';
+
+/// @title ERC712UpdateFacet
+/// @author Martin Wawrusch for Roji Inc.
+/// @notice Implements a means to update the ERC712 name and version. This is restricted to members of ROLE_ACCESS_CONTROL_ADMIN.
+contract ERC712UpdateFacet is UsingAccessControl, IERC712UpdateFacet {
+    
+    /// @inheritdoc IERC712UpdateFacet
+    function updateERC712NameAndVersion(string memory name, string memory version) external onlyAccessControlAdmin {
+        ERC712Storage.Layout storage l = ERC712Storage.layout();
+        l._name = name;
+        l._version = version;
+        // Reset prior values in storage if upgrading
+        l._hashedName = 0;
+        l._hashedVersion = 0;
+    }
+}

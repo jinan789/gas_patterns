@@ -1,0 +1,79 @@
+
+\subsection *{1. Redundant Gas Calculation}
+The gas calculation in the `blacklist_Add_Wallets` and `blacklist_Remove_Wallets` functions seems to be unnecessary and could be removed.
+
+\subsubsection*{Finding Process}
+While reading through the code, I noticed that the gas usage is calculated but not used anywhere in the contract. This calculation is performed in the `blacklist_Add_Wallets` and `blacklist_Remove_Wallets` functions.
+
+\subsubsection*{Fixing Steps}
+Remove the gas calculation code from the functions. The updated code should look like this:
+
+\begin{verbatim}
+    
+for (uint256 i; i < addresses.length; ++i) {
+    if(!_isBlacklisted[addresses[i]]){
+        _isBlacklisted[addresses[i]] = true;
+    }
+}
+\end{verbatim}
+
+
+\subsubsection*{Impact Score}
+Readability: 5; Security: 5; Maintainability: 5
+
+Removing unnecessary code improves readability and maintainability without affecting the security of the contract.
+
+\subsection*{2. Use of Conditional Statement Where Not Necessary}
+In the `removeAllFee` function, there's a conditional statement that checks if all fees are already zero before setting them to zero. This is redundant and wastes gas.
+
+\subsubsection*{Finding Process}
+I noticed this while reviewing the `removeAllFee` function. The function checks if `_TotalFee`, `_buyFee`, and `_sellFee` are all zero and if so, it returns. Otherwise, it sets all of them to zero.
+
+\subsubsection*{Fixing Steps}
+Remove the initial condition check and directly set the fees to zero. The updated function should look like this:
+
+\begin{verbatim}
+    
+function removeAllFee() private {
+    _previousBuyFee = _buyFee; 
+    _previousSellFee = _sellFee; 
+    _previousTotalFee = _TotalFee;
+    _buyFee = 0;
+    _sellFee = 0;
+    _TotalFee = 0;
+}
+\end{verbatim}
+
+
+\subsubsection*{Impact Score}
+Readability: 5; Security: 5; Maintainability: 5\\
+This change improves readability and maintainability without affecting security. It also makes the function's behavior more predictable.
+
+\subsection*{3. Multiple Checks for the Same Condition}
+In the `swapAndLiquify` function, the contract balance is queried twice. This is unnecessary and wastes gas.
+
+\subsubsection*{Finding Process}
+While analyzing the `swapAndLiquify` function, I noticed that the contract balance is checked twice. The first check is to see if the balance is greater than `\_maxTxAmount`, and the second check is to see if the balance is greater than zero.
+
+\subsubsection*{Fixing Steps}
+Store the contract balance in a local variable and use that for the checks. Here's how the updated function should look:
+
+\begin{verbatim}
+    
+function swapAndLiquify(uint256 contractTokenBalance) private lockTheSwap {
+    uint256 balance = address(this).balance;
+    if (balance > _maxTxAmount) {
+        balance = _maxTxAmount;
+    }
+    if (balance > 0) {
+        swapTokensForBNB(balance);
+        sendToWallet(Wallet_Dev, balance);
+    }
+}
+\end{verbatim}
+
+\subsubsection*{Impact Score}
+Readability: 5; Security: 5; Maintainability: 4.5\\
+Using a local variable to store the contract balance improves readability and reduces gas usage. The only potential concern is that it slightly increases the amount of code to be maintained.
+
+In conclusion, there are always opportunities to optimize Solidity code for gas usage, but such optimizations must be done carefully to avoid compromising the code's readability, maintainability, and security.

@@ -1,0 +1,230 @@
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.0;
+
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {ERC20RootVault} from "@mellow-vaults/contracts/vaults/ERC20RootVault.sol";
+
+import "../interfaces/external/univ3/ISwapRouter.sol";
+import "../interfaces/external/univ3/IUniswapV3Pool.sol";
+
+import "../libraries/external/FullMath.sol";
+
+import "./IDepositV1Wrapper.sol";
+
+contract MellowV1Depositor {
+    error Forbidden();
+    error PoolNotFound();
+    error LimitUnderflow();
+
+    using SafeERC20 for IERC20;
+
+    uint256 public constant Q96 = 2 ** 96;
+    uint256 public constant D6 = 10 ** 6;
+
+    address public immutable owner;
+    ISwapRouter public immutable router;
+    mapping(address => mapping(address => IUniswapV3Pool)) public uniV3Pools;
+
+    constructor(ISwapRouter router_, address owner_) {
+        owner = owner_;
+        router = router_;
+    }
+
+    function addPools(IUniswapV3Pool[] memory pools) external {
+        if (msg.sender != owner) revert Forbidden();
+        for (uint256 i = 0; i < pools.length; i++) {
+            IUniswapV3Pool pool = pools[i];
+            address token0 = pool.token0();
+            address token1 = pool.token1();
+            uniV3Pools[token0][token1] = pool;
+            uniV3Pools[token1][token0] = pool;
+        }
+    }
+
+    function claim(address token) external {
+        if (msg.sender != owner) revert Forbidden();
+        IERC20(token).safeTransfer(msg.sender, IERC20(token).balanceOf(address(this)));
+    }
+
+    function _calculateAmountsForSwap(
+        uint256[] memory pricesX96,
+        uint256[] memory tvl,
+        uint256 capitalInTokenIn,
+        uint256 amountIn
+    ) private pure returns (uint256[] memory amountsIn) {
+        uint256 coefficientX96 = FullMath.mulDiv(amountIn, Q96, capitalInTokenIn);
+        amountsIn = new uint256[](pricesX96.length);
+        for (uint256 i = 0; i < pricesX96.length; i++) {
+            uint256 priceX96 = FullMath.mulDiv(Q96, Q96, pricesX96[i]);
+            amountsIn[i] = FullMath.mulDiv(tvl[i], coefficientX96, priceX96);
+            if (amountsIn[i] > amountIn) {
+                amountsIn[i] = amountIn;
+            }
+            amountIn -= amountsIn[i];
+        }
+    }
+
+    function deposit(address tokenIn, uint256 minCoefficientX96, uint256 minAmountOut, ERC20RootVault vault) external {
+        uint256 amountIn = IERC20(tokenIn).allowance(msg.sender, address(this));
+        (, uint256[] memory tvl) = vault.tvl();
+        address[] memory tokens = vault.vaultTokens();
+        IERC20(tokenIn).safeTransferFrom(msg.sender, address(this), amountIn);
+        amountIn = FullMath.mulDiv(amountIn, minCoefficientX96, Q96);
+
+        uint256[] memory tokenAmounts = new uint256[](tokens.length);
+        uint256[] memory amountsIn;
+
+        {
+            uint256 capitalInTokenIn = 0;
+            uint256[] memory pricesX96 = new uint256[](tokens.length);
+
+            for (uint256 i = 0; i < tokens.length; i++) {
+                if (tokens[i] == tokenIn) {
+                    tokenAmounts[i] = amountIn;
+                    pricesX96[i] = Q96;
+                } else {
+                    IUniswapV3Pool pool = uniV3Pools[tokenIn][tokens[i]];
+                    if (address(0) == address(pool)) revert PoolNotFound();
+                    (uint160 sqrtPriceX96, , , , , , ) = pool.slot0();
+                    uint256 priceX96 = FullMath.mulDiv(sqrtPriceX96, sqrtPriceX96, Q96);
+                    if (pool.token0() == tokenIn) {
+                        priceX96 = FullMath.mulDiv(Q96, Q96, priceX96);
+                    }
+                    uint24 fee = pool.fee();
+                    pricesX96[i] = FullMath.mulDiv(priceX96, D6, D6 - fee);
+                }
+                capitalInTokenIn += FullMath.mulDiv(tvl[i], pricesX96[i], Q96);
+            }
+
+            amountsIn = _calculateAmountsForSwap(pricesX96, tvl, capitalInTokenIn, amountIn);
+        }
+
+        for (uint256 i = 0; i < tokens.length; i++) {
+            if (tokens[i] == tokenIn) {
+                tokenAmounts[i] = amountsIn[i];
+            } else {
+                if (amountsIn[i] == 0) continue;
+                uint24 fee = uniV3Pools[tokenIn][tokens[i]].fee();
+                IERC20(tokenIn).safeIncreaseAllowance(address(router), amountsIn[i]);
+                tokenAmounts[i] = router.exactInputSingle(
+                    ISwapRouter.ExactInputSingleParams({
+                        tokenIn: tokenIn,
+                        tokenOut: tokens[i],
+                        fee: fee,
+                        recipient: address(this),
+                        deadline: type(uint256).max,
+                        amountIn: amountsIn[i],
+                        amountOutMinimum: 0,
+                        sqrtPriceLimitX96: 0
+                    })
+                );
+            }
+        }
+
+        uint256 balanceBefore = vault.balanceOf(address(this));
+
+        {
+            for (uint256 i = 0; i < tokens.length; i++) {
+                IERC20(tokens[i]).safeIncreaseAllowance(address(vault), tokenAmounts[i]);
+            }
+        }
+        vault.deposit(tokenAmounts, 0, "");
+        {
+            for (uint256 i = 0; i < tokens.length; i++) {
+                IERC20(tokens[i]).safeApprove(address(vault), 0);
+            }
+        }
+        uint256 lpAmount = vault.balanceOf(address(this)) - balanceBefore;
+
+        if (lpAmount < minAmountOut) {
+            revert LimitUnderflow();
+        }
+
+        IERC20(address(vault)).safeTransfer(msg.sender, lpAmount);
+    }
+
+    function depositUsingWrapper(
+        address tokenIn,
+        uint256 minCoefficientX96,
+        uint256 minAmountOut,
+        ERC20RootVault vault,
+        IDepositV1Wrapper depositWrapper
+    ) external {
+        uint256 amountIn = IERC20(tokenIn).allowance(msg.sender, address(this));
+        (, uint256[] memory tvl) = vault.tvl();
+        address[] memory tokens = vault.vaultTokens();
+        IERC20(tokenIn).safeTransferFrom(msg.sender, address(this), amountIn);
+        amountIn = FullMath.mulDiv(amountIn, minCoefficientX96, Q96);
+
+        uint256[] memory tokenAmounts = new uint256[](tokens.length);
+        uint256[] memory amountsIn;
+
+        {
+            uint256 capitalInTokenIn = 0;
+            uint256[] memory pricesX96 = new uint256[](tokens.length);
+
+            for (uint256 i = 0; i < tokens.length; i++) {
+                if (tokens[i] == tokenIn) {
+                    tokenAmounts[i] = amountIn;
+                    pricesX96[i] = Q96;
+                } else {
+                    IUniswapV3Pool pool = uniV3Pools[tokenIn][tokens[i]];
+                    if (address(0) == address(pool)) revert PoolNotFound();
+                    (uint160 sqrtPriceX96, , , , , , ) = pool.slot0();
+                    uint256 priceX96 = FullMath.mulDiv(sqrtPriceX96, sqrtPriceX96, Q96);
+                    if (pool.token0() == tokenIn) {
+                        priceX96 = FullMath.mulDiv(Q96, Q96, priceX96);
+                    }
+                    uint24 fee = pool.fee();
+                    pricesX96[i] = FullMath.mulDiv(priceX96, D6, D6 - fee);
+                }
+                capitalInTokenIn += FullMath.mulDiv(tvl[i], pricesX96[i], Q96);
+            }
+
+            amountsIn = _calculateAmountsForSwap(pricesX96, tvl, capitalInTokenIn, amountIn);
+        }
+
+        for (uint256 i = 0; i < tokens.length; i++) {
+            if (tokens[i] == tokenIn) {
+                tokenAmounts[i] = amountsIn[i];
+            } else {
+                if (amountsIn[i] == 0) continue;
+                uint24 fee = uniV3Pools[tokenIn][tokens[i]].fee();
+                IERC20(tokenIn).safeIncreaseAllowance(address(router), amountsIn[i]);
+                tokenAmounts[i] = router.exactInputSingle(
+                    ISwapRouter.ExactInputSingleParams({
+                        tokenIn: tokenIn,
+                        tokenOut: tokens[i],
+                        fee: fee,
+                        recipient: address(this),
+                        deadline: type(uint256).max,
+                        amountIn: amountsIn[i],
+                        amountOutMinimum: 0,
+                        sqrtPriceLimitX96: 0
+                    })
+                );
+            }
+        }
+
+        uint256 balanceBefore = vault.balanceOf(address(this));
+
+        {
+            for (uint256 i = 0; i < tokens.length; i++) {
+                IERC20(tokens[i]).safeIncreaseAllowance(address(depositWrapper), tokenAmounts[i]);
+            }
+        }
+        depositWrapper.deposit(address(vault), tokenAmounts, 0, "");
+        {
+            for (uint256 i = 0; i < tokens.length; i++) {
+                IERC20(tokens[i]).safeApprove(address(vault), 0);
+            }
+        }
+        uint256 lpAmount = vault.balanceOf(address(this)) - balanceBefore;
+
+        if (lpAmount < minAmountOut) {
+            revert LimitUnderflow();
+        }
+
+        IERC20(address(vault)).safeTransfer(msg.sender, lpAmount);
+    }
+}

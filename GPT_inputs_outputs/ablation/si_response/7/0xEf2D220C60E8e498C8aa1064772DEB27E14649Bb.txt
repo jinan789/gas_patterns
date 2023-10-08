@@ -1,0 +1,31 @@
+Sure, here are a few possible gas-wasting patterns that I found in the given Solidity code:
+
+1. **Excessive use of the `revert` operation**: The `revert` operation consumes all the remaining gas in the transaction. In this code, there are multiple instances where conditions are checked and if they are not met, `revert` is used. This pattern can be optimized by combining the conditions using logical operators (e.g., `&&` or `||`), hence reducing the number of `revert` operations. 
+
+    *How to find*: Look for multiple instances of the `revert` operation in a function.
+    
+    *How to fix*: Combine conditions using logical operators when possible to reduce the number of `revert` operations.
+
+2. **Inefficient use of `for` loops**: In the `openLottery` function, there are two loops that repeatedly perform similar operations. In the second loop, for instance, the code generates a random number until it finds one that hasn't been selected previously. This could potentially result in infinite loops and consume a lot of gas.
+
+    *How to find*: Look for loops that could potentially run indefinitely, or perform the same or similar operations repeatedly.
+    
+    *How to fix*: Use a more efficient algorithm to select unique random numbers. For instance, if the range of possible numbers is small, consider generating all possible numbers, shuffling the list, and then selecting the first `n` numbers.
+
+3. **Repeated use of `msg.sender`**: `msg.sender` is used multiple times in the contract, which costs extra gas each time. 
+
+    *How to find*: Look for multiple occurrences of `msg.sender`.
+    
+    *How to fix*: Store `msg.sender` in a local variable at the beginning of the function, then use this local variable instead.
+
+4. **Redundant Balance Verification**: In the `_basicTransfer` function, the balance of the `from` address is checked against the `amount` to be transferred, and if the balance is not sufficient, it reverts. This check is redundant because Solidity already throws an exception if there are not enough funds for the transfer.
+
+    *How to find*: Look for manual balance checks before transfers or other operations that already perform this check.
+    
+    *How to fix*: Remove the manual balance check and rely on the built-in exception handling of Solidity.
+
+5. **Multiple calls to the same function with the same arguments**: In the `openLottery` function, the `random` function is called multiple times with the same arguments. This wastes gas because the result is always the same.
+
+   *How to find*: Look for multiple calls to the same function with the same arguments in a single transaction.
+   
+   *How to fix*: Call the function once, store the result in a variable, and use this variable instead of calling the function again.

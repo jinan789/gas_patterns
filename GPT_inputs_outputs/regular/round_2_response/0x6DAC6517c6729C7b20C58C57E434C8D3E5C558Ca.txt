@@ -1,0 +1,24 @@
+1. **Redundant balance checking**: 
+
+    In the `manualSwap()` function, there are redundant balance checks before each operation (swapping tokens for ETH and sending ETH). 
+
+    - *Discovery process*: I noticed that the balance of the contract is checked before calling `swapTokensForEth()` and `sendETHToFee()`. This is an unnecessary operation because if the balance is zero, these functions should handle it gracefully without failing. 
+    - *Fix*: Remove the balance checks in the `manualSwap()` function. The called functions should handle the scenario when the balance is zero. This will save gas by avoiding unnecessary storage reads (checking the balance).
+    - *Impact*: Readability: 5; Security: 5; Maintainability: 5. This change would not affect the readability, security, or maintainability of the code because it only removes unnecessary checks.
+
+2. **Avoiding multiple storage reads**:
+
+    In the `\_transfer()` function, there are multiple reads of the `\_balances` mapping. 
+
+    - *Discovery process*: I noticed that the `\_balances` mapping is read multiple times within the `\_transfer` function, which costs gas each time. 
+    - *Fix*: Store the balance in a memory variable at the beginning of the function and use this variable throughout the function. At the end of the function, store the updated balance back in the `\_balances` mapping. This reduces the number of gas-expensive storage reads.
+    - *Impact*: Readability: 4; Security: 5; Maintainability: 4. This change may marginally decrease readability as developers have to follow the logic of the temporary variable, but it does not affect security. It may slightly impact the maintenance as developers have to remember to update the `\_balances` mapping at the end of the function.
+
+3. **Multiple conditional checks**:
+
+    In the `
+    \_transfer()` function, there are several conditions that check whether `from` and `to` are the `owner()`, `uniswapV2Router`, `uniswapV2Pair`, etc.
+
+    - *Discovery process*: I noticed that the code checks the same conditions multiple times within the `\_transfer` function, which results in redundancy and wastes gas.
+    - *Fix*: Group the conditions that share the same checks, and use else if where appropriate to avoid unnecessary checks. This optimizes the code by reducing the number of executed opcode instructions.
+    - *Impact*: Readability: 3; Security: 5; Maintainability: 4. This change might affect the readability of the code because it requires the conditions to be grouped. It does not affect security, and it might slightly impact maintainability because developers need to carefully manage the order and grouping of conditions.

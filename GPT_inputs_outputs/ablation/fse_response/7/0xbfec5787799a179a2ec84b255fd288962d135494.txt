@@ -1,0 +1,33 @@
+## Potential Gas Inefficiencies
+
+1. **Repeated Address Comparisons:** The contract contains multiple checks where an address is compared with address(0) or with `_wNative`. These checks are repeated throughout the code and can lead to wastage of gas.
+
+    * **Finding Process:** This pattern was found by examining the code and noticing the repeated use of comparisons between addresses and 0 or `_wNative`.
+    
+    * **Fix:** A possible solution could be to compute these boolean values once and store them in memory variables at the beginning of the function. This way, the comparison operation is done only once and the result can be reused, reducing gas costs.
+    
+    * **Readability: 5; Security: 5; Maintainability: 4:** This change doesn't make the code less readable or less secure. It slightly reduces maintainability as it adds a few extra lines of code and an extra variable.
+
+2. **Redundant Storage Reads:** The `Dex` struct is fetched twice from the `dexInfo` mapping in both functions.
+
+    * **Finding Process:** This pattern was found by observing that the `Dex` struct is fetched from the `dexInfo` mapping twice. Reading from storage is expensive in terms of gas, so this is a potential gas inefficiency.
+
+    * **Fix:** The `Dex` struct should be fetched once at the beginning of the function and stored in memory. The stored value can then be reused throughout the function.
+
+    * **Readability: 5; Security: 5; Maintainability: 4:** This change doesn't affect the code's readability or security. It slightly reduces maintainability as it adds an extra variable, but since the variable is used throughout the function, this is likely a worthy trade-off for the gas savings.
+
+3. **Multiple Calls to External Contracts:** The `_getFeeMinimum` function is called multiple times which can lead to wastage of gas.
+
+    * **Finding Process:** This pattern was found by noting that `_getFeeMinimum` is called multiple times in the contract. Each call to an external contract costs gas, so reducing the number of calls can save gas.
+
+    * **Fix:** The `_getFeeMinimum` function could be called once and the result stored in a variable in memory. This variable can then be used in the rest of the function, removing the need for multiple calls to `_getFeeMinimum`.
+
+    * **Readability: 5; Security: 5; Maintainability: 4:** This change doesn't make the code less readable or less secure. It reduces maintainability slightly as it adds a few extra lines of code and an extra variable.
+
+## Reflections
+
+In terms of prompt improvement, I think the prompt was clear and well explained. It might help to provide more specific information about the context in which the contract operates, but this isn't strictly necessary for the task at hand.
+
+During the reasoning process, I started by looking for repeated or redundant operations in the code, as these are often a source of gas inefficiencies. I then looked for opportunities to reduce the number of calls to external contracts, which are also expensive in terms of gas. Finally, I considered whether any operations could be moved outside of loops, but didn't find any such opportunities in this code.
+
+In future, I could improve my approach by researching more about common gas inefficiencies in Solidity and keeping an updated checklist of things to look for. I could also improve by learning more about the specific libraries and contracts used in the code, as these may offer opportunities for gas savings that I'm not currently aware of.

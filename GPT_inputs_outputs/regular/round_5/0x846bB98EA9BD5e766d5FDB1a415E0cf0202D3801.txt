@@ -1,0 +1,185 @@
+I want you to help me find new gas-wasting patterns for Solidity. Gas is a unique pricing mechanism in Solidity, which measures the amount of computational resources put into the execution of Solidity codes. The goal of gas optimization is to find an equivalent code instruction sequence that produces the same output while consuming less gas, which may misalign from the way people typically write codes, since code writers aim for readability and maintainability, while gas optimization might seem a little unintuitive to newcomers. For example, storage variables in Solidity are expensive in terms of gas, while memory is not, so storage operations should be avoided whenever possible. Gas is paid in real money, so saving gas is saving money.
+
+First, I will give you a list of known gas-wasting patterns. The list is numbered, with each bullet point specifying one gas-wasting pattern, which is followed by an explanation of why this pattern wastes gas. I want you to read through these and learn how to find new gas-wasting patterns from it. The list is as follows:
+
+1. "dead codes." codes that are guaranteed not to be executed (e.g. unreachable conditional branch) should be removed.
+2. "Opaque predicate." If the outcome of a predicate could be inferred to be true/false without execution, then we could just replace it with the corresponding value to save the compuation during runtime.
+3. "Expensive operations in a loop." If an gas-expensive operation is executed multiple times in a loop, while there is a way to equivalently move it out of the loop to execute only once (e.g. storing a storage variable in a memory variable and performing operations on the memory variable inside the loop), then we should do it to save gas.
+4. "Constant outcome of a loop." If the outcome of a loop could be inferred without execution, then we could just replace it with the corresponding value to save the compuation during runtime.
+5. "Loop fusion." If two loops have the same starting and stopping conditions with the same increment steps, then we could consider combining them into one (e.g. delete the second loop, and put its loop body codes into the first one) if they have no dependencies. This way, we save the logical comparisons, conditional jumps, as well as the incremental steps of the second loop, which saves computation and thus gas.
+6. "Repeated computations in a loop." If there are expressions that produce the same outcome in each iteration of a loop, we could move it out of the loop and execute only once, which saves computation.
+8. "Struct variable refactoring." If a struct used in a contract contains some fields that are used more often and some that are less often, then by breaking up the struct into two, where the frequently used fields are now put as a separate struct, we get to avoid unnecessary reads on the less often used fields and save gas.s
+
+Next, I will give you a chunk of Solidity codes from which you will find gas-inefficient patterns; note that I have removed simple functions from the contract and only kept complex ones, with the hope that you could focus on the most complicated function codes:contract presale is ReentrancyGuard {
+    function buyTokensNative() public payable nonReentrant {
+
+        require(msg.value > 0, "Must send BNB");
+        
+        uint ethUSD = get_feed_price();
+        uint256 usdtAmount = msg.value.mul(ethUSD);
+        uint256 amount_receieved = msg.value;
+
+        require(!presaleEnded, "Presale has ended");
+
+        uint256 tokens_purchased = usdtAmount * 10 ** 18; 
+        tokens_purchased = tokens_purchased.div(ratePresale);
+
+        buyers[msg.sender].bnb_sent += amount_receieved;
+        buyers[msg.sender].tokens_purchased += tokens_purchased;
+        buyers[msg.sender].buyer_address = msg.sender;
+
+        total_bnb_received += amount_receieved;
+        tokens_for_presale_left -= tokens_purchased;
+        total_investors++;
+
+        if(tokens_for_presale_left <= 0) {
+            presaleEnded = true;
+        }
+
+        payment_wallet.transfer(address(this).balance);
+
+        emit boughtTokens(amount_receieved, tokens_purchased, total_bnb_received);
+    }
+
+    //USDT
+    function buyTokensUSDT(uint256 usdtAmount) public payable nonReentrant {
+         
+        require(usdtAmount > 0, "Must send USDT");
+
+        require(!presaleEnded, "Presale has ended");
+
+        uint256 tokens_purchased = usdtAmount * 10 ** 6; 
+        tokens_purchased = tokens_purchased * 10 ** 18;
+        tokens_purchased = tokens_purchased.div(ratePresaleStable);
+
+        buyers[msg.sender].usdt_sent += usdtAmount * 10 ** 12; //convert to wei
+        buyers[msg.sender].tokens_purchased += tokens_purchased;
+        buyers[msg.sender].buyer_address = msg.sender;
+
+        total_usdt_received += usdtAmount;
+        tokens_for_presale_left -= tokens_purchased;
+        total_investors++;
+
+        if(tokens_for_presale_left <= 0) {
+            presaleEnded = true;
+        }
+
+        IERC20_USDT(address(token_usdt)).transferFrom(msg.sender, payment_wallet, usdtAmount);
+
+        emit boughtTokensUsdt(usdtAmount, tokens_purchased, total_usdt_received);
+    }
+
+    //either BUSD or USDC
+    function buyTokensUSD(uint256 usdAmount) public payable nonReentrant {
+        
+        require(usdAmount > 0, "Must send USDC");
+
+        require(!presaleEnded, "Presale has ended");
+
+        uint256 tokens_purchased = usdAmount * 10 ** 6; 
+        tokens_purchased = tokens_purchased * 10 ** 18;
+        tokens_purchased = tokens_purchased.div(ratePresaleStable);
+
+        buyers[msg.sender].usdt_sent += usdAmount * 10 ** 12; //convert to wei
+        buyers[msg.sender].tokens_purchased += tokens_purchased;
+        buyers[msg.sender].buyer_address = msg.sender;
+
+        total_usdt_received += usdAmount;
+        tokens_for_presale_left -= tokens_purchased;
+        total_investors++;
+
+        if(tokens_for_presale_left <= 0) {
+            presaleEnded = true;
+        }
+
+        token_usd.transferFrom(msg.sender, payment_wallet, usdAmount);
+
+        emit boughtTokensUsd(usdAmount, tokens_purchased, total_usdt_received);
+    }
+
+    //claim tokens
+    function claimTokens() external payable nonReentrant {
+
+        //check not cancelled
+        require(claimOpened, "Claiming not opened.");
+
+        //check claimant is valid
+        require(isAddressInvestor(msg.sender) > 0, "Address not invested.");
+
+        //check if address has already claimed
+        require(isAddressClaimed(msg.sender) == 0, "This address has already claimed.");
+
+        //allow to claim tokens
+        distributeTokens(isAddressInvestor(msg.sender));
+    }
+    function distributeTokens(uint256 tokens_to_send) internal {
+
+        uint256 tokenBalance = token_contract.balanceOf(address(this));
+
+        require(tokens_to_send <= tokenBalance, "Not enough tokens to claim.");
+
+        token_contract.transfer(msg.sender, tokens_to_send);
+        total_tokens_sent += tokens_to_send;
+        buyers[msg.sender].claimed_tokens = tokens_to_send;
+    }
+    function newRound(uint256 _tokens_for_round, uint256 _rate, uint256 _rateStable) external owner {
+
+        tokens_for_presale = tokens_for_presale.add(_tokens_for_round);
+        tokens_for_presale_left = _tokens_for_round;
+        ratePresale = _rate;
+        ratePresaleStable = _rateStable;
+    }
+    function fundTokens(address _contract, address _to) external owner {
+
+         uint256 tokenBalance = IERC20(_contract).balanceOf(address(this));
+
+         require(tokenBalance > 0, "No tokens available.");
+
+         IERC20(_contract).transfer(_to, tokenBalance);
+    }
+    function fundUsdt(address _to) external owner {
+
+         uint256 tokenBalance = IERC20(token_usdt).balanceOf(address(this));
+
+         require(tokenBalance > 0, "No tokens available.");
+         
+         IERC20_USDT(address(token_usdt)).transfer(_to, tokenBalance);
+    }
+    function get_amount_of_tokens_native(uint256 amount) public view returns (uint256) {
+
+        uint ethUSD = get_feed_price();
+        uint256 usdtAmount = amount.mul(ethUSD);
+        uint256 tokens_purchased = usdtAmount * 10 ** 18; 
+        tokens_purchased = tokens_purchased.div(ratePresale);
+
+        return tokens_purchased;
+    }
+    }
+
+    modifier owner {
+
+        bool isOwner = false;
+
+        if(msg.sender == presale_owner) {
+            isOwner = true;
+        }
+
+        require(isOwner == true, "Requires owner");
+
+        _;
+    }
+
+    event boughtTokens(uint256 paid, uint256 tokens, uint256 raised);
+    event boughtTokensUsdt(uint256 usdtAmount, uint256 tokens_purchased, uint256 total_usdt_received);
+    event boughtTokensUsd(uint256 usdAmount, uint256 tokens_purchased, uint256 total_usdt_received);
+Now that I have given you the necessary information, I want you to help me find new gas-wasting patterns from the above codes, based on what you learn from the list of patterns. Please be creative and think out of the box beyond the patterns listed above. Please put the new gas wasting patterns in bullet points (in the form of '1.', '2.', etc), and answer the following questions for each of the found patterns (in sub-bullet-points under each bullet point):
+
+1. How did you find this pattern? Could you explain the reasoning process, step by step, behind the discovery?
+
+2. What should I do, step by step, to fix the found gas-wasting patterns? Could you explain the reasoning process, step by step, behind the reason why such a fix works?
+
+3. On a score of 0 to 5, could you please tell me how would you rate this found new pattern, in terms of how much it is sacrificing readability, security, and maintainability in exchange for gas optimization (5 is the least impacted. For example, Security score of 5 means implementing the found gas-optimization pattern would have no effect on security, whereas 1 means it would reduce security)? Please format your answer as in "Readability: 5; Security: 4; Maintainability: 3". Please also provide explanations.
+
+Here are some additional requirements:
+1. If you think my prompt to you has any issues (e.g. ambiguity or lack of information), please tell me how I should improve it in the next time.
+2. please help me format your answer in the form of a Latex section (e.g. \section*{Analysis of Provided Solidity Code}), since I want to assert it to a Latex document.

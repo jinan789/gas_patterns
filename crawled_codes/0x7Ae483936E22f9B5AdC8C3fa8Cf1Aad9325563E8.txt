@@ -1,0 +1,59 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
+import "@openzeppelin/contracts/utils/Counters.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+
+contract Resume3NFT is ERC721, Ownable, ReentrancyGuard {
+    using Counters for Counters.Counter;
+    Counters.Counter private _tokenIdCounter;
+
+    string private constant BASE_URL='https://ipfs.4everland.io/ipfs/';
+    
+    uint256 public constant OG_PRICE = 0.001 ether;
+
+    mapping(uint256 => bool) public claimed;
+    mapping(address => uint256) public mintedCounts;
+    mapping(address=> string) public card;
+
+    event Minted(address indexed to, uint256 indexed tokenId, uint256 price);
+
+
+    constructor() ERC721("Resume3 NFT", "Resume3") {
+      
+    }
+
+    function mint(string memory _cid) external payable nonReentrant {
+        _tokenIdCounter.increment();
+        uint256 tokenId = _tokenIdCounter.current();
+        
+        require(msg.value == OG_PRICE, "Incorrect ether amount");
+        require(!claimed[tokenId], "NFT has been claimed");
+
+        claimed[tokenId] = true;
+        _safeMint(msg.sender, tokenId);
+        mintedCounts[msg.sender]++;
+        card[msg.sender]=_cid;
+        emit Minted(msg.sender, tokenId, msg.value);
+    }
+
+    function _transfer(address _from,address _to,uint256 _tokenId) internal virtual override {
+        super._transfer(_from, _to, _tokenId);
+    }
+
+    function tokenURI(uint256 _tokenId) public view override returns (string memory) {
+        require(_exists(_tokenId),"URI query for nonexistent token");
+        return string(abi.encodePacked(BASE_URL, card[ownerOf(_tokenId)]));
+    }
+
+    function withdraw() external onlyOwner {
+        uint256 balance = address(this).balance;
+        require(balance > 0, "No balance to withdraw");
+
+        (bool success, ) = payable(owner()).call{value: balance}("");
+        require(success, "Withdraw failed");
+    }
+}

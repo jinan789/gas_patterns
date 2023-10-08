@@ -1,0 +1,74 @@
+\begin{enumerate}
+
+\item \textbf{Repeated common computations}
+
+````
+\begin{itemize}
+\item \textit{Discovery Process:} In the `buyTokensNative`, `buyTokensUSDT`, and `buyTokensUSD` functions, we see the following lines of code repeated:
+```solidity
+uint256 tokens_purchased = usdtAmount * 10 ** 6; 
+tokens_purchased = tokens_purchased * 10 ** 18;
+tokens_purchased = tokens_purchased.div(ratePresaleStable);
+``` 
+This is a pattern of repeated computations that could be replaced by a function.
+
+\item \textit{Refactoring:} We can create a new function `calculateTokensPurchased` that performs this calculation and returns `tokens_purchased`. This function would take `usdtAmount` and `rate` as parameters. The refactored code would be more readable and maintainable, and it would centralize the logic for computing `tokens_purchased`, making future changes easier. 
+
+\item \textit{Impact:} 
+    \begin{itemize}
+    \item Readability: 5 - The code becomes more readable as the shared logic is centralized.
+    \item Security: 5 - There is no impact on security.
+    \item Maintainability: 5 - The code becomes more maintainable as the shared logic is centralized.
+    \end{itemize}
+\end{itemize}
+````
+
+\item \textbf{Repeated storage reads}
+
+```
+\begin{itemize}
+\item \textit{Discovery Process:} In the `buyTokensNative`, `buyTokensUSDT`, and `buyTokensUSD` functions, the `buyers` mapping is accessed multiple times to read and update the `buyer_address`, `tokens_purchased`, and `bnb_sent`/`usdt_sent` fields. This represents a pattern of repeated storage reads and writes, which is expensive in terms of gas.
+
+\item \textit{Refactoring:} Instead of accessing the `buyers` mapping multiple times, we can read the buyer's data once at the start of the function, update the fields in memory, and then write back to storage once at the end. This approach reduces the number of storage operations, saving gas.
+
+\item \textit{Impact:} 
+    \begin{itemize}
+    \item Readability: 4 - The code may become slightly less intuitive, as it introduces an additional step to write back to storage.
+    \item Security: 5 - There is no impact on security.
+    \item Maintainability: 4 - The code may become slightly less maintainable due to the extra step required to write back to storage.
+    \end{itemize}
+\end{itemize}
+```
+
+\item \textbf{Unnecessary boolean operations}
+
+````
+\begin{itemize}
+\item \textit{Discovery Process:} In the `owner` modifier, there is an unnecessary boolean check:
+```solidity
+bool isOwner = false;
+if(msg.sender == presale_owner) {
+    isOwner = true;
+}
+require(isOwner == true, "Requires owner");
+```
+This operation could be simplified to directly compare `msg.sender` with `presale_owner` in the `require` statement.
+
+\item \textit{Refactoring:} The refactored `owner` modifier would look like this:
+```solidity
+require(msg.sender == presale_owner, "Requires owner");
+```
+This removes the unnecessary boolean operation, making the code more readable and saving a small amount of gas.
+
+\item \textit{Impact:} 
+    \begin{itemize}
+    \item Readability: 5 - The code becomes more readable as the unnecessary boolean operation is removed.
+    \item Security: 5 - There is no impact on security.
+    \item Maintainability: 5 - The code becomes more maintainable as the unnecessary boolean operation is removed.
+    \end{itemize}
+\end{itemize}
+````
+
+\end{enumerate}
+
+For future requests, it would be helpful to have the full Solidity contract, including state variables and all functions, to provide a more comprehensive analysis. The state variables in the code (e.g., `buyers`, `presale_owner`, `presaleEnded`, `ratePresaleStable`) are used without context, making the analysis more challenging.

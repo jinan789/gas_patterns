@@ -1,0 +1,29 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.6.12;
+
+
+// ___ __ __
+// / _ \ _ __ ___ _ __ \ \/ /
+// | | | | '_ \ / _ \ '_ \ \ / 
+// | |_| | |_) | __/ | | |/ \ 
+// \___/| .__/ \___|_| |_/_/\_\
+// |_| 
+
+// Going places.
+
+// Not far but places.
+
+// May the crypto gods be with us and prevent an other Horizon.
+
+
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+
+
+contract OpenXMainnetToken is ERC20 {
+
+	constructor() public ERC20("OpenX Optimism", "wOpenX"){
+		_setupDecimals(18);
+		_mint(msg.sender, 16624999990000000000000000);
+	}
+
+}

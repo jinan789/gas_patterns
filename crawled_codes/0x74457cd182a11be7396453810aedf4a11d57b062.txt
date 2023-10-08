@@ -1,0 +1,60 @@
+pragma solidity ^0.8.13;
+import "src/arbi-fed/ArbiGovMessengerL1.sol";
+import "src/arbi-fed/AuraFarmer.sol";
+import "src/arbi-fed/Governable.sol";
+
+
+contract ArbiAuraFarmerMessenger is Governable{
+    
+    ArbiGovMessengerL1 arbiGovMessenger;
+    address auraFarmerL2;
+
+    constructor(
+        address _gov,
+        address _arbiGovMessenger
+    ) Governable(_gov) {
+        arbiGovMessenger = ArbiGovMessengerL1(_arbiGovMessenger);
+    }
+
+    function changeL2Chair(address _newL2Chair) external onlyGov {
+        bytes4 selector = AuraFarmer.changeL2Chair.selector;
+        bytes memory data = abi.encodeWithSelector(selector, _newL2Chair);
+        arbiGovMessenger.sendMessage(auraFarmerL2, selector, data);
+    }
+
+    function changeL2Guardian(address _newL2Guardian) external onlyGov {
+        bytes4 selector = AuraFarmer.changeL2Guardian.selector;
+        bytes memory data = abi.encodeWithSelector(selector, _newL2Guardian);
+        arbiGovMessenger.sendMessage(auraFarmerL2, selector, data);
+    }
+
+    function changeL2TWG(address _newL2TWG) external onlyGov {
+        bytes4 selector = AuraFarmer.changeL2TWG.selector;
+        bytes memory data = abi.encodeWithSelector(selector, _newL2TWG);
+        arbiGovMessenger.sendMessage(auraFarmerL2, selector, data);
+    }
+
+    function changeArbiFedL1(address _newArbiFedL1) external onlyGov {
+        bytes4 selector = AuraFarmer.changeArbiFedL1.selector;
+        bytes memory data = abi.encodeWithSelector(selector, _newArbiFedL1);
+        arbiGovMessenger.sendMessage(auraFarmerL2, selector, data);
+    }
+
+    function changeArbiGovMessengerL1(address _newArbiGovMessengerL1) external onlyGov {
+        bytes4 selector = AuraFarmer.changeArbiGovMessengerL1.selector;
+        bytes memory data = abi.encodeWithSelector(selector, _newArbiGovMessengerL1);
+        arbiGovMessenger.sendMessage(auraFarmerL2, selector, data);
+    }
+
+    function changeTreasuryL1(address _newTreasuryL1) external onlyGov {
+        bytes4 selector = AuraFarmer.changeTreasuryL1.selector;
+        bytes memory data = abi.encodeWithSelector(selector, _newTreasuryL1);
+        arbiGovMessenger.sendMessage(auraFarmerL2, selector, data);
+    }
+
+    function setMaxLossSetableByGuardianBps(uint _newMaxLossSetableByGuardianBps) external onlyGov {
+        bytes4 selector = AuraFarmer.setMaxLossSetableByGuardianBps.selector;
+        bytes memory data = abi.encodeWithSelector(selector, _newMaxLossSetableByGuardianBps);
+        arbiGovMessenger.sendMessage(auraFarmerL2, selector, data);
+    }
+}

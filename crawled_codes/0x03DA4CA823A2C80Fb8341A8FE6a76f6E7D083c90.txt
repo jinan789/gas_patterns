@@ -1,0 +1,20 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.17;
+
+import "@openzeppelin/contracts/finance/PaymentSplitter.sol";
+
+contract RVPaymentSplitter is PaymentSplitter {
+
+    constructor(address[] memory payees, uint256[] memory shares_) payable PaymentSplitter(payees, shares_) {}
+
+    function release(address payable account) public override {
+        require(account == msg.sender, "Payee can only release funds to their own address");
+        super.release(account);
+    }
+
+    function release(IERC20 token, address account) public override {
+        require(account == msg.sender, "Payee can only release funds to their own address");
+        super.release(token, account);
+    }
+
+}

@@ -1,0 +1,45 @@
+// SPDX-License-Identifier: MIT
+// ───────▄▀▀▀▀▀▀▀▀▀▀▄▄
+//────▄▀▀░░░░░░░░░░░░░▀▄
+//──▄▀░░░░░░░░░░░░░░░░░░▀▄
+//──█░░░░░░░░░░░░░░░░░░░░░▀▄
+//─▐▌░░░░░░░░▄▄▄▄▄▄▄░░░░░░░▐▌
+//─█░░░░░░░░░░░▄▄▄▄░░▀▀▀▀▀░░█
+//▐▌░░░░░░░▀▀▀▀░░░░░▀▀▀▀▀░░░▐▌
+//█░░░░░░░░░▄▄▀▀▀▀▀░░░░▀▀▀▀▄░█
+//█░░░░░░░░░░░░░░░░▀░░░▐░░░░░▐▌
+//▐▌░░░░░░░░░▐▀▀██▄░░░░░░▄▄▄░▐▌
+//─█░░░░░░░░░░░▀▀▀░░░░░░▀▀██░░█
+//─▐▌░░░░▄░░░░░░░░░░░░░▌░░░░░░█
+//──▐▌░░▐░░░░░░░░░░░░░░▀▄░░░░░█
+//───█░░░▌░░░░░░░░▐▀░░░░▄▀░░░▐▌
+//───▐▌░░▀▄░░░░░░░░▀░▀░▀▀░░░▄▀
+//───▐▌░░▐▀▄░░░░░░░░░░░░░░░░█
+//───▐▌░░░▌░▀▄░░░░▀▀▀▀▀▀░░░█
+//───█░░░▀░░░░▀▄░░░░░░░░░░▄▀
+//──▐▌░░░░░░░░░░▀▄░░░░░░▄▀
+//─▄▀░░░▄▀░░░░░░░░▀▀▀▀█▀
+//▀░░░▄▀░░░░░░░░░░▀░░░▀▀▀▀▄▄▄▄▄
+
+//  Stage 1 Token Launch 
+//  Stage 2 Buy shares of all notable CT profiles 
+//  Stage 3 Influence shareholder meetings
+//  Stage 4 Hostile take over
+//  Stage 5 Su Zhu lists $CT on OX and Cobie Hsaka GCR will Tweet
+
+//  Telegram: https://t.me/cobiehsakasuzhuinu
+//  Twitter: https://twitter.com/CobieHsakaSuZhu
+//  Supply: 92/8
+//  B/S Tax: 0/0 
+//  Market cap: 10B
+   
+pragma solidity ^0.8.0;
+
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+
+contract CT is ERC20, Ownable {
+constructor() ERC20("CobieHsakaSuZhuGCRKyleInversebrahDoKwonArthurHayesCryptoCredHighStakesCapAndrewKangSBFAnsemDegenSpartanInsilicoLedgerStatusSamTrabuccoFoooHedgedhogMichaelSaylorCarolineCZCLIcebergyNaniFiskantesDCFGodTraderSzSatsdartJimtalbotIamNomadKainKarbonLoomdartEdwardSnowdenGainzyAdamCochranHalpressBigDSenpai0xTubaTier10kNewsOfAlphaCMSinternSatsdartHentaiAvenger0xSisyphusMewn21BrentJezMcKennaBitcoinPalmerKaleoRIPAlexWiceZkSyncAirdropFarmers69Inu", "CT") {
+_mint(0x6cdaE1FF7DF4798F01304647FB652a171f1b997b, 4444444444 * (10 ** uint256(decimals())));
+}
+}

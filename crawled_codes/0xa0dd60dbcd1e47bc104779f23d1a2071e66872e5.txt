@@ -1,0 +1,17 @@
+/**
+ *Submitted for verification at Etherscan.io on 2023-08-05
+*/
+
+// SPDX-License-Identifier: GPL-3.0
+pragma solidity ^0.8.8;
+
+contract HowOfenYouUseWeb3APP {
+        
+    event HowOfenYouUseWeb3App(uint8 TheHigherTheNumberTheMoreFrequentBetween0AND255);
+
+    function howOfenYouYouUseWeb3App(uint8 _theHigherTheNumberTheMoreFrequentBetween0AND255) public {
+        emit HowOfenYouUseWeb3App(_theHigherTheNumberTheMoreFrequentBetween0AND255);
+    }
+
+
+}

@@ -1,0 +1,37 @@
+Sure, I've analyzed the Solidity code you've provided, and I've identified a few patterns of inefficient gas usage. Here are some new patterns not included in your original list:
+
+1. **Multiple calls to the same function**: In the given code, `_wNativeFromDex` function is called multiple times with the same `dex.wNative` argument in both `swapBalancerV2` and `swapUniswapV3` functions. Each function call in Solidity costs gas, thus multiple calls to the same function with the same arguments is inefficient. Instead of making multiple calls, you could store the result of the function call in a local variable and use it throughout the function. 
+
+```solidity
+address payable _wNative = _wNativeFromDex(dex.wNative);
+```
+
+2. **Unnecessary type conversions**: In the given code, the `dexId` is unnecessarily converted to `uint128` multiple times. This typecasting operation consumes gas. While the gas cost might be small, it can add up quickly in large and complex contracts. Therefore, unnecessary type conversions should be avoided. If `dexId` is expected to be `uint128`, it should be passed as such to avoid repeated type conversions.
+
+```solidity
+Dex memory dex = dexInfo[uint128(dexId)];
+```
+
+3. **Boolean re-computation**: The boolean variable `outIsNative` is computed twice in both `swapBalancerV2` and `swapUniswapV3` functions. This is a wastage of gas since the computation could be done once and stored in a variable for later usage.
+
+```solidity
+bool outIsNative = address(singleSwap.assetOut) == address(0)
+    || address(singleSwap.assetOut) == _wNative;
+```
+
+4. **Repeated checks for zero address**: The zero address is checked multiple times for both `singleSwap.assetIn` and `singleSwap.assetOut` in the `swapBalancerV2` function and for `singleSwapParams.tokenIn` and `singleSwapParams.tokenOut` in the `swapUniswapV3` function. This could be avoided by using a boolean variable to keep track of whether the address has been checked before.
+
+```solidity
+if (address(singleSwap.assetIn) == address(0)) { ... }
+if (address(singleSwap.assetOut) == address(0)) { ... }
+```
+
+5. **Sub-optimal use of storage and memory**: In the given code, `Dex memory dex = dexInfo[uint128(dexId)];` is declared as memory. If `dexInfo` is a storage array, this means that the corresponding `Dex` object is being loaded from storage to memory. This is more expensive than accessing it directly from storage. If `dex` is used multiple times in the function, it would be more gas efficient to declare it as a storage reference. 
+
+```solidity
+Dex storage dex = dexInfo[dexId];
+```
+
+To find these patterns, I meticulously went through the provided Solidity code and matched each operation with the potential gas-wasting patterns. The solutions to these issues generally involve restructuring the code to minimize the number of operations, and specifically the number of costly operations such as storage reads, function calls, and type conversions. 
+
+Please note that gas optimization is a continual process, and the suggestions above should be tested for their impact on gas cost. Always ensure that changes for the sake of gas optimization do not compromise the security or functionality of the contract.

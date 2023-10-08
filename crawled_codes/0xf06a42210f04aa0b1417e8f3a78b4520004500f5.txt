@@ -1,0 +1,45 @@
+// SPDX-License-Identifier: MIT
+
+pragma solidity ^0.8.0;
+
+/// @title: Bear with Me
+/// @author: manifold.xyz
+
+import "./manifold/ERC721Creator.sol";
+
+///////////////////////////////////////////////////////////////
+//                                                           //
+//                                                           //
+//    MMMMMMMMMMMMMMMNKkdocccccccccccodkKNMMMMMMMMMMMMMMM    //
+//    MMMMMMMMMMMN0dc:::ldxkOO0o0OOkxdl:::cd0NMMMMMMMMMMM    //
+//    MMMMMMMMW0o:;cxKNMMMMMMMMMMMMMMMMMNKxc;:o0WMMMMMMMM    //
+//    MMMMMMWO:,ckNMMMMMMNkkNKdccdKNOkXMMMMMNkc,:OWMMMMMM    //
+//    MMMMW0:'lKWMMMMKlc00'.kO.  .x0'.k0coXMMMWKl':0WMMMM    //
+//    MMMNx':0WMMMMMMXd';x, .,    .' 'd;'dXMMMMMW0:'xNMMM    //
+//    MMNl'oNMMMMMMMMMMO'              'OMMMMMMMMMNo'lNMM    //
+//    MNl.dWMMMMMMMMMMMWk.            .kWMMMMMMMMMMWd.lNM    //
+//    Mx.lNMMMMMMMWKkoc;'             .,:lx0NMMMMMMMNl.xM    //
+//    X;,KMMMMMMMXo.                       .:0MMMMMMMK,;X    //
+//    x.lWMMMMMWKo'    .:,           .;,.   .cOWMMMMMWl.x    //
+//    o.dMMMMMWx,.     'dl.          .do.     .oXMMMMMx.o    //
+//    o.xMMMMMW0l.     .',,;::: ::::;,,'.    .:kNMMMMMx.l    //
+//    d.oMMMMMXc      :KNWWMMMMMMMMMMMWNd.     ,0MMMMMo.d    //
+//    O':NMMMWo      .xMMMMMMMMMMMMMMMMMX:      ;XMMMN:'O    //
+//    Wc.kMMMWkcc,   '0MMMMMMMMMMMMMMMMMMd   'ccdNMMMk.cW    //
+//    MK,,0MMMMMk.   ;XMMMMMMMMMMMMMMMMMMk.  .kWMMMMK,,KM    //
+//    MMO';KMMM0'    ,KMMMMMMMMMMMMMMMMMMk.   '0MMMK;'OMM    //
+//    MMM0;,kWNc     .xMMMMMMMMMMMMMMMMMWo     cNWk,;0MMM    //
+//    MMMMXl'co.      '0MMKocldMxoc:xNMMO.     .lc'lXMMMM    //
+//    MMMMMWO:.        .dX0l'.    ..oXKo.       .:OWMMMMM    //
+//    MMMMMMMWOc.        .;llc::::cll;.       .cOWMMMMMMM    //
+//    MMMMMMMMMWXxc'                      ':xXWMMMMMMMMM     //
+//    MMMMMMMMMMMMMN0dl;'..        ..';ld0NMMMMMMMMMMMMM     //
+//    MMMMMMMMMMMMMMMMMWNKOxdooooodxOKNWMMMMMMMMMMMMMMMMM    //
+//                                                           //
+//                                                           //
+///////////////////////////////////////////////////////////////
+
+
+contract BWM is ERC721Creator {
+    constructor() ERC721Creator("Bear with Me", "BWM") {}
+}

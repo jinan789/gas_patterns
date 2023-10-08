@@ -1,0 +1,29 @@
+Sure, I can help you with that. Here are some additional gas-wasting patterns in Solidity:
+
+9. **Excessive Function Calls**: This happens when you call a function multiple times unnecessarily. Each function call consumes gas, and it is more expensive if the function is external.
+
+   - Discovery: This pattern was found by analyzing the frequency of function calls in a contract's code. If a function is called multiple times with the same parameters, it's likely that the repeated calls are unnecessary.
+   - Fix: One possible solution is to create a local variable to store the function's return value. Then, use this variable instead of calling the function again. This process reduces the number of function calls, thereby saving gas.
+   - Impact: Readability: 5; Security: 5; Maintainability: 4. This pattern may slightly affect the maintainability if the function's result is expected to change over time. In this case, the value of the variable should be updated correspondingly.
+
+10. **Unoptimized Array Handling**: This includes pushing elements one by one into an array and deleting elements one by one from an array.
+
+   - Discovery: This was discovered by observing that arrays are commonly used in Solidity and their manipulation can be expensive in terms of gas, especially when operations are done in a loop.
+   - Fix: To optimize, one could use `memory` arrays for intermediate operations and then copy the entire array to storage at once. Also, instead of deleting items from an array one by one, you could "mark" them for deletion and then remove them all at once at a later stage.
+   - Impact: Readability: 4; Security: 5; Maintainability: 3. This pattern might make the code slightly less readable and maintainable, but it should not impact security.
+
+11. **Not Using Libraries for Complex Operations**: For example, using a simple `for` loop to perform operations that could be handled efficiently by a library, like sorting an array.
+
+   - Discovery: This was identified by observing that Solidity supports library usage. Not using them for complex operations can lead to more gas usage.
+   - Fix: You should use in-built libraries for complex operations instead of implementing them manually. This can save a significant amount of gas.
+   - Impact: Readability: 5; Security: 5; Maintainability: 5. Using libraries usually improves all these aspects.
+
+12. **Unnecessary State Variable**: This means declaring a variable as a `state variable` when it could have been a `memory` or `stack` variable.
+
+   - Discovery: This was found by noticing that state variables consume more gas than memory or stack variables. If a variable is not needed across function calls or transactions, it could be a `memory` variable instead of a `state` variable.
+   - Fix: You should declare a variable as a state variable only if it needs to persist across function calls or transactions. This can save a lot of gas.
+   - Impact: Readability: 5; Security: 5; Maintainability: 5. This pattern should not affect these aspects negatively.
+
+In terms of improving the original task, it would be helpful to specify any particular areas of Solidity you're interested in, as it's a broad language with many different features. This would help narrow down the search for gas-wasting patterns.
+
+Reflecting on my reasoning process, I primarily focused on common features and operations in Solidity that are known to consume more gas. I then considered how these features and operations could be misused or unoptimized. In the future, I might also look at less common features or more complex scenarios that could lead to gas wastage.

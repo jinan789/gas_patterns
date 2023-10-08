@@ -1,0 +1,26 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+
+/*      _______________   ______________
+        \_   _____/\   \ /   /\____    /
+         |    __)_  \   Y   /   /     / 
+         |        \  \     /   /     /_ 
+         _______  /   \___/   /_______ \
+                \/                    \/ */
+
+contract EVZ is Context, ERC20 {
+
+	constructor(uint256 _supply) ERC20("EVZ", "EVZ") {
+		_mint(msg.sender, _supply);
+	}
+
+	function decimals() public view virtual override returns (uint8) {
+        return 6;
+    }
+
+
+
+}

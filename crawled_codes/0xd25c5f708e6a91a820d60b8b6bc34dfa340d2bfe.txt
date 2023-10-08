@@ -1,0 +1,32 @@
+// SPDX-License-Identifier: MIT
+
+/// @title Choreographic Time Capsule
+/// @author transientlabs.xyz
+
+pragma solidity 0.8.19;
+
+import {Doppelganger} from "tl-creator-contracts/doppelganger/Doppelganger.sol";
+
+contract Choreographic is Doppelganger {
+
+    constructor(
+        string memory name,
+        string memory symbol,
+        address defaultRoyaltyRecipient,
+        uint256 defaultRoyaltyPercentage,
+        address initOwner,
+        address[] memory admins,
+        bool enableStory,
+        address blockListRegistry
+    ) Doppelganger(
+        0x12Ab97BDe4a92e6261fca39fe2d9670E40c5dAF2,
+        name,
+        symbol,
+        defaultRoyaltyRecipient,
+        defaultRoyaltyPercentage,
+        initOwner,
+        admins,
+        enableStory,
+        blockListRegistry
+    ) {}
+}

@@ -1,0 +1,665 @@
+// SPDX-License-Identifier: Unlicense
+
+pragma solidity ^0.8.0;
+
+import { IONFT1155Core } from "./interfaces/IONFT1155Core.sol";
+import { ILayerZeroEndpoint } from "./interfaces/ILayerZeroEndpoint.sol";
+import { ICassette } from "./interfaces/ICassette.sol";
+import { IKaijuMartRedeemable } from "./interfaces/IKaijuMartRedeemable.sol";
+import { ONFT1155Core } from "./custom-lz/ONFT1155Core.sol";
+import { ERC1155SeaDrop } from "./ERC1155SeaDrop.sol";
+import { ERC1155SeaDropContractOfferer } from "./lib/ERC1155SeaDropContractOfferer.sol";
+
+error Cassette_AlreadySetup();
+error Cassette_ExceedsMaxPage();
+error Cassette_InvalidConfiguration();
+error Cassette_InvalidSendData();
+error Cassette_NotAllowed();
+error Cassette_ValueOutOfRange();
+
+/**
+                        .             :++-
+                       *##-          +####*          -##+
+                       *####-      :%######%.      -%###*
+                       *######:   =##########=   .######*
+                       *#######*-#############*-*#######*
+                       *################################*
+                       *################################*
+                       *################################*
+                       *################################*
+                       *################################*
+                       :*******************************+.
+
+                .:.
+               *###%*=:
+              .##########+-.
+              +###############=:
+              %##################%+
+             =######################
+             -######################++++++++++++++++++=-:
+              =###########################################*:
+               =#############################################.
+  +####%#*+=-:. -#############################################:
+  %############################################################=
+  %##############################################################
+  %##############################################################%=----::.
+  %#######################################################################%:
+  %##########################################+:    :+%#######################:
+  *########################################*          *#######################
+   -%######################################            %######################
+     -%###################################%            #######################
+       =###################################-          :#######################
+     ....+##################################*.      .+########################
+  +###########################################%*++*%##########################
+  %#########################################################################*.
+  %#######################################################################+
+  ########################################################################-
+  *#######################################################################-
+  .######################################################################%.
+     :+#################################################################-
+         :=#####################################################:.....
+             :--:.:##############################################+
+   ::             +###############################################%-
+  ####%+-.        %##################################################.
+  %#######%*-.   :###################################################%
+  %###########%*=*####################################################=
+  %####################################################################
+  %####################################################################+
+  %#####################################################################.
+  %#####################################################################%
+  %######################################################################-
+  .+*********************************************************************.
+ * @title KAIJU ORIGINS: The Journals of Stod - Cassette
+ * @notice See https://origins.kaijukingz.io/ for more details.
+ * @author Augminted Labs, LLC
+ */
+contract Cassette is ONFT1155Core, ERC1155SeaDrop, ICassette, IKaijuMartRedeemable {
+    struct Setup {
+        address kmart;
+        address lzEndpoint;
+        uint256 maxPage;
+        uint256 totalChains;
+        uint256 chainOffset;
+    }
+
+    uint16 public constant FUNCTION_TYPE_BURN = uint16(uint256(keccak256("BURN")));
+
+    uint256 public MAX_PAGE;
+    uint256 public TOTAL_CHAINS;
+    uint256 public CHAIN_OFFSET;
+
+    address public kmart;
+    address public replicator;
+    uint256 public currentMaxPage;
+    uint256 public totalMinted;
+    bool public isSetup;
+
+    constructor(
+        address allowedConfigurer,
+        address allowedConduit,
+        address allowedSeaport,
+        string memory _name,
+        string memory _symbol
+    )
+        ERC1155SeaDrop(
+            allowedConfigurer,
+            allowedConduit,
+            allowedSeaport,
+            _name,
+            _symbol
+        )
+    {}
+
+    /**
+     * @inheritdoc ONFT1155Core
+     */
+    function supportsInterface(bytes4 interfaceId) public view virtual override(ERC1155SeaDropContractOfferer, ONFT1155Core) returns (bool) {
+        return
+            ERC1155SeaDropContractOfferer.supportsInterface(interfaceId)
+            || super.supportsInterface(interfaceId);
+    }
+
+    /**
+     * @notice Calculate page number of a specified token ID
+     * @param _tokenId Token ID to return the page number of
+     * @return uint256 A token's corresponding page number
+     */
+    function page(uint256 _tokenId) public view returns (uint256) {
+        if (_tokenId > MAX_PAGE * TOTAL_CHAINS) revert Cassette_ValueOutOfRange();
+
+        return _tokenId == 0 ? 0 : (_tokenId + TOTAL_CHAINS - 1) / TOTAL_CHAINS;
+    }
+
+    /**
+     * @notice Calculate token ID of a specified page
+     * @dev This will vary depending on which chain this contract is deployed to
+     * @param _page Page to return the token ID of
+     * @return uint256 A page's corresponding token ID
+     */
+    function tokenId(uint256 _page) public view returns (uint256) {
+        if (_page > MAX_PAGE) revert Cassette_ValueOutOfRange();
+
+        return _page == 0 ? 0 : ((_page - 1) * TOTAL_CHAINS) + CHAIN_OFFSET + 1;
+    }
+
+    /**
+     * @notice Return an array of token balances for a specified address
+     * @param _account Address to return the token balances of
+     * @return uint256[] Balances for every valid token ID
+     */
+    function balancesOf(address _account) public view returns (uint256[] memory) {
+        uint256[] memory balances = new uint256[](TOTAL_CHAINS * MAX_PAGE + 1);
+
+        for (uint256 i; i < balances.length;) {
+            balances[i] = balanceOf(_account, i);
+            unchecked { ++i; }
+        }
+
+        return balances;
+    }
+
+    /**
+     * @notice Initialize contract state
+     * @param _setup Parameters for initial contract state
+     */
+    function setup(Setup calldata _setup) external onlyOwner() {
+        if (isSetup) revert Cassette_AlreadySetup();
+
+        MAX_PAGE = _setup.maxPage;
+        TOTAL_CHAINS = _setup.totalChains;
+        CHAIN_OFFSET = _setup.chainOffset;
+        lzEndpoint = ILayerZeroEndpoint(_setup.lzEndpoint);
+
+        isSetup = true;
+    }
+
+    /**
+     * @notice Set the address of the kmart contract
+     * @param _kmart Address of the kmart contract
+     */
+    function setKmart(address _kmart) public payable onlyOwner {
+        kmart = _kmart;
+    }
+
+    /**
+     * @notice Set the address of the replicator contract
+     * @param _replicator Address of the replicator contract
+     */
+    function setReplicator(address _replicator) public payable onlyOwner {
+        replicator = _replicator;
+    }
+
+    /**
+     * @notice Set the current maximum page
+     * @param _currentMaxPage Current maximum page
+     */
+    function setCurrentMaxPage(uint256 _currentMaxPage) public payable onlyOwner {
+        if (_currentMaxPage > MAX_PAGE) revert Cassette_ExceedsMaxPage();
+
+        currentMaxPage = _currentMaxPage;
+    }
+
+    /**
+     * @notice Mint a specified number of blank cassettes from a kmart lot
+     * @param _amount Amount of blank cassettes to mint
+     * @param _to Address receiving the blank cassettes
+     */
+    function kmartRedeem(uint256, uint32 _amount, address _to) public {
+        if (msg.sender != kmart) revert Cassette_NotAllowed();
+
+        _mint(_to, 0, _amount);
+    }
+
+    /**
+     * @notice Mint a specified number of a specific page using a replicator
+     * @param _to Address receiving the pages
+     * @param _page Page to mint
+     * @param _amount Amount of pages to mint
+     */
+    function replicatorMint(address _to, uint256 _page, uint256 _amount) public payable {
+        _mint(_to, _page, _amount);
+    }
+
+    /**
+     * @notice Internal function for minting pages
+     * @param _to Address receiving the pages
+     * @param _page Page to mint
+     * @param _amount Amount of pages to mint
+     */
+    function _mint(address _to, uint256 _page, uint256 _amount) internal {
+        if (_page > MAX_PAGE) revert Cassette_ExceedsMaxPage();
+
+        _mint(_to, tokenId(_page), _amount, "");
+
+        unchecked { totalMinted += _amount; }
+    }
+
+    /**
+     * @inheritdoc ERC1155SeaDrop
+     */
+    function burn(
+        address, // _from,
+        uint256 _tokenId,
+        uint256 _amount
+    )
+        external
+        override
+    {
+        uint256 _page = page(_tokenId);
+
+        if (_page + 1 > currentMaxPage) revert Cassette_ExceedsMaxPage();
+
+        _burn(msg.sender, msg.sender, _tokenId, _amount);
+        _mint(msg.sender, _page + 1, _amount);
+    }
+
+    /**
+     * @inheritdoc ERC1155SeaDrop
+     */
+    function batchBurn(
+        address, // _from,
+        uint256[] memory _tokenIds,
+        uint256[] memory _amounts
+    )
+        external
+        override
+    {
+        for (uint256 i; i < _tokenIds.length;) {
+            uint256 _page = page(_tokenIds[i]);
+
+            if (_page + 1 > currentMaxPage) revert Cassette_ExceedsMaxPage();
+
+            _burn(msg.sender, _tokenIds[i], _amounts[i]);
+            _mint(msg.sender, _page + 1, _amounts[i]);
+
+            unchecked { ++i; }
+        }
+    }
+
+    /**
+     * @notice Burn a token on the current chain to receive the next page in the series on a destination chain
+     * @dev For more details see https://layerzero.gitbook.io/docs/evm-guides/master
+     * @param _from Address to burn a token from
+     * @param _dstChainId Destination chain's LayerZero ID
+     * @param _toAddress Address to receive the next page in the series
+     * @param _tokenId Token to burn
+     * @param _amount Amount of tokens to burn
+     * @param _refundAddress Address to send refund to if transaction is cheaper than expected
+     * @param _zroPaymentAddress Address of $ZRO token holder that will pay for the transaction
+     * @param _adapterParams Parameters for custom functionality
+     */
+    function burnFrom(
+        address _from,
+        uint16 _dstChainId,
+        bytes memory _toAddress,
+        uint256 _tokenId,
+        uint256 _amount,
+        address payable _refundAddress,
+        address _zroPaymentAddress,
+        bytes memory _adapterParams
+    )
+        public
+        payable
+    {
+        if (page(_tokenId) + 1 > currentMaxPage) revert Cassette_ExceedsMaxPage();
+
+        _sendBatch(
+            FUNCTION_TYPE_BURN,
+            _from,
+            _dstChainId,
+            _toAddress,
+            _toSingletonArray(_tokenId),
+            _toSingletonArray(_amount),
+            _refundAddress,
+            _zroPaymentAddress,
+            _adapterParams
+        );
+    }
+
+    /**
+     * @notice Burn a batch of tokens on the current chain to receive the next pages in the series on a destination chain
+     * @dev For more details see https://layerzero.gitbook.io/docs/evm-guides/master
+     * @param _from Address to burn tokens from
+     * @param _dstChainId Destination chain's LayerZero ID
+     * @param _toAddress Address to receive the next pages in the series
+     * @param _tokenIds Tokens to burn
+     * @param _amounts Amounts of tokens to burn
+     * @param _refundAddress Address to send refund to if transaction is cheaper than expected
+     * @param _zroPaymentAddress Address of $ZRO token holder that will pay for the transaction
+     * @param _adapterParams Parameters for custom functionality
+     */
+    function burnBatchFrom(
+        address _from,
+        uint16 _dstChainId,
+        bytes memory _toAddress,
+        uint256[] memory _tokenIds,
+        uint256[] memory _amounts,
+        address payable _refundAddress,
+        address _zroPaymentAddress,
+        bytes memory _adapterParams
+    )
+        public
+        payable
+    {
+        for (uint256 i; i < _tokenIds.length;) {
+            if (page(_tokenIds[i]) + 1 > currentMaxPage) revert Cassette_ExceedsMaxPage();
+            unchecked { ++i; }
+        }
+
+        _sendBatch(
+            FUNCTION_TYPE_BURN,
+            _from,
+            _dstChainId,
+            _toAddress,
+            _tokenIds,
+            _amounts,
+            _refundAddress,
+            _zroPaymentAddress,
+            _adapterParams
+        );
+    }
+
+    /**
+     * @notice Estimate the cost of sending a token to a destination chain
+     * @param _dstChainId Destination chain's LayerZero ID
+     * @param _toAddress Address to receive the token
+     * @param _tokenId Token to send
+     * @param _amount Amount of tokens to send
+     * @param _useZro Flag indicating whether to use $ZRO for payment
+     * @param _adapterParams Parameters for custom functionality
+     */
+    function estimateSendFee(
+        uint16 _dstChainId,
+        bytes memory _toAddress,
+        uint256 _tokenId,
+        uint256 _amount,
+        bool _useZro,
+        bytes memory _adapterParams
+    )
+        public
+        view
+        override
+        returns (uint256 nativeFee, uint256 zroFee)
+    {
+        return estimateBatchFee(
+            FUNCTION_TYPE_SEND,
+            _dstChainId,
+            _toAddress,
+            _toSingletonArray(_tokenId),
+            _toSingletonArray(_amount),
+            _useZro,
+            _adapterParams
+        );
+    }
+
+    /*
+     * @notice Estimate the cost of sending a batch of tokens to a destination chain
+     * @param _dstChainId Destination chain's LayerZero ID
+     * @param _toAddress Address to receive the tokens
+     * @param _tokenId Tokens to send
+     * @param _amount Amounts of tokens to send
+     * @param _useZro Flag indicating whether to use $ZRO for payment
+     * @param _adapterParams Parameters for custom functionality
+     */
+    function estimateSendBatchFee(
+        uint16 _dstChainId,
+        bytes memory _toAddress,
+        uint256[] memory _tokenIds,
+        uint256[] memory _amounts,
+        bool _useZro,
+        bytes memory _adapterParams
+    )
+        public
+        view
+        override
+        returns (uint256 nativeFee, uint256 zroFee)
+    {
+        return estimateBatchFee(
+            FUNCTION_TYPE_SEND_BATCH,
+            _dstChainId,
+            _toAddress,
+            _tokenIds,
+            _amounts,
+            _useZro,
+            _adapterParams
+        );
+    }
+
+    /*
+     * @notice Estimate the cost of performing a specified cross-chain function on a token
+     * @param _functionType Cross-chain function to perform
+     * @param _dstChainId Destination chain's LayerZero ID
+     * @param _toAddress Address to receive the tokens
+     * @param _tokenId Tokens to send
+     * @param _amount Amounts of tokens to send
+     * @param _useZro Flag indicating whether to use $ZRO for payment
+     * @param _adapterParams Parameters for custom functionality
+     */
+    function estimateFee(
+        uint16 _functionType,
+        uint16 _dstChainId,
+        bytes memory _toAddress,
+        uint256 _tokenId,
+        uint256 _amount,
+        bool _useZro,
+        bytes memory _adapterParams
+    ) public view returns (uint256 nativeFee, uint256 zroFee) {
+        return estimateBatchFee(
+            _functionType,
+            _dstChainId,
+            _toAddress,
+            _toSingletonArray(_tokenId),
+            _toSingletonArray(_amount),
+            _useZro,
+            _adapterParams
+        );
+    }
+
+    /*
+     * @notice Estimate the cost of performing a specified cross-chain function on a batch of tokens
+     * @param _functionType Cross-chain function to perform
+     * @param _dstChainId Destination chain's LayerZero ID
+     * @param _toAddress Address to receive the tokens
+     * @param _tokenIds Tokens to burn
+     * @param _amounts Amounts of tokens to burn
+     * @param _useZro Flag indicating whether to use $ZRO for payment
+     * @param _adapterParams Parameters for custom functionality
+     */
+    function estimateBatchFee(
+        uint16 _functionType,
+        uint16 _dstChainId,
+        bytes memory _toAddress,
+        uint256[] memory _tokenIds,
+        uint256[] memory _amounts,
+        bool _useZro,
+        bytes memory _adapterParams
+    ) public view returns (uint256 nativeFee, uint256 zroFee) {
+        bytes memory payload = abi.encode(_functionType, _toAddress, _tokenIds, _amounts);
+        return lzEndpoint.estimateFees(_dstChainId, address(this), payload, _useZro, _adapterParams);
+    }
+
+    /**
+     * @notice Override `ONFT1155Core` function to debit a batch of tokens from the current chain
+     * @dev For more details see https://layerzero.gitbook.io/docs/evm-guides/master
+     * @param _from Address to debit tokens from
+     * @param _tokenIds Tokens to debit
+     * @param _amounts Amounts of tokens to debit
+     */
+    function _debitFrom(
+        address _from,
+        uint16, // _dstChainId
+        bytes memory, // _toAddress
+        uint256[] memory _tokenIds,
+        uint256[] memory _amounts
+    )
+        internal
+        override
+    {
+        if (msg.sender != _from && !isApprovedForAll(_from, msg.sender)) revert Cassette_NotAllowed();
+
+        _batchBurn(_from, _from, _tokenIds, _amounts);
+    }
+
+    /**
+     * @notice Override `ONFT1155Core` function to credit a batch of tokens on the current chain
+     * @dev For more details see https://layerzero.gitbook.io/docs/evm-guides/master
+     * @param _toAddress Address to credit tokens to
+     * @param _tokenIds Tokens to credit
+     * @param _amounts Amounts of tokens to credit
+     */
+    function _creditTo(
+        uint16, // _srcChainId
+        address _toAddress,
+        uint256[] memory _tokenIds,
+        uint256[] memory _amounts
+    )
+        internal
+        override
+    {
+        _batchMint(_toAddress, _tokenIds, _amounts, "");
+    }
+
+    /**
+     * @notice Override `ONFT1155Core` function to send a batch of tokens from the current chain to a destination chain
+     * @dev For more details see https://layerzero.gitbook.io/docs/evm-guides/master
+     * @param _from Address to send tokens from
+     * @param _dstChainId Destination chain's LayerZero ID
+     * @param _toAddress Address to receive the tokens
+     * @param _tokenIds Tokens to send
+     * @param _amounts Amounts of tokens to send
+     * @param _refundAddress Address to send refund to if transaction is cheaper than expected
+     * @param _zroPaymentAddress Address of $ZRO token holder that will pay for the transaction
+     * @param _adapterParams Parameters for custom functionality
+     */
+    function _sendBatch(
+        address _from,
+        uint16 _dstChainId,
+        bytes memory _toAddress,
+        uint256[] memory _tokenIds,
+        uint256[] memory _amounts,
+        address payable _refundAddress,
+        address _zroPaymentAddress,
+        bytes memory _adapterParams
+    )
+        internal
+        override
+    {
+        _sendBatch(
+            _tokenIds.length == 1 ? FUNCTION_TYPE_SEND : FUNCTION_TYPE_SEND_BATCH,
+            _from,
+            _dstChainId,
+            _toAddress,
+            _tokenIds,
+            _amounts,
+            _refundAddress,
+            _zroPaymentAddress,
+            _adapterParams
+        );
+    }
+
+    /**
+     * @notice Send a batch of tokens from the current chain to a destination chain with a specified operation
+     * @dev For more details see https://layerzero.gitbook.io/docs/evm-guides/master
+     * @param _functionType Function to perform on the destination chain
+     * @param _from Address to send tokens from
+     * @param _dstChainId Destination chain's LayerZero ID
+     * @param _toAddress Address to receive the tokens
+     * @param _tokenIds Tokens to send
+     * @param _amounts Amounts of tokens to send
+     * @param _refundAddress Address to send refund to if transaction is cheaper than expected
+     * @param _zroPaymentAddress Address of $ZRO token holder that will pay for the transaction
+     * @param _adapterParams Parameters for custom functionality
+     */
+    function _sendBatch(
+        uint16 _functionType,
+        address _from,
+        uint16 _dstChainId,
+        bytes memory _toAddress,
+        uint256[] memory _tokenIds,
+        uint256[] memory _amounts,
+        address payable _refundAddress,
+        address _zroPaymentAddress,
+        bytes memory _adapterParams
+    )
+        internal
+    {
+        if (_tokenIds.length == 0 || _tokenIds.length != _amounts.length)
+            revert Cassette_InvalidSendData();
+
+        if (_functionType == FUNCTION_TYPE_SEND || _functionType == FUNCTION_TYPE_SEND_BATCH) {
+            for (uint256 i; i < _tokenIds.length;) {
+                if (_tokenIds[i] != 0) revert Cassette_InvalidSendData();
+                unchecked { ++i; }
+            }
+        }
+
+        _debitFrom(_from, _dstChainId, _toAddress, _tokenIds, _amounts);
+
+        bytes memory payload = abi.encode(_functionType, _toAddress, _tokenIds, _amounts);
+
+        _checkGasLimit(_dstChainId, _functionType, _adapterParams, NO_EXTRA_GAS);
+        _lzSend(_dstChainId, payload, _refundAddress, _zroPaymentAddress, _adapterParams, msg.value);
+
+        if (_tokenIds.length == 1) {
+            emit SendToChain(_dstChainId, _from, _toAddress, _tokenIds[0], _amounts[0]);
+        } else if (_tokenIds.length > 1) {
+            emit SendBatchToChain(_dstChainId, _from, _toAddress, _tokenIds, _amounts);
+        }
+    }
+
+    /**
+     * @notice Override `ONFT1155Core` function that processes a payload from a source chain
+     * @dev For more details see https://layerzero.gitbook.io/docs/evm-guides/master
+     * @param _srcChainId Source chain's LayerZero ID
+     * @param _srcAddress Address that sent the payload from the source chain
+     * @param _payload Payload to process
+     */
+    function _nonblockingLzReceive(
+        uint16 _srcChainId,
+        bytes memory _srcAddress,
+        uint64, // _nonce
+        bytes memory _payload
+    )
+        internal
+        override
+    {
+        (
+            uint16 functionType,
+            bytes memory toAddressBytes,
+            uint256[] memory tokenIds,
+            uint256[] memory amounts
+        ) = abi.decode(_payload, (uint16, bytes, uint256[], uint256[]));
+        address toAddress;
+        assembly {
+            toAddress := mload(add(toAddressBytes, 20))
+        }
+
+        uint256[] memory _tokenIds = functionType == FUNCTION_TYPE_BURN
+            ? _bumpTokenIds(tokenIds)
+            : tokenIds;
+
+        _creditTo(_srcChainId, toAddress, _tokenIds, amounts);
+
+        if (tokenIds.length == 1) {
+            emit ReceiveFromChain(_srcChainId, _srcAddress, toAddress, _tokenIds[0], amounts[0]);
+        } else if (tokenIds.length > 1) {
+            emit ReceiveBatchFromChain(_srcChainId, _srcAddress, toAddress, _tokenIds, amounts);
+        }
+    }
+
+    /**
+     * @notice Bump token IDs to those corresponding to the next page in the series
+     * @param _tokenIds Tokens to bump to the next page
+     * @return uint256[] Tokens corresponding to the next page in the series
+     */
+    function _bumpTokenIds(uint256[] memory _tokenIds) internal view returns (uint256[] memory) {
+        for (uint256 i; i < _tokenIds.length;) {
+            unchecked {
+                _tokenIds[i] = tokenId(page(_tokenIds[i]) + 1);
+                ++i;
+            }
+        }
+
+        return _tokenIds;
+    }
+}

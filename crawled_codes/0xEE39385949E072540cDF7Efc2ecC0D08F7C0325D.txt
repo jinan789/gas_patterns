@@ -1,0 +1,544 @@
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.19;
+
+import "@openzeppelin/contracts/security/Pausable.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+
+import "./AkshunStoreBuilder.sol";
+
+import "./../lib/StoreManager.sol";
+
+// NOTE: With multiple inheritance, there is an issue caused by the Diamond Problem, so the order of inheritance is important to avoid it. Solidity solves this problem like Python in that it uses C3 Linearization to force a specific order in the directed acyclic graph (DAG) of base classes. This results in the desirable property of monotonicity but disallows some inheritance graphs, especially, the order in which the base classes are given in the `is` directive is important. You have to list the direct base contracts in the order from "most base-like" (i.e. classes on the top level of inheritance) to "most derived" (i.e. classes on lower levels). Note that this order is the reverse of the one used in Python. When a function is called that is defined multiple times in different contracts, the given bases are searched from right to left (left to right in Python) in a depth-first manner, stopping at the first match. If a base contract has already been searched, it is skipped. E.g. in `contract C is A, B {}`, `C` requests `B` to override `A` (by specifying `A, B` in this order), and then `C` overrides `B`. Note that this means the default preference is to specify the inherited interfaces and directly inherited/dependent (abstract) contracts at the beginning. See https://docs.soliditylang.org/en/develop/contracts.html#multiple-inheritance-and-linearization
+contract AkshunStore is AkshunStoreBuilder, ReentrancyGuard, Pausable {
+
+    // =======================================================================
+    // Libraries attached to var types.
+    // =======================================================================
+
+    using Strings for string;
+
+    // =======================================================================
+    // Errors.
+    // =======================================================================
+
+    error StateVarUnset(StoreRevealCommit.StateVars stateVar);
+    error PublicSaleUnset();
+
+    error EthDepositInsufficient();
+    enum MintLimitTypes { Tier, Unlocked, Free, Wallet }
+    error MintLimitReached(MintLimitTypes mintLimitType);
+
+    // =======================================================================
+    // Events.
+    // =======================================================================
+    // NOTE: Indexed event parameters that are not value types, i.e. arrays and structs, are not stored directly but instead a Keccak-256 hash of an encoding is stored. Specifically, the encoding of a struct is the concatenation of the (hashed) encoding of its members, always padded to a multiple of 32 bytes (even `bytes` and `string` types). Hence the indexed arguments for simple types will be in the event topics as is, for example `address`, `uint`, `bytes`; but types like `string` will be hashed with keccak256 and you will not be able to recover them. Hence we don't index `struct`, `[]`, `string` and `bytes` types (some of them, e.g. struct with only one filed, can be recovered though).
+
+    event RngProviderCommited(StoreGetter.NftType nftType, bytes encryptedRngProvider, address indexed sender);
+    event RngProviderRevealed(StoreGetter.NftType nftType, address revealedRngProvider, address indexed sender);
+
+    event SeasonPassMinted(StoreGetter.NftType nftType, uint24 quantity, uint256 cost, uint8 tokenBaseURIIdx, uint256 indexed firstNewSeasonPassId, uint256 indexed lastNewSeasonPassId, address sender, address indexed recipient);
+    event SeasonPassSwapped(StoreGetter.NftType nftType, uint256[] burnedSeasonPassIds, uint8 tokenBaseURIIdx, uint256 indexed firstNewSeasonPassId, uint256 indexed lastNewSeasonPassId, address sender, address indexed recipient);
+
+    event PrizesSetOrUpdated(StoreGetter.NftType nftType, string[] prizeTypes, uint16[] prizeTypePcts);
+    event PrizeClaimed(StoreGetter.NftType nftType, uint256 indexed seasonPassId, uint8 indexed prizeType, uint40 prizeTimestamp, uint256 amount, address sender, address indexed recipient);
+    event OperationalFundsMovedToPrizePool(StoreGetter.NftType nftType, uint256 amount, address indexed signer, address indexed sender);
+
+    // =======================================================================
+    // General contract management functions.
+    // =======================================================================
+
+    // constructor()
+    // {
+    //     // Call initializers.
+    //     // NOTE: By default, the owner of an Ownable contract is the account that deployed it.
+    //
+    //     // Create instances of interfaced contracts and libraries.
+    //
+    //     // Set general management state vars.
+    //
+    // }
+
+    function pause()
+        external
+        onlyOwner
+    {
+        _pause();
+    }
+
+    function unpause()
+        external
+        onlyOwner
+    {
+        _unpause();
+    }
+
+    // =======================================================================
+    // Setter functions.
+    // =======================================================================
+
+    // Secrets management.
+
+    function commitRngProvider(StoreGetter.NftType memory _nftType, bytes memory _encryptedRngProvider, string memory _encryptedRngProviderString)
+        external
+        onlyOwner
+    {
+        // NOTE: Only operator can commit the encrypted version of the RNG provider (i.e. sign TX), hence the `_encryptedRngProvider` is assumed to be encrypted by his wallet.
+
+        // Commit the encrypted (more precisely, signed) version of the secret data.
+        StoreManager.commitRngProvider(store, _nftType, _encryptedRngProvider, _encryptedRngProviderString);
+    }
+
+    function revealRngProvider(StoreGetter.NftType memory _nftType, address _revealedRngProvider)
+        external
+        onlyOwner
+    {
+        // Set sender and signer.
+
+        // NOTE: Sender already validated via `onlyOwner` modifier.
+        // address sender = _msgSender();
+
+        // NOTE: Only operator can reveal (and before that commit the encrypted version of) the RNG provider (i.e. sign TX).
+        address signer = owner();
+
+        // Set season's state vars.
+
+        // Verify the previously committed encrypted (more precisely, signed) version of the secret data matches the unencrypted/unsigned/revealed one.
+        StoreManager.revealRngProvider(store, _nftType, _revealedRngProvider, signer);
+    }
+
+    // Minting & burning management.
+
+    function updateTierMaxSupplyLock(StoreGetter.NftType memory _nftType, uint24 _unlockedMaxSupply)
+        external
+        onlyOwner
+    {
+        StoreManager.updateTierMaxSupplyLock(store, _nftType, _unlockedMaxSupply);
+    }
+
+    // NOTE: Should be enabled only temporarily for a particular free mint batch to be minted, for security reasons.
+    function updateCanAutomatorSignFreeMints(bool _canAutomatorSignFreeMints)
+        external
+        onlyOwner
+    {
+        StoreManager.updateCanAutomatorSignFreeMints(store, _canAutomatorSignFreeMints);
+    }
+
+    function mintSeasonPasses(StoreGetter.NftType memory _nftType, uint24 _quantity, bool _free, uint8 _tokenBaseURIIdx, address _recipient, uint40 _mintTimestamp, bytes memory _signature)
+        external
+        payable
+        whenNotPaused
+        nonReentrant
+    {
+        // Validate input params.
+
+        // NOTE: Not needed, since checking for the existance of nodes (specifically, including the last, 5-th/tier node) is done later on.
+        // StoreGetter._validateNftType(_nftType, 5);
+
+        // Validate existence of objects associated with the input params.
+        // NOTE: We could just get the child store nodes from the parent ones directly without the getters, but they also perform the validation and reduce gas costs.
+        StoreGetter.Season storage season = StoreGetter._getSeason(store, _nftType);
+        StoreGetter.Sale storage sale = StoreGetter._getSale(store, _nftType);
+        StoreGetter.Tier storage tier = StoreGetter._getTier(store, _nftType);
+
+        // NOTE: `_quantity` validation is done later instead, when the quantity is adjusted based on the available quantity.
+        // if (_quantity == 0) revert ParamInvalid(1);
+        // NOTE: `_free` and `_tokenBaseURIIdx` can't be validated, since their default values are also valid.
+        // NOTE: Redundant validation, since `season.nftContract.mint` method already does it.
+        // if (_recipient == address(0)) revert ParamInvalid(4);
+        if (_mintTimestamp == 0) revert ParamInvalid(5);
+
+        // Validate sender and signer's signature.
+
+        { // NOTE: Scope to avoid stack too deep error.
+        // Declare this var inside of this scope to avoid stack too deep error.
+        address sender = _msgSender();
+
+        // NOTE: Only operator can mint for free (i.e. sign TX), unless permitted otherwise.
+        address signer = _free && !store.canAutomatorSignFreeMints || sender == owner() ? owner() : defaultSigner;
+        bytes memory data = bytes.concat(StoreGetter._packNftTypeFields(_nftType), abi.encodePacked(_quantity, _free, _tokenBaseURIIdx, _recipient, _mintTimestamp));
+        uint40 signatureExpiryTimestamp = _mintTimestamp + season.mintPeriodMins * 60;
+        _verifyNonOwnerCallSignature(signer, sender, data, _signature, signatureExpiryTimestamp);
+
+        } { // NOTE: Scope to avoid stack too deep error.
+        // Validate the RNG provider was commited before the minting starts.
+
+        if (season.encryptedRngProvider.length == 0) revert StateVarUnset(StoreRevealCommit.StateVars.SeasonEncryptedRngProvider);
+
+        // Validate and compute mint quantity.
+
+        // NOTE: We don't need to also check for `season.maxSupply`, since `tier.maxSupply`, which is a stricter condition, is enough.
+        // NOTE: Checking `tierUnsold` is not needed, since, `tierUnlockedUnsold` (or `seasonFreeUnsold` in case of a free mint) is a stricter condition (always a lower or the same value), but we use it so we can revert with a more precise error `MintLimitReached`.
+        uint24 tierUnsold = tier.maxSupply - tier.sold;
+        if (tierUnsold == 0) revert MintLimitReached(MintLimitTypes.Tier);
+        // NOTE: Not needed; check the explanation above.
+        // if (_quantity > tierUnsold) {
+        //     _quantity = tierUnsold;
+        // }
+
+        // NOTE: We can free mint even if the requested tier quantity is locked (but it gets updated). This is needed, because otherwise if we would unlock an additional (tier's) NFT quantity in order to free mint it, other users could replay the old signed but not yet sent/broadcasted mint TX messages, effectively minting some or all of the tier's quantities we reserved for free mints.
+        uint24 seasonFreeUnsold;
+        uint24 tierUnlockedUnsold = tier.unlockedMaxSupply - tier.sold;
+        if (!_free) {
+            if (tierUnlockedUnsold == 0) revert MintLimitReached(MintLimitTypes.Unlocked);
+            if (_quantity > tierUnlockedUnsold) {
+                _quantity = tierUnlockedUnsold;
+            }
+        } else {
+            seasonFreeUnsold = season.maxFreeSupply - season.freeSold;
+            if (seasonFreeUnsold == 0) revert MintLimitReached(MintLimitTypes.Free);
+            if (_quantity > seasonFreeUnsold) {
+                _quantity = seasonFreeUnsold;
+            }
+        }
+
+        uint24 salePerWalletUnsold = sale.maxPerWalletSupply - sale.perWalletSold[_recipient];
+        if (salePerWalletUnsold == 0) revert MintLimitReached(MintLimitTypes.Wallet);
+        if (_quantity > salePerWalletUnsold) {
+            _quantity = salePerWalletUnsold;
+        }
+
+        if (_quantity == 0) revert ParamInvalid(1);
+
+        // Update quantity's state vars.
+        // NOTE: Helper vars need to always be updated as well, besides the dependent var.
+
+        tier.sold += _quantity;
+        sale.hSold += _quantity;
+        season.hSold += _quantity;
+
+        if (_free) {
+            if (_quantity > tierUnlockedUnsold) {
+                tier.unlockedMaxSupply = tier.sold;
+            }
+
+            season.freeSold += _quantity;
+            // NOTE: Can't subtract unsigned ints before validating the result is non-negative, since an underflow error would be thrown.
+            uint24 seasonUnsold = season.maxSupply - season.hSold;
+            if (seasonFreeUnsold > seasonUnsold) {
+                season.maxFreeSupply -= seasonFreeUnsold - seasonUnsold;
+            }
+        }
+
+        uint24 salePerWalletSold = sale.perWalletSold[_recipient] += _quantity;
+        if (salePerWalletSold > sale.hMaxPerWalletSold) {
+            sale.hMaxPerWalletSold = salePerWalletSold;
+        }
+
+        } // NOTE: Scope to avoid stack too deep error.
+        // Validate and read mint cost.
+
+        uint256 cost = _quantity * (_free ? 0 : tier.price);
+        if (msg.value < cost) revert EthDepositInsufficient();
+
+        { // NOTE: Scope to avoid stack too deep error.
+        // Update cost's state vars.
+
+        // NOTE: Division must always be the last operation, because decimals are truncated, since we are computing with integers.
+        uint256 addedPrizePoolAmount = cost * season.prizePoolBps / 1e4;
+        season.totalPrizePoolAmount += addedPrizePoolAmount;
+        store.unspentOperationalFundAmount += cost - addedPrizePoolAmount;
+
+        } // NOTE: Scope to avoid stack too deep error.
+        // Update general management state vars.
+
+        senderNonces[_msgSender()]++;
+
+        // NOTE: All the state changes should be done before this comment (e.g. to prevent reentrancy attack).
+
+        _hMintAndReturnOverpayment(_nftType, season, sale, _quantity, cost, tier.tokenPresetURIIdx, _tokenBaseURIIdx, _msgSender(), _recipient);
+    }
+
+    function _hMintAndReturnOverpayment(StoreGetter.NftType memory _nftType, StoreGetter.Season storage _season, StoreGetter.Sale storage _sale, uint24 _quantity, uint256 _cost, uint8 _tokenPresetURIIdx, uint8 _tokenBaseURIIdx, address _sender, address _recipient)
+        private
+    {
+        // Send overpaid ETH amount back to the sender and validate it, if applicable.
+
+        uint256 overpaidCost = msg.value - _cost;
+        if(overpaidCost > 0) {
+            StoreManager._transferEth(overpaidCost, _sender);
+        }
+
+        // Mint new Season Pass NFT to the recipient.
+
+        (uint256 lastNewSeasonPassId, uint256 firstNewSeasonPassId) = _mintSeasonPasses(_nftType, _season, _sale, _quantity, _tokenPresetURIIdx, _tokenBaseURIIdx, _recipient);
+
+        // Emit events.
+
+        emit SeasonPassMinted(_nftType, _quantity, _cost, _tokenBaseURIIdx, firstNewSeasonPassId, lastNewSeasonPassId, _sender, _recipient);
+    }
+
+    function _mintSeasonPasses(StoreGetter.NftType memory _nftType, StoreGetter.Season storage _season, StoreGetter.Sale storage _sale, uint24 _quantity, uint8 _tokenPresetURIIdx, uint8 _tokenBaseURIIdx, address _recipient)
+        private
+        returns(uint256 _lastNewSeasonPassId, uint256 _firstNewSeasonPassId)
+    {
+        for (uint24 i = 0; i < _quantity;) {
+            _lastNewSeasonPassId = _season.nftContract.mint(_season.subcollectionIdx, _tokenPresetURIIdx, _tokenBaseURIIdx, _recipient);
+
+            _sale.tokenTiers[_lastNewSeasonPassId] = _nftType.tier;
+            unchecked { i++; }
+        }
+        _firstNewSeasonPassId = _lastNewSeasonPassId - (_quantity - 1);
+    }
+
+    function swapSeasonPasses(StoreGetter.NftType memory _nftType, uint256[] memory _seasonPassIds, uint24 _quantity, uint8 _tokenBaseURIIdx, address _recipient, uint40 _swapTimestamp, bytes memory _signature)
+        external
+        whenNotPaused
+        nonReentrant
+    {
+        // Validate input params.
+
+        // NOTE: Not needed, since checking for the existance of nodes (specifically, including the last, 5-th/tier node) is done later on.
+        // StoreGetter._validateNftType(_nftType, 5);
+
+        // Validate existence of objects associated with the input params.
+        StoreGetter.Season storage season = StoreGetter._getSeason(store, _nftType);
+        StoreGetter.Sale storage sale = StoreGetter._getSale(store, _nftType);
+        // NOTE: We don't need to check existence of the tier via `_nftType.tier`, because we check it later via `sale.tokenTiers`. But we use the tier instance later on.
+
+        if (_seasonPassIds.length == 0) revert ParamInvalid(1);
+        // We can't mint more Season Pass NFTs than we burn, since that would enlarge the season collection beyond it's quantity limits. And we can only mint new Season Pass NFTs which are of the same NFT type, to assure no quantity limits are broken.
+        if (_quantity > _seasonPassIds.length) revert ParamInvalid(2);
+        // NOTE: The swapped Season Passes will never have the first, i.e. `0`, token's base URI, since it's always a newer than the initial base URI (for the corresponding season).
+        if (_tokenBaseURIIdx == 0) revert ParamInvalid(3);
+        // NOTE: Redundant validation, since `season.nftContract.mint` method already does it.
+        // if (_recipient == address(0)) revert ParamInvalid(4);
+        if (_swapTimestamp == 0) revert ParamInvalid(5);
+
+        // Validate sender and signer's signature.
+
+        { // NOTE: Scope to avoid stack too deep error.
+        // Declare this var inside of this scope to avoid stack too deep error.
+        address sender = _msgSender();
+
+        address signer = sender == owner() ? owner() : defaultSigner;
+        // NOTE: `_nftType.sale` and `_nftType.tier` aren't required in the signature, as explained before.
+        bytes memory data = bytes.concat(StoreGetter._packNftTypeFields(_nftType), abi.encodePacked(_seasonPassIds, _quantity, _tokenBaseURIIdx, _recipient, _swapTimestamp));
+        uint40 signatureExpiryTimestamp = _swapTimestamp + season.mintPeriodMins * 60;
+        _verifyNonOwnerCallSignature(signer, sender, data, _signature, signatureExpiryTimestamp);
+
+        } // NOTE: Scope to avoid stack too deep error.
+        // Update general management state vars.
+
+        senderNonces[_msgSender()]++;
+
+        // NOTE: All the state changes should be done before this comment (e.g. to prevent reentrancy attack).
+
+        // Burn the old sender's Season Pass NFTs.
+
+        _burnSeasonPasses(_nftType, season, sale, _seasonPassIds);
+
+        // Mint new Season Pass NFT to the recipient.
+
+        StoreGetter.Tier storage tier = StoreGetter._getTier(store, _nftType);
+        (uint256 lastNewSeasonPassId, uint256 firstNewSeasonPassId) = _mintSeasonPasses(_nftType, season, sale, _quantity, tier.tokenPresetURIIdx, _tokenBaseURIIdx, _recipient);
+
+        // Emit events.
+
+        emit SeasonPassSwapped(_nftType, _seasonPassIds, _tokenBaseURIIdx, firstNewSeasonPassId, lastNewSeasonPassId, _msgSender(), _recipient);
+    }
+
+    function _burnSeasonPasses(StoreGetter.NftType memory _nftType, StoreGetter.Season storage _season, StoreGetter.Sale storage _sale, uint256[] memory _seasonPassIds)
+        private
+    {
+        // NOTE: `_seasonPassIds` is a dynamic/unlimited array, but we implicitly limit them to `uint24` possible values and for the iterator we use the same `uint24` type as the dependent `Season.maxSupply` field.
+        for (uint24 i = 0; i < _seasonPassIds.length;) {
+            uint8 tier = _sale.tokenTiers[_seasonPassIds[i]];
+            // NOTE: We could just check if all the to-be burnt Season Pass NFTs exist in the sale and are of the same NFT type, but by also checking against `_nftType.tier` we are more explicit and hence more bullet proof, plus `_nftType` can't have invalid values this way, which would break the filtering logic of the event emmiting it.
+            if (tier == 0 || tier != _nftType.tier) revert ArrayParamInvalid(1, i);
+            // NOTE: Redundant validation, since `_season.nftContract.burn` method already does it (via `ERC721.ownerOf`).
+            // if (_seasonPassIds[i] == 0) revert ArrayParamInvalid(1, i);
+            // NOTE: Redundant validation, since `_season.nftContract.burn` method already does it (via `ERC721._isApprovedOrOwner`), and also allows the approved addresses to burn the token.
+            // _season.nftContract.ownerOf(_seasonPassIds[i]);
+
+            _season.nftContract.burn(_seasonPassIds[i]);
+            unchecked {  i++; }
+        }
+    }
+
+    // Prizes management.
+
+    function addPrizeTypes(StoreGetter.NftType memory _nftType, string[] memory _prizeTypes)
+        external
+        onlyOwner
+    {
+        StoreManager.addPrizeTypes(store, _nftType, _prizeTypes);
+    }
+
+    function setOrUpdatePrizes(StoreGetter.NftType memory _nftType, uint24 _prizeClaimPeriodMins, uint16[] memory _prizeTypePcts)
+        external
+        onlyOwner
+    {
+        StoreManager.setOrUpdatePrizes(store, _nftType, _prizeClaimPeriodMins, _prizeTypePcts);
+    }
+
+    function updatePrizePoolLock(StoreGetter.NftType memory _nftType, uint16 _unlockedPrizePoolBps)
+        external
+        onlyOwner
+    {
+        StoreManager.updatePrizePoolLock(store, _nftType, _unlockedPrizePoolBps);
+    }
+
+    function claimPrize(StoreGetter.NftType memory _nftType, uint256 _seasonPassId, uint8 _prizeType, uint40 _prizeTimestamp, uint256 _amount, bool _canUseOperationalFundAmount, address payable _recipient, bytes memory _signature)
+        external
+        whenNotPaused
+        nonReentrant
+    {
+        // Validate input params.
+
+        // NOTE: Not needed, since checking for the existance of nodes (specifically, including the last, 5-th/tier node) is done later on.
+        // StoreGetter._validateNftType(_nftType, 5);
+
+        // Validate existence of objects associated with the input params.
+        // NOTE: We could just get the child store nodes from the parent ones directly without the getters, but they also perform the validation and reduce gas costs.
+        StoreGetter.Season storage season = StoreGetter._getSeason(store, _nftType);
+        // NOTE: We don't need to check which sale is set via `_nftType.sale` (i.e. to which sale the `_seasonPassId` Season Pass NFT belongs to, given that the right one was provided to this function call), because the prizes are always based on the Public sale/stage. But we need it later on to get the Season Pass NFT's tier.
+        // NOTE: We intentionally don't call `StoreGetter._getSale(store, _nftType)` instead, to return a more informative `PublicSaleUnset()` error, instead of `NodeNonexistent(4)` error.
+        StoreGetter.Sale storage publicSale = season.sales[StoreGetter.publicSaleName];
+        if (!publicSale.hExists) revert PublicSaleUnset();
+        // NOTE: We don't need to check existence of the tier via `_nftType.tier`, because we check it later via `sale.tokenTiers`.
+
+        // NOTE: The prize is bound to the particular Season Pass NFT.
+        if (_seasonPassId == 0) revert ParamInvalid(1);
+        // NOTE: `_amount` param should be `> 0` only when `_prizeType` is `0`, since the first `Sport.prizeTypes` is always a custom prize with a custom (not predefined) amount.
+        if ((_prizeType == 0) == (_amount == 0)) revert ParamInvalid(2);
+        if (_prizeTimestamp == 0) revert ParamInvalid(3);
+        // NOTE: `_amount` was already validated with `_prizeType`, and `_canUseOperationalFundAmount` can't be validated, since its default value is also valid.
+        if (_recipient == address(0)) revert ParamInvalid(6);
+
+        // Validate sender and signer's signature.
+
+        address sender = _msgSender();
+
+        { // NOTE: Scope to avoid stack too deep error.
+        // NOTE: Only operator can spend operational funds (i.e. sign TX).
+        address signer = _canUseOperationalFundAmount || sender == owner() ? owner() : defaultSigner;
+        // NOTE: `_nftType.sale` and `_nftType.tier` aren't required in the signature, as explained before.
+        bytes memory data = bytes.concat(StoreGetter._packNftTypeFields(_nftType), abi.encodePacked(_seasonPassId, _prizeType, _prizeTimestamp, _amount, _canUseOperationalFundAmount, _recipient));
+        uint40 signatureExpiryTimestamp = _prizeTimestamp + season.prizeClaimPeriodMins * 60;
+        _verifyNonOwnerCallSignature(signer, sender, data, _signature, signatureExpiryTimestamp);
+
+        // Validate ownership of the winning Season Pass NFT.
+
+        // NOTE: The Season Pass NFT existance check (i.e. `seasonPassOwner == address(0)`) could revert separately with e.g. `TokenNonexistent()` error, but we combine the checks to reduce gas costs.
+        address seasonPassOwner = season.nftContract.ownerOf(_seasonPassId);
+        if (seasonPassOwner == address(0) || sender != seasonPassOwner && (_recipient != seasonPassOwner || sender != defaultSigner && sender != owner())) revert SenderInvalid();
+
+        } // NOTE: Scope to avoid stack too deep error.
+        // Validate and compute prize amount.
+
+        if (_prizeType >= season.prizeTypePcts.length) revert ParamInvalid(2);
+
+        uint256 amount;
+        if (_prizeType == 0) {
+            // The first `Sport.prizeTypes` is always the custom prize type (i.e. `StoreGetter.customPrizeType`) with a custom (not predefined) amount.
+            amount = _amount;
+        } else {
+            StoreGetter.Sale storage sale = StoreGetter._getSale(store, _nftType);
+            uint8 tier = sale.tokenTiers[_seasonPassId];
+            // NOTE: We could just check if the to-be burnt Season Pass NFT exists in the sale, but by also checking against `_nftType.tier` we are more explicit and hence more bullet proof, plus `_nftType` can't have invalid values this way, which would break the filtering logic of the event emmiting it.
+            if (tier == 0 || tier != _nftType.tier) revert ParamInvalid(1);
+
+            // NOTE/TODO: We need to make sure the Public sale/stage has as many tiers as the sale with the most tiers, otherwise an exception can be thrown for accessing the array at an out-of-bounds index.
+            amount = publicSale.tiers[tier - 1].price * season.prizeTypePcts[_prizeType] / 100;
+        }
+
+        { // NOTE: Scope to avoid stack too deep error.
+        // Validate and update prize pool's and operational fund's amount state vars.
+
+        // NOTE: Division must always be the last operation, because decimals are truncated, since we are computing with integers.
+        uint256 unlockedPrizePoolAmount = season.totalPrizePoolAmount * season.unlockedPrizePoolBps / 1e4;
+        uint256 unspentPrizePoolAmount = unlockedPrizePoolAmount - season.spentPrizePoolAmount;
+        if (amount <= unspentPrizePoolAmount) {
+            season.spentPrizePoolAmount += amount;
+        } else {
+            // Use the rest of the prize pool funds when claiming prize from the operational fund.
+            uint256 extraSpentOperationalFundAmount = amount - unspentPrizePoolAmount;
+            if (!_canUseOperationalFundAmount || extraSpentOperationalFundAmount > store.unspentOperationalFundAmount) revert StoreManager.EthBalanceInsufficient();
+
+            season.spentPrizePoolAmount = unlockedPrizePoolAmount;
+            store.unspentOperationalFundAmount -= extraSpentOperationalFundAmount;
+        }
+
+        // Update prize state vars.
+
+        // NOTE: Check if it's cheaper to always set it, without checking it's value. Storing values is expensive in Solidity, so probably it's not.
+        if (!season.prizeTypesUsed[_prizeType]) {
+            season.prizeTypesUsed[_prizeType] = true;
+        }
+
+        // Update general management state vars.
+
+        senderNonces[sender]++;
+
+        // NOTE: All the state changes should be done before this comment (e.g. to prevent reentrancy attack).
+
+        // Send ETH amount to the recipient and validate it.
+
+        StoreManager._transferEth(amount, _recipient);
+
+        } // NOTE: Scope to avoid stack too deep error.
+        // Emit events.
+
+        emit PrizeClaimed(_nftType, _seasonPassId, _prizeType, _prizeTimestamp, amount, sender, _recipient);
+    }
+
+    // Operational funds management.
+
+    function moveOperationalFundsToPrizePool(StoreGetter.NftType memory _nftType, uint256 _amount)
+        external
+        onlyOwner
+    {
+        StoreManager.moveOperationalFundsToPrizePool(store, _nftType, _amount);
+    }
+
+    function withdrawOperationalFunds(uint256 _amount, address payable _recipient)
+        external
+        onlyOwner
+    {
+        StoreManager.withdrawOperationalFunds(store, _amount, _recipient);
+    }
+
+    // NOTE: To enable depositing ETH directy to the contract's address, the contract must define at least one of the functions below. `receive()` is called if `msg.data` is empty, otherwise `fallback()` is called.
+
+    // Function invoked when ETH is deposited directy to the contract's address and `msg.data` is empty.
+    //
+    // We use it to assign the ETH which was deposited directy to the contract's address, to the operational fund.
+    //
+    // NOTE: We assign the deposited ETH to the operational fund because then we can still transfer any of the available ETH amount from the operational fund to the prize pool.
+    receive()
+        external
+        payable
+    {
+        // NOTE: There are no side effects if the sent amount is `0`; adding validation to prevent/revert such case would be less gas efficient.
+        // NOTE: It could be safer (i.e. more stricter) to send the `msg` var itself and get the sent amount in the called function via `msg.value`, but the values of all members of `msg`, including `msg.sender` and `msg.value`, can change for every external function call. This includes calls to library functions.
+        StoreManager.receiveOperationalFunds(store, msg.value);
+    }
+
+    // A fallback function, optionally payable (i.e. is defined with `payable` modifier), invoked when no other function matches the call (not even the `receive()` function, but only if `fallback()` function is payable), otherwise the contract will throw an exception. If it is payable, then it's also invoked when ETH is deposited directy to the contract's address and `msg.data` is either not empty or `msg.data` is empty and `receive()` method doesn't exists (i.e. isn't defined in the contract; in which case the `fallback()` function is restricted to 2300 gas, even if `call()` function was used to send ETH), otherwise the contract will throw an exception in both cases.
+    //
+    // NOTE: You should only need to implement the fallback function if you are following an upgrade or proxy pattern.
+    // fallback()
+    //     external
+    //     payable
+    // {}
+
+    // =======================================================================
+    // Getter functions.
+    // =======================================================================
+
+    function getPerSaleWalletSold(StoreGetter.NftType memory _nftType, address _user)
+        external
+        view
+        returns(uint24)
+    {
+        // Validate input params.
+
+        // Validate existence of objects associated with the input params.
+        StoreGetter.Sale storage sale = StoreGetter._getSale(store, _nftType);
+
+        // Get state vars.
+
+        return sale.perWalletSold[_user];
+    }
+
+}

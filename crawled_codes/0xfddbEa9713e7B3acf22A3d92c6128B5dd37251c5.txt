@@ -1,0 +1,95 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.8;
+
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
+import "hardhat/console.sol";
+
+contract SuperConduXToken is ERC20, Ownable {
+  /// General settings
+  uint constant public TOTAL_SUPPLY = 100_000_000 ether;
+  // Governance
+  IUniswapV2Router02 public uniswapRouter;
+  // Fees
+  uint128 public feeThreshold = 500_000 ether;
+  uint16 constant FEE_DIVISOR = 10_000;
+  uint16 public fees = 300;
+  address public marketingWallet;
+  address public liquidityPair;
+  mapping(address => bool) public ignoreFees;
+  bool isLiquidating;
+
+  constructor(address uniswapRouterAddress) ERC20("SuperConduXToken", "SCT") {
+    marketingWallet = msg.sender;
+    uniswapRouter = IUniswapV2Router02(uniswapRouterAddress);
+    // Super powers for deployer.
+    ignoreFees[msg.sender] = true;
+    ignoreFees[address(this)] = true;
+
+    _approve(address(this), uniswapRouterAddress, ~uint(0));
+    _mint(msg.sender, TOTAL_SUPPLY);
+  }
+
+  function _transfer(address from, address to, uint256 amount) internal virtual override {
+    uint256 remainingTokens = _takeFees(from, to, amount);
+    super._transfer(from, to, remainingTokens);
+  }
+
+  function _takeFees(address from, address to, uint256 transferAmount) private returns(uint256 remainingTokens) {
+    // Skip certain wallets.
+    if(ignoreFees[from] || ignoreFees[to]) return transferAmount;
+    // Take fees if enabled.
+    uint16 _fees = fees;
+    if(_fees == 0)
+      return transferAmount;
+    
+    uint feesToTake = transferAmount * _fees / FEE_DIVISOR;
+    super._transfer(from, address(this), feesToTake);
+    // Check if we want to liquidate fees.
+    if(from != liquidityPair && !isLiquidating){
+      uint contractBalance = balanceOf(address(this));
+      if(contractBalance >= uint(feeThreshold)){
+        // Get marketing budget to run advertisement.
+        isLiquidating = true;
+        _liquidateTokens(contractBalance, marketingWallet);
+        isLiquidating = false;
+      }
+    }
+    remainingTokens = transferAmount - feesToTake;
+  }
+
+  function _liquidateTokens(uint tokenAmount, address to) private {
+    address[] memory path = new address[](2); path[0] = address(this); path[1] = uniswapRouter.WETH();
+    uniswapRouter.swapExactTokensForETHSupportingFeeOnTransferTokens(
+      tokenAmount, 0, path,
+      to, block.timestamp
+    );
+  }
+
+  // Utility functions.
+  function setLiquidityPair(address _liquidityPair) external onlyOwner {
+    liquidityPair = _liquidityPair;
+  }
+  // Recovery
+  function recoverETH(uint balance) external onlyOwner {
+    payable(owner()).transfer(balance);
+  }
+  // Fees
+  // We can only decrease fees, but never increase them.
+  function setFees(uint16 _fees, uint128 _feeThreshold) external onlyOwner {
+      require(_fees < fees, "SCT: LOW_FEES");
+      fees = _fees;
+      feeThreshold = _feeThreshold;
+  }
+  // Set who should be ignored from taxes. This is stronger than `takeFees`.
+  function setIgnoreFees(address target, bool ignoreFee) external onlyOwner {
+    ignoreFees[target] = ignoreFee;
+  }
+  // Update wallets.
+  function setMarketingWallet(address _marketingWallet) external onlyOwner {
+    marketingWallet = _marketingWallet;
+  }
+
+  receive() external payable { }
+}

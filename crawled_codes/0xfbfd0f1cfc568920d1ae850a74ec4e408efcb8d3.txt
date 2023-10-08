@@ -1,0 +1,21 @@
+// SPDX-License-Identifier: MIT
+
+pragma solidity ^0.8.0;
+
+/// @title: Untold Histories: Artistic Reflections on Colonialism
+/// @author: manifold.xyz
+
+import "./manifold/ERC721Creator.sol";
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//                                                                                                                                                                       //
+//                                                                                                                                                                       //
+//    Explore the extensive impact that colonialism has left on society, culture, and the environment through an inventive art series that reveals hidden narratives.    //
+//                                                                                                                                                                       //
+//                                                                                                                                                                       //
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+contract UH is ERC721Creator {
+    constructor() ERC721Creator("Untold Histories: Artistic Reflections on Colonialism", "UH") {}
+}

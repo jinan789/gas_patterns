@@ -1,0 +1,62 @@
+\begin{enumerate}
+
+\item \textbf{Repeated computation of the same expression}
+
+```
+\begin{itemize}
+
+\item \textbf{Discovery:} The contract repeatedly calls `reserveData.underlyingAsset` and `reserveData.interestRateStrategyAddress` multiple times. The repeated calls to the same variables can be costly in terms of gas.
+
+\item \textbf{Solution:} It can be more efficient to store these variables in memory once and then refer to them as needed. Here's how that might look:
+\begin{verbatim}
+address underlyingAsset = reserveData.underlyingAsset;
+address interestRateStrategyAddress = reserveData.interestRateStrategyAddress;
+\end{verbatim}
+then replace all instances of `reserveData.underlyingAsset` and `reserveData.interestRateStrategyAddress` with `underlyingAsset` and `interestRateStrategyAddress` respectively. The reasoning behind this solution is that accessing a variable in memory is cheaper than accessing storage.
+
+\end{itemize}
+```
+
+\item \textbf{Redundant operations with same effects}
+
+```
+\begin{itemize}
+
+\item \textbf{Discovery:} The contract checks if the asset is MKR and if so, it retrieves its symbol and name in a different way than for other tokens. However, if the MKR token follows the ERC20 standard like other tokens, this special case is not necessary and leads to redundant checks.
+
+\item \textbf{Solution:} Remove the special case for MKR, and treat it like any other token, retrieving its symbol and name using the `IERC20Detailed` interface. If MKR does not follow the ERC20 standard, consider creating a separate function specifically for handling MKR to avoid the unnecessary checks for other tokens. This solution works by eliminating unnecessary condition checks, which consume gas even when the condition is not met.
+
+\end{itemize}
+```
+
+\item \textbf{Pre-computable operations on constants}
+
+```
+\begin{itemize}
+
+\item \textbf{Discovery:} The contract checks whether `reserveData.baseLTVasCollateral` is not equal to 0 to determine `reserveData.usageAsCollateralEnabled`. If the base LTV as collateral is a known constant, this operation does not need to be performed every time the contract is called.
+
+\item \textbf{Solution:} If possible, precompute the result of `reserveData.usageAsCollateralEnabled` and store the result in a constant variable. This solution works by reducing the computational workload of the contract, saving gas.
+
+\end{itemize}
+```
+
+\item \textbf{Persistent conditional checks}
+
+```
+\begin{itemize}
+
+\item \textbf{Discovery:} There are multiple try-catch blocks in the contract which are used to call functions of the `DefaultReserveInterestRateStrategy` contract. If it's known that these function calls will not fail, these try-catch blocks are unnecessary and consume additional gas.
+
+\item \textbf{Solution:} If it is certain that these function calls will not fail, then remove the try-catch blocks. This solution works by reducing the number of condition checks in the contract, saving gas.
+
+\end{itemize}
+```
+
+\end{enumerate}
+
+As for your additional requirements:
+
+1. Your prompt is clear and provides the right amount of detail. However, it's important to note that the effectiveness of these gas-saving measures can vary depending on the specific context and requirements of the contract. It would be helpful if you provide more information about how the contract is expected to be used.
+
+1. The provided code and solutions have been formatted for a LaTeX document. Note that LaTeX doesn't handle verbatim text well within other environments like itemize or enumerate, so you may need to adjust the formatting further based on your specific LaTeX setup.

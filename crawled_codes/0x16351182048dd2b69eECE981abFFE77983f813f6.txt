@@ -1,0 +1,293 @@
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.18;
+
+import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+
+contract Presale is ReentrancyGuard, Ownable {
+    /**
+     * Network: ETH Mainnet
+     * Aggregator: ETH/USD
+     * Address: 0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419
+     */
+    AggregatorV3Interface internal dataFeed =
+        AggregatorV3Interface(0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419);
+    mapping(address => uint256) public balance;
+    mapping(address => uint256) public tokensBought;
+    mapping(uint256 => address) public users;
+    mapping(address => uint256) public userReferrals;
+    mapping(address => uint256) public referralTokens;
+
+    mapping(address => bool) public hasClaimed;
+
+    IERC20 public usdtToken;
+
+    address public saleToken;
+    address public paymentWallet;
+
+    uint256 public tokenPrice;
+    uint256 public totalUsdRaised;
+    uint256 public totalTokensSold;
+    uint256 public totalReferralTokens;
+    uint256 public referralPercentage;
+
+    uint256 public totalUsers;
+
+    bool public startSale;
+    bool public claimAllowed;
+
+    event TokensBought(
+        address indexed user,
+        uint256 indexed tokensBought,
+        address indexed purchaseToken,
+        uint256 amountPaid,
+        uint256 usdEq,
+        uint256 timestamp
+    );
+    event TokensClaimed(
+        address indexed user,
+        uint256 amount,
+        uint256 timestamp
+    );
+
+    constructor(
+        address _usdtToken,
+        address _paymentWallet,
+        uint256 _tokenPrice,
+        uint256 _referralPercentage,
+        bool _startSale
+    ) {
+        usdtToken = IERC20(_usdtToken);
+        paymentWallet = _paymentWallet;
+        tokenPrice = _tokenPrice;
+        referralPercentage = _referralPercentage;
+        startSale = _startSale;
+    }
+
+    function getLatestPrice() public view returns (uint256) {
+        (, int256 price, , , ) = dataFeed.latestRoundData();
+        price = (price * (1e10));
+        return uint256(price);
+    }
+
+    function buyWithUSDT(
+        address referralAddress,
+        uint256 amount
+    ) external nonReentrant {
+        require(startSale, "Sale not started");
+
+        require(amount > 0, "Invalid sale amount");
+
+        uint256 ourAllowance = usdtToken.allowance(_msgSender(), address(this));
+        require(amount <= ourAllowance, "Make sure to add enough allowance");
+        (bool success, ) = address(usdtToken).call(
+            abi.encodeWithSignature(
+                "transferFrom(address,address,uint256)",
+                _msgSender(),
+                paymentWallet,
+                amount
+            )
+        );
+        require(success, "Token payment failed");
+        uint256 _tokenPrice = tokenPrice;
+        uint256 usdAmount= amount * 1e12;
+        uint256 totalTokens = (usdAmount * _tokenPrice) / 1e18;
+        if (balance[_msgSender()] == 0) {
+            users[totalUsers] = _msgSender();
+            totalUsers++;
+        }
+        balance[_msgSender()] += usdAmount;
+        tokensBought[_msgSender()] += totalTokens;
+
+        totalTokensSold += totalTokens;
+        totalUsdRaised += usdAmount;
+
+        if (
+            referralAddress != address(0) &&
+            referralAddress != _msgSender() &&
+            referralPercentage > 0
+        ) {
+            uint256 referralAmount = (usdAmount * referralPercentage) / 10000;
+            uint256 _referralTokens = (referralAmount * _tokenPrice) / 1e18;
+            userReferrals[referralAddress]++;
+            referralTokens[referralAddress] += _referralTokens;
+            totalReferralTokens += _referralTokens;
+        }
+
+        emit TokensBought(
+            _msgSender(),
+            totalTokens,
+            address(usdtToken),
+            usdAmount,
+            usdAmount,
+            block.timestamp
+        );
+    }
+
+    function buyWithETH(address referralAddress) external payable nonReentrant {
+        require(startSale, "Sale not started");
+        require(msg.value > 0, "Invalid sale amount");
+
+        uint256 ethAmount = msg.value;
+
+        require(address(this).balance >= ethAmount, "Low balance");
+        (bool success, ) = payable(paymentWallet).call{value: ethAmount}("");
+        require(success, "ETH Payment failed");
+        uint256 _tokenPrice = tokenPrice;
+
+        uint256 amountInUsd = (ethAmount * getLatestPrice()) / 1e18;
+        uint256 totalTokens = (amountInUsd * _tokenPrice) / 1e18;
+
+        if (balance[_msgSender()] == 0) {
+            users[totalUsers] = _msgSender();
+            totalUsers++;
+        }
+
+        balance[_msgSender()] += amountInUsd;
+        tokensBought[_msgSender()] += totalTokens;
+
+        totalTokensSold += totalTokens;
+        totalUsdRaised += amountInUsd;
+
+        if (
+            referralAddress != address(0) &&
+            referralAddress != _msgSender() &&
+            referralPercentage > 0
+        ) {
+            uint256 referralAmount = (amountInUsd * referralPercentage) / 10000;
+            uint256 _referralTokens = (referralAmount * _tokenPrice) / 1e18;
+            userReferrals[referralAddress]++;
+            referralTokens[referralAddress] += _referralTokens;
+            totalReferralTokens += _referralTokens;
+        }
+
+        emit TokensBought(
+            _msgSender(),
+            amountInUsd,
+            address(0),
+            ethAmount,
+            amountInUsd,
+            block.timestamp
+        );
+    }
+
+    function ethBuyHelper(
+        uint256 amount
+    ) external view returns (uint256 ethAmount) {
+        uint256 amountInUsd = (amount * getLatestPrice()) / 1e18;
+        ethAmount = (amountInUsd * tokenPrice) / 1e18;
+    }
+
+    function usdtBuyHelper(
+        uint256 amount
+    ) external view returns (uint256 usdPrice) {
+        usdPrice = (amount * tokenPrice) / 1e18;
+    }
+
+    function claim() external nonReentrant {
+        require(claimAllowed, "Claim not allowed");
+        require(saleToken != address(0), "Sale token not added");
+        require(!hasClaimed[_msgSender()], "Already claimed");
+        hasClaimed[_msgSender()] = true;
+        uint256 amount = tokensBought[_msgSender()] +
+            referralTokens[_msgSender()];
+        // require(amount > 0, "Nothing to claim");
+        // delete balance[_msgSender()];
+        bool success = IERC20(saleToken).transfer(_msgSender(), amount);
+        require(success, "Token transfer failed");
+        emit TokensClaimed(_msgSender(), amount, block.timestamp);
+    }
+
+    function addUsers(
+        address[] calldata _users,
+        uint256[] calldata _amount,
+        uint256[] calldata _tokensBought,
+        uint256[] calldata _referralTokens
+    ) external onlyOwner {
+        uint256 _totalTokens = 0;
+        uint256 _totalReferralTokens = 0;
+        for (uint256 i = 0; i < _users.length; i++) {
+            if (balance[_users[i]] == 0) {
+                users[totalUsers] = _users[i];
+                totalUsers++;
+            }
+            balance[_users[i]] += _amount[i];
+            tokensBought[_users[i]] += _tokensBought[i];
+            referralTokens[_users[i]] += _referralTokens[i];
+            _totalTokens += _tokensBought[i];
+            _totalReferralTokens += _referralTokens[i];
+        }
+        totalTokensSold += _totalTokens;
+        totalReferralTokens += _totalReferralTokens;
+    }
+
+    function getAllUsersWithTokens()
+        external
+        view
+        returns (
+            address[] memory,
+            uint256[] memory,
+            uint256[] memory,
+            uint256[] memory
+        )
+    {
+        address[] memory _users = new address[](totalUsers);
+        uint256[] memory _amount = new uint256[](totalUsers);
+        uint256[] memory _tokensBought = new uint256[](totalUsers);
+        uint256[] memory _referralTokens = new uint256[](totalUsers);
+
+        for (uint256 i = 0; i < totalUsers; i++) {
+            _users[i] = users[i];
+            _amount[i] = balance[users[i]];
+            _tokensBought[i] = tokensBought[users[i]];
+            _referralTokens[i] = referralTokens[users[i]];
+        }
+        return (_users, _amount, _tokensBought, _referralTokens);
+    }
+
+    function withdrawETH() external onlyOwner {
+        (bool success, ) = payable(paymentWallet).call{
+            value: address(this).balance
+        }("");
+        require(success, "ETH withdraw failed");
+    }
+
+    function withdrawTokens(address _token) external onlyOwner {
+        require(_token != address(0), "Invalid token address");
+        uint256 _balance = IERC20(_token).balanceOf(address(this));
+        bool success = IERC20(_token).transfer(paymentWallet, _balance);
+        require(success, "Token transfer failed");
+    }
+
+    function setSaleStart(bool _startSale) external onlyOwner {
+        startSale = _startSale;
+    }
+
+    function setSaleToken(address _saleToken) external onlyOwner {
+        require(_saleToken != address(0), "Invalid sale token");
+        saleToken = _saleToken;
+    }
+
+    function setClaimAllowed(bool _claimAllowed) external onlyOwner {
+        claimAllowed = _claimAllowed;
+    }
+
+    function setPaymentWallet(address _paymentWallet) external onlyOwner {
+        require(_paymentWallet != address(0), "Invalid payment wallet");
+        paymentWallet = _paymentWallet;
+    }
+
+    function setTokenPrice(uint256 _tokenPrice) external onlyOwner {
+        require(_tokenPrice > 0, "Invalid token price");
+        tokenPrice = _tokenPrice;
+    }
+
+    function setReferralPercentage(
+        uint256 _referralPercentage
+    ) external onlyOwner {
+        require(_referralPercentage <= 10000, "Invalid referral percentage");
+        referralPercentage = _referralPercentage;
+    }
+}

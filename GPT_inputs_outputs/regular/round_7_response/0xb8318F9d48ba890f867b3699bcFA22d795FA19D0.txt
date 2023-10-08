@@ -1,0 +1,33 @@
+Here are some potential gas-wasting patterns I've identified in the provided Solidity code:
+
+1. **Redundant storage reads for `game` in different functions**
+
+    In functions such as `openEntries`, `closeEntries`, `cancelGame`, and `declareWinner`, the code is reading from the `game` storage variable multiple times. Storage is expensive in Ethereum, and reducing the number of storage reads can save gas.
+
+    - **Discovery process**: This was identified by examining each function and noting the repeated use of the `game` variable. The fact that storage reads are costly in Solidity led me to consider this a gas-wasting pattern.
+    - **Fix**: Instead of reading the `game` variable multiple times, read it once at the start of the function and store the result in a local variable. Then, use this local variable throughout the function. The reasoning is that memory is much cheaper than storage in Ethereum, so reducing storage reads will result in a gas saving.
+    - **Readability**: 5; **Security**: 5; **Maintainability**: 5. This change should not affect readability, security, or maintainability, as it only involves replacing repeated storage reads with a single memory read.
+
+2. **Repeated computation of `_gameStatus(game)`**
+    
+    The code repeatedly calls `_gameStatus(game)`, which is an expensive operation. 
+
+    - **Discovery process**: This was identified by examining each function and noting the repeated use of the `_gameStatus(game)` function. The fact that function calls can be expensive in Solidity led me to consider this a gas-wasting pattern.
+    - **Fix**: Call `_gameStatus(game)` once at the start of the function and store the result in a local variable. Then, use this local variable throughout the function. The reasoning is that reducing the number of function calls will result in a gas saving.
+    - **Readability**: 5; **Security**: 5; **Maintainability**: 5. This change should not affect readability, security, or maintainability, as it only involves reducing the number of function calls.
+
+3. **Unnecessary storage writes in `createGame` function**
+
+    In the `createGame` function, the `games[gameCounter]` mapping is written to before the `gameCounter` is incremented. If the `createGame` function were to revert for some reason after this operation, the `games` mapping would still be written to, wasting gas.
+
+    - **Discovery process**: This was identified by examining the `createGame` function and noting the order of operations. Understanding that storage writes are expensive in Ethereum and that reverts don't refund gas used led me to consider this a gas-wasting pattern.
+    - **Fix**: Increment `gameCounter` before writing to the `games` mapping. This ensures that if the function reverts for some reason, the costly storage write is not performed unnecessarily.
+    - **Readability**: 5; **Security**: 5; **Maintainability**: 5. This change should not affect readability, security, or maintainability, as it only involves changing the order of two operations.
+
+Regarding your additional requirements:
+
+1. Your prompt was clear and provided enough information for me to start the task. Nevertheless, it could help if you also provided the complete contract code, including the data structures and state variables used. This would give a more comprehensive view of the contract and potentially reveal more gas-wasting patterns.
+   
+2. My reasoning process involved closely examining the code, thinking about the cost of different operations in Ethereum (especially storage reads/writes), and identifying areas where these expensive operations were performed unnecessarily or could be optimized. I believe this process was effective for the task at hand.
+
+Finally, it's important to remember that gas optimization usually involves trade-offs, such as between efficiency and readability or maintainability. It's crucial to keep these trade-offs in mind when considering gas optimization strategies.

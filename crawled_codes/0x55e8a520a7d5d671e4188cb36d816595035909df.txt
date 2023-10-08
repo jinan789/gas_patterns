@@ -1,0 +1,121 @@
+// SPDX-License-Identifier: MIT
+// Copyright 2023 Proof Holdings Inc.
+pragma solidity >=0.8.17;
+
+import {Grails4} from "./Grails4.sol";
+import {IERC721} from "openzeppelin-contracts/token/ERC721/IERC721.sol";
+import {SafeERC20} from "openzeppelin-contracts/token/ERC20/utils/SafeERC20.sol";
+import {IERC20} from "openzeppelin-contracts/token/ERC20/IERC20.sol";
+
+interface GrailExchangeEvents {
+    event Exchange(uint256 indexed tokenId, uint256 amount);
+}
+
+/**
+ * @notice This contract allows users to exchange their Grails IV NFTs from a specific projectID for a share in a pool
+ * of ERC20 tokens.
+ * @author Josh Laird (@jbmlaird)
+ * @custom:reviewer David Huber (@cxkoda)
+ * @custom:reviewer Arran Schlosberg (@divergencearran)
+ */
+contract GrailExchange is GrailExchangeEvents {
+    using SafeERC20 for IERC20;
+
+    // =================================================================================================================
+    //                          Errors
+    // =================================================================================================================
+
+    /**
+     * @notice Thrown on attempts to exchange a token that does not belong to the configured project.
+     */
+    error TokenWithWrongProjectID(uint256 tokenId, uint128 projectId);
+
+    /**
+     * @notice Thrown on attempts to exchange a token that does not belong to the caller.
+     */
+    error NotTokenOwner(address caller, uint256 tokenId);
+
+    // =================================================================================================================
+    //                          Storage
+    // =================================================================================================================
+    /**
+     * @notice The token that's being exchanged.
+     */
+    IERC20 public immutable coin;
+
+    /**
+     * @notice The GrailsIV contract that tokens are being exchanged from.
+     */
+    Grails4 public immutable grails4;
+
+    /**
+     * @notice The project ID that can be exchanged.
+     */
+    uint128 public immutable projectId;
+
+    /**
+     * @notice The number of tokens that have been exchanged.
+     * @dev This is used to compute the share of tokens to be paid out.
+     */
+    uint64 public numBurned = 0;
+
+    /**
+     * @notice The number of tokens that have been minted from the configured project.
+     * @dev Cached to avoid repetitive calls to GrailsIV. This value won't change as the GrailsIV mint has concluded.
+     */
+    uint64 public immutable numMinted;
+
+    // =================================================================================================================
+    //                          Construction
+    // =================================================================================================================
+
+    struct ConstructorParams {
+        Grails4 grails4;
+        IERC20 coin;
+        uint128 projectId;
+    }
+
+    constructor(ConstructorParams memory params) {
+        grails4 = params.grails4;
+        projectId = params.projectId;
+        coin = params.coin;
+        numMinted = grails4.numPurchasedPerProject(params.projectId);
+    }
+
+    /**
+     * @notice The amount of ERC20 tokens to transfer for each exchanged token.
+     * @dev The ERC20 token might be rebasing so the amount to transfer has to be calculated on the fly.
+     */
+    function amountToTransfer() public view returns (uint256) {
+        if (numMinted == numBurned) {
+            return 0;
+        }
+
+        return coin.balanceOf(address(this)) / (numMinted - numBurned);
+    }
+
+    /**
+     * @notice Burn a GrailsIV token in exchange for ERC20 tokens.
+     * @param tokenId The token to exchange.
+     * @dev This will revert if the token has not been minted, has already been burned, or it does not belong to the
+     * configured project ID.
+     */
+    function exchange(uint256 tokenId) external {
+        // CHECKS
+        if (grails4.ownerOf(tokenId) != msg.sender) {
+            revert NotTokenOwner(msg.sender, tokenId);
+        }
+        if (grails4.tokenInfo(tokenId).projectId != projectId) {
+            revert TokenWithWrongProjectID(tokenId, grails4.tokenInfo(tokenId).projectId);
+        }
+
+        // EFFECTS
+        uint256 transferAmount = amountToTransfer();        
+        numBurned += 1;
+        emit Exchange(tokenId, transferAmount);
+
+        // INTERACTIONS
+        grails4.burn(tokenId);
+        coin.safeTransfer(msg.sender, transferAmount);
+    }
+}

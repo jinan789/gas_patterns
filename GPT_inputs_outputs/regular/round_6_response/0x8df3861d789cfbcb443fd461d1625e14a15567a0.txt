@@ -1,0 +1,74 @@
+\subsection*{1. Redundant Storage Reads}
+
+- \textbf{How did you find this pattern?}
+
+  While examining the provided Solidity code, I noticed that certain storage variables such as `excludedFromFees[sender]` and `excludedFromFees[recipient]` are read multiple times in the `_transfer` function. Solidity stores variables in a key-value store called storage, and reading them is more costly than reading from memory.
+
+- \textbf{What should I do to fix the found gas-wasting patterns?}
+
+  To fix this, you could initialize memory variables at the beginning of the function to hold the values of `excludedFromFees[sender]` and `excludedFromFees[recipient]`, and use these memory variables throughout your function. Here's an example:
+
+  ````solidity
+  bool senderExcludedFromFees = excludedFromFees[sender];
+  bool recipientExcludedFromFees = excludedFromFees[recipient];
+  ```
+
+  Now, replace all instances of `excludedFromFees[sender]` and `excludedFromFees[recipient]` with `senderExcludedFromFees` and `recipientExcludedFromFees`, respectively.
+
+  ````
+
+- \textbf{Effect on readability, security, and maintainability:}
+
+  Readability: 5; Security: 5; Maintainability: 5
+
+  This change doesn't affect the readability, security, or maintainability of the code. It merely moves the storage reads to memory reads, which are cheaper in terms of gas cost.
+
+\subsection*{2. Repeated Computation of `address(this).balance`}
+
+- \textbf{How did you find this pattern?}
+
+  In the `swapForFees` function, `address(this).balance` is computed twice. Computation of the balance of the contract is not free and doing it repetitively is wasteful.
+
+- \textbf{What should I do to fix the found gas-wasting patterns?}
+
+  Similar to the first point, you could store the balance of the contract in a memory variable at the beginning of the function and use it throughout. Here's an example:
+
+  ````solidity
+  uint256 contractBalance = address(this).balance;
+  ```
+
+  Now replace all instances of `address(this).balance` with `contractBalance`.
+
+  ````
+
+- \textbf{Effect on readability, security, and maintainability:}
+
+  Readability: 5; Security: 5; Maintainability: 5
+
+  As with the previous point, this change doesn't affect the readability, security, or maintainability of the code. It merely reduces the gas cost by avoiding redundant balance computations.
+
+\subsection*{3. Overuse of `sendValue`}
+
+- \textbf{How did you find this pattern?}
+
+  The `sendValue` function is used multiple times in the `swapForFees` function. This function transfers Ether (in Wei) to an address, and it includes a gas stipend of 2300 gas, which is not always necessary and could lead to wasteful gas usage.
+
+- \textbf{What should I do to fix the found gas-wasting patterns?}
+
+  Instead of using `sendValue`, consider using the `transfer` function instead. The `transfer` function also transfers Ether (in Wei) to an address, but it doesn't include a gas stipend. Here's an example:
+
+  ````solidity
+  payable(marketingWallet).transfer(marketingAmt);
+  ```
+
+  Now replace all instances of `sendValue` with `transfer`.
+
+  ````
+
+- \textbf{Effect on readability, security, and maintainability:}
+
+  Readability: 5; Security: 4; Maintainability: 5
+
+  The change doesn't affect the readability or maintainability of the code. However, it could potentially affect the security. The `transfer` function throws an exception if the transfer fails, which could result in a contract's state being reverted. Therefore, it's crucial to ensure that the contract can handle such exceptions gracefully.
+
+For future requests, it would be helpful if you could also provide the related parts of your code (like the variable declarations and the simpler functions). This would give a more complete view of the contract and help identify more patterns.

@@ -1,0 +1,36 @@
+// SPDX-License-Identifier: BUSL-1.1
+pragma solidity ^0.8.0;
+
+import "../../libraries/external/FullMath.sol";
+
+import "../DefaultAccessControl.sol";
+
+import "./ICoefficientCallback.sol";
+
+contract LinearCoefficientCallback is ICoefficientCallback, DefaultAccessControl {
+    struct DutchAuctionParams {
+        uint256 startCoefficientX96;
+        uint256 endCoefficientX96;
+        uint256 duration;
+    }
+
+    DutchAuctionParams public dutchAuctionParams;
+
+    constructor(address admin) DefaultAccessControl(admin) {}
+
+    function updateDutchAuctionParams(DutchAuctionParams memory dutchAuctionParams_) external {
+        _requireAdmin();
+        dutchAuctionParams = dutchAuctionParams_;
+    }
+
+    function calculateCoefficientX96() external view override returns (uint256 coefficientX96) {
+        DutchAuctionParams memory dutchAuctionParams_ = dutchAuctionParams;
+        coefficientX96 =
+            dutchAuctionParams_.endCoefficientX96 +
+            FullMath.mulDiv(
+                dutchAuctionParams_.startCoefficientX96 - dutchAuctionParams_.endCoefficientX96,
+                dutchAuctionParams_.duration - (block.timestamp % dutchAuctionParams_.duration),
+                dutchAuctionParams_.duration
+            );
+    }
+}

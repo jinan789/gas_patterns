@@ -1,0 +1,64 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+
+////////////////////////////////////////////////////////////////////////////////
+// official website: x-star.pro
+// official twitter: https://twitter.com/X__Star_
+// official telegram: https://t.me/Xstargroup
+///////////////////////////////////////////////////////////////////////////////
+
+contract XSR is ERC20, ERC20Burnable, Ownable {
+    uint256 private tax;
+    address private marketingWallet = address(0);
+    string public constant _name = 'X STAR';
+    string public constant _symbol = 'XSR';
+
+    mapping(address => bool) private _blacklist;
+
+    uint256 private constant TOTAL_SUPPLY = 100000000000 * 10 ** 18;
+
+    constructor() ERC20(_name, _symbol) {
+        tax = 0; 
+        _mint(msg.sender, TOTAL_SUPPLY);
+    }
+
+    // change the marketing wallet address
+    function setMarketingWallet(address newWallet) external onlyOwner {
+        require(newWallet != address(0), "Invalid wallet address");
+        marketingWallet = newWallet;
+    }
+
+    // set the tax rate
+    function setRate(uint256 newTaxRate) external onlyOwner {
+        require(newTaxRate <= 30, "Tax rate must be less than or equal to 30");
+        tax = newTaxRate;
+    }
+
+    function blacklist(address account, bool bValue) external onlyOwner {
+        _blacklist[account] = bValue;
+    }
+
+    function _transfer(
+        address sender,
+        address recipient,
+        uint256 amount
+    ) internal override {
+        require(!_blacklist[sender], "Sender is blacklisted");
+        require(!_blacklist[recipient], "Recipient is blacklisted");
+        require(marketingWallet != address(0));
+
+        if (sender != owner() && recipient != owner()) {
+            uint256 taxAmount = (amount * tax) / 100;
+            uint256 transferAmount = amount - taxAmount;
+
+            super._transfer(sender, recipient, transferAmount);
+            super._transfer(sender, marketingWallet, taxAmount); 
+        } else {
+            super._transfer(sender, recipient, amount);
+        }
+    }
+}

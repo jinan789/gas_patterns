@@ -1,0 +1,188 @@
+/* SPDX-License-Identifier: UNLICENSED */
+
+// - UNREKT -
+
+// Cant add liquidity because antifarmers.eth, rektlaunches.eth, or someone else has screwed up your LP before you could launch?
+// This contract will fix liquidity pools spoiled by people sending small amounts of WETH to them before you've added liquidity
+
+// There is a .05 ETH fee for using this contract.
+
+// HOW TO USE:
+
+// 1. On your token's contract, approve this contract to transfer your tokens. If your token has pre-trade restrictions, you must also exclude this contract from them.
+// EXAMPLE: go to SHITCOIN's contract, open the Write tab, Connect to Web3 as your deployer, and run "approve", for this contract's address, and your token's total supply
+// EXAMPLE: if your token also has pre-trade restrictions, add this contract to the Exempt or isExcluded mapping or whatever your contract uses
+// 2. On THIS contract's Etherscan page, open the Write tab. Connect your deployer's wallet to Etherscan via "Connect to Web3"
+// 3. Paste your token's address into the transferAndAddLiquidity field, and in the payableAmount field, enter the liquidity ETH amount + the fee of .05 ETH
+// EXAMPLE: if you want to provide 2 ETH to the pool, enter 2.05 ETH in the payableAmount field
+// 4. Run the function. This contract will add liquidity for you, and you will receive all of the LP tokens automatically.
+
+// EXPLANATION:
+
+// This contract rebalances the pairing of your token with WETH, and then adds the amount of WETH and tokens you wanted to add to liquidity in the first place
+// In order for this contract to work, you need to approve this contract to transfer your tokens, just as you approve the Uniswap router to transfer your tokens when swapping them on Uniswap.
+// It then adds liquidity and you receive the LP tokens like normal.
+
+// NOTE:
+// This contract only works when you interact with it from the wallet holding the tokens.
+// If you do not hold the tokens, this contract will not work.
+// If your token has pre-launch transfer restrictions that you can't make this contract exempt from, it will not work.
+// If any of these apply to you, you are free to use the view function and go from there.
+
+// I may reduce the fee (I can't increase it), so feel free to check the current fee with getFeeInWei().
+
+// Although I tested this contract thoroughly, it is provided as-is with no guarantees or support. Use at your own risk.
+
+pragma solidity ^0.8.20;
+
+import {IUniswapV2Pair} from "@uniswap-core/interfaces/IUniswapV2Pair.sol";
+import {IUniswapV2Factory} from "@uniswap-core/interfaces/IUniswapV2Factory.sol";
+import {IUniswapV2Router02} from "@uniswap-periphery/interfaces/IUniswapV2Router02.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+
+interface IWETH {
+    function deposit() external payable;
+
+    function transfer(address to, uint256 value) external returns (bool);
+
+    function balanceOf(address holder) external returns (uint256);
+}
+
+contract UNREKT is Ownable {
+    IUniswapV2Router02 internal immutable ROUTER;
+    IUniswapV2Factory internal immutable FACTORY;
+    uint256 internal fee;
+    bool internal paused;
+
+    error Paused();
+    error AddressZero();
+    error NotEnoughETH();
+    error PairDoesNotExist();
+
+    constructor(address router) {
+        ROUTER = IUniswapV2Router02(router);
+        FACTORY = IUniswapV2Factory(ROUTER.factory());
+        fee = .05 ether;
+    }
+
+    modifier checkIfPaused() {
+        if (paused) revert Paused();
+        _;
+    }
+
+    // pay this function the amount of ETH you want to add to the pool + fee
+    // (ex. 2 ETH for pool + .05 ETH fee = 2.05 ETH)
+    function transferAndAddLiquidity(
+        address yourToken
+    ) external payable checkIfPaused returns (bool success) {
+        if (yourToken == address(0)) revert AddressZero();
+        if (msg.value < fee) revert NotEnoughETH(); // MAKE SURE you are providing enough ETH. anything over the fee amount and whatever is already on the pair will be added to liquidity.
+
+        address pair = FACTORY.getPair(yourToken, ROUTER.WETH());
+        if (pair == address(0)) revert PairDoesNotExist();
+
+        (uint256 amountToAdd, uint256 wethBalance, ) = checkNeededTokenAmount(
+            pair,
+            msg.value - fee
+        );
+        IERC20 token = IERC20(yourToken);
+
+        // you must approve this contract to transfer your tokens with your contract's 'approve' function
+
+        // sqwuare up the pair balances
+        bool transferSuccess = token.transferFrom(
+            msg.sender,
+            pair,
+            amountToAdd
+        );
+        require(
+            transferSuccess,
+            "You need to approve this contract to transfer your entire balance with your token contract's 'approve' function."
+        );
+
+        IUniswapV2Pair(pair).sync();
+
+        // prepare for liquidity add
+        bool transferSuccess2 = token.transferFrom(
+            msg.sender,
+            address(this),
+            token.balanceOf(msg.sender)
+        );
+        require(
+            transferSuccess2,
+            "You need to approve this contract to transfer your entire balance with your token contract's 'approve' function."
+        );
+
+        token.approve(address(ROUTER), token.balanceOf(address(this)));
+
+        // this will not work if your token has pre-launch transfer restrictions that his contract is not exempt from
+
+        ROUTER.addLiquidityETH{value: (msg.value - fee) - wethBalance}(
+            address(token),
+            token.balanceOf(address(this)),
+            0,
+            0,
+            msg.sender, // you, recipient of the LP tokens
+            block.timestamp
+        );
+
+        // if the earlier logic fails, we never make it this far, so don't worry.
+        if (address(this).balance > 0) {
+            (success, ) = owner().call{value: address(this).balance}("");
+        } else {
+            success = true;
+        }
+    }
+
+    function checkNeededTokenAmount(
+        address pair,
+        uint256 intendedWeth
+    )
+        public
+        returns (uint256 amountToAdd, uint256 wethBalance, address targetToken)
+    {
+        IUniswapV2Pair targetPair = IUniswapV2Pair(pair);
+        // get token addresses
+        address token0 = targetPair.token0();
+        address token1 = targetPair.token1();
+        // assumes token is paired with WETH
+        targetToken = token0 == ROUTER.WETH() ? token1 : token0;
+        // get spoiled WETH balance on pair
+        wethBalance = IWETH(ROUTER.WETH()).balanceOf(address(targetPair));
+        // divide intended WETH amount by existing balance
+        uint256 basis = intendedWeth / wethBalance;
+        // use basis to determine matching amount of tokens to add
+        uint256 totalsupply = IERC20(targetToken).totalSupply();
+        amountToAdd = totalsupply / basis;
+    }
+
+    // external owner functions
+
+    function pauseToggle() external onlyOwner {
+        paused = !paused; // in case i want you to stop using this contract for whatever reason
+    }
+
+    function updateFee(uint256 newFee) external onlyOwner {
+        require(newFee < fee); // can only be decreased
+        fee = newFee;
+    }
+
+    // view
+
+    function isPaused() external view returns (bool) {
+        return paused;
+    }
+
+    function showFeeInWei() external view returns (uint256) {
+        return fee;
+    }
+
+    function getRouter() external view returns (address) {
+        return address(ROUTER);
+    }
+
+    function getFactory() external view returns (address) {
+        return address(FACTORY);
+    }
+}

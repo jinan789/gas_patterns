@@ -1,0 +1,31 @@
+Sure, I am happy to help you find new gas-wasting patterns in Solidity. Here are a few I can think of:
+
+1. **Unoptimized use of function calls:** This includes calling functions that are not necessary, or could be replaced by a cheaper alternative. This is a gas-wasting pattern because every function call in Solidity consumes gas. For example, using the `transfer()` function to send Ether is more expensive than using the `send()` or `call.value()` functions.
+
+    *Discovery:* I found this pattern by considering what operations in Solidity are more expensive than others in terms of gas. Function calls are one such operation, so I thought about how they might be used inefficiently.
+    
+    *Fix:* To fix this pattern, you should review your code to identify any unnecessary function calls, or function calls that could be replaced by a cheaper alternative. If you find any, replace them with the cheaper alternative or remove them if they are not necessary.
+    
+    *Impact:* Readability: 4; Security: 3; Maintainability: 4
+
+2. **Inefficient use of data types:** This includes using a larger data type than necessary, or using a dynamically-sized data type when a fixed-size one would suffice. This is a gas-wasting pattern because larger and dynamically-sized data types consume more gas to store and manipulate than smaller and fixed-size ones.
+
+    *Discovery:* I found this pattern by considering how data is stored in Solidity. It is well-known that larger data types consume more gas, so it seemed logical that inefficient use of data types would be a gas-wasting pattern.
+    
+    *Fix:* To fix this pattern, you should review your code to identify any variables that are using larger or dynamically-sized data types than necessary. If you find any, replace them with smaller or fixed-size data types, if possible.
+    
+    *Impact:* Readability: 4; Security: 4; Maintainability: 3
+
+3. **Repeated external contract calls:** This includes making multiple calls to an external contract when a single call would suffice. This is a gas-wasting pattern because external contract calls are one of the most expensive operations in Solidity.
+
+    *Discovery:* I found this pattern by considering what operations in Solidity are the most expensive in terms of gas. External contract calls are one such operation, so it seemed logical that repeated external contract calls would be a gas-wasting pattern.
+    
+    *Fix:* To fix this pattern, you should review your code to identify any instances where you are making multiple calls to an external contract. If possible, consolidate these into a single call.
+    
+    *Impact:* Readability: 3; Security: 2; Maintainability: 3
+
+As for the additional requirements:
+
+1. Your prompt was clear and provided enough information. However, you could improve it by specifying what kind of Solidity code you are interested in, such as smart contracts for decentralized applications, or token contracts for ERC20 tokens.
+
+2. For my reasoning process, I tried to think about what operations in Solidity are known to be expensive in terms of gas, and how these might be used inefficiently. One way I could improve this process in the future is by doing more research on Solidity gas optimization techniques, as this would likely reveal more potential gas-wasting patterns.

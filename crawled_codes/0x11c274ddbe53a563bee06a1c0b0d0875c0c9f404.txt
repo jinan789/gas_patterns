@@ -1,0 +1,73 @@
+// SPDX-License-Identifier: MIT
+
+pragma solidity ^0.8.0;
+
+/// @title: esraeslen III 1o1
+/// @author: manifold.xyz
+
+import "./manifold/ERC721Creator.sol";
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//                                                                                                            //
+//                                                                                                            //
+//    lclcclc,;:cc:dKX0ookkdodxxdox0Oo:;;clc:cokxoddxxlodxxdddoooloxkkkOKXd....,',:xXNNNNNNOc;lOXNNNNNNNNX    //
+//    xoxlcxo;,;;,lO0xlcx00xok00kodxxodocc;,;;'lOxdk0klldxxxkkxdoodxkkkk0Xx'.',;'',oKNNNNNNNKkdOXNNNNNNNNX    //
+//    koOOodl';::,cdc:lld00xdk00xoodxkxdoll:clcokxdkkxdooodxkkxdxkkxkxdxO0o..'';,''lKNNNNNNNNNNNNNNNNNNNNN    //
+//    xoxkooo;,:;',:lkOkxkkdoxkxxxkkkddooclox0Ko;;coxdxxxxxkkkxxxkkkkxdoool,..'''..;xKXNNNNNNNNNNNNNNNNNXX    //
+//    Okxl,:l;':ol::oxOO00kdodkOOkkdooddoodx0K0o;,;ldxkOkkkkkxdodxxxddxOXK0o'.'''..'';cx0KNNNNNNNNNNNNN0oc    //
+//    KK0l..''cddO0o:odxxxxkOOxddooooddxxkxdxkxoccclldO0kkkkkxxxxdxkO0XXNNNKc...'',,;;,.:ONNNNNNNNNNNNNKOd    //
+//    NNNKOkk0XXkxkkdx00kxdolloooodxxxdddxkxxxxdoddddx0KK0kkkkkkxxkKXNNNNNNKl...,:::;:,.:0NNNX0KXNNNNNXKOO    //
+//    NNNNNXKKXNX0KNXXXNNXKOxxOOkkkkkkkxxdxkkkkkkkkkkk0KKOddxxkkkkkkO0KXNNNk:'..';;,;clclkXXd;,c0NNXNNXK0X    //
+//    NNX0OOOKXNNNNNNNNNNNNNNNNXKOkkkkkkkkkkkkxxxxxxxxkkxo;:xOkkkkkkkk0XNNXo,,,cl,..c0NX0OOkl,:xOOO0XNNNNN    //
+//    xddx0XNNNNNNXK0XNXK00KK0KXNXK0000OOkkkkkxxdooodxxol::o00OkkkkkkkKNN0l,.,dXKxod0XNNNNXKxooddOXXNNNX0O    //
+//    00OOOOKXNNNNXOkKNKkkkk0KKNNNNNNXKOkkkkxxxddddddddlcllokkkkkkkkk0XK0xlodOXNNNNNNNNNNNX0OOOOkkO00Ooccl    //
+//    NNNXK0OkO0XNNKKNNX0OO0XNNNNNXK0OkkkkkkdoodkkkkkxolllllxkkkOOOOKXX0kk0XNNNNNNNNNK0OKNNXNNNXKkc,,'...,    //
+//    NNNNNNNX0O0KKXNNNNXXXXNNXK00OkkkkkkkkkxdclxkkOkxollollddox0XXXNXXK0KXNNNNNNXXK0OOKXNNNXKkl;'.....',:    //
+//    NNNNNNNNNNNXKKNNNNNNNNNNXKOkkxxxkkkkkkkxlcoOXXKxllllcoxocoxkO00OOkOOKXNNX0OO0KXXNXOdol:,.....',;cllo    //
+//    NNNNNNNNNNNNNNNNNNX0KXNNX0kxxxxxkkkkkkkxl:ckKKOocllloxdl;l00kxxxxkkkkOOkkO0XNNNKx;........',:clloooo    //
+//    NNWWNOkKNNNNNNNNNNK0OkkkxxxkkkkkkkkOkkOd:,;okdlllloxOd::;lOOkkxxxxddxkOKXNNNXOd:.......,;;;:clc:cooo    //
+//    WWNOolkXWNNNNNNNNNNXOxdddxOK0OkkkkkOOOOl,,:kkllllx0XKc;;:okkkkkxxdddkO0KXKxl:'.....','''.....';:lloo    //
+//    WKxoxXWWWNXKXNNKKXNXKK0kkOKXNXKOkkxddxdc:;c0kccllOXNO:,,lkkkkkkxxkk0XKxcc;.......'''............',:c    //
+//    xokXWWWNNNX00XNKKXNNNNXKKXXNXXOxxdlldkocc:,ll,:c;cdOd;;cxkxxkkkkkkkkxl;..';:;'......................    //
+//    o0NWWWNXKOOO0XNNNNNNNNNNNXKOOkkxdlcldxd::l:,..:o:,';;:lldxxkkkkxdolc:;;:oxko,.,;'.''................    //
+//    NWWNXK0OOOKXNNNNNNNNNNXK00kxkkkxolcloxd:,lo:..:ol'..;llcoxkxxoc:ccccoO00ko;..,c:,;:,.'''''..''......    //
+//    XK0kk0XXNNNNNNNNNNNNNXOoodxkkkkdlll:ck0l,ldc'.:oc;;codolcoolc:..;:c:cdO0o....'..'cl:;:,'''''',,.....    //
+//    OxdxKNNNNNNNNNNNXKXNNX0O0XXKOkkoccol;ld;;odc,':llodxkxl:::::clooc;,',:cloodl;'..'...cO0xc;'.......''    //
+//    XNKKXNNNXXNNNNNXKKXNNXK0KXNNXKKx;;ldc;',cdd:,;cldxkkkdc,,cc,,dXNX0xl;,;:;,:ldxo;,:okKXXK0kdddddddood    //
+//    kOKXNNNXKOO0K000O00KXNNNXK000KXKc';ll;,cdxo;;cloxkkkxo:''::,,;xXXXXXKxl:,';::clokKKOxl;,'';oolodk0XK    //
+//    oodxkOKNNXKkxddxkkkOKNNNX0kkkOXKd,,:lccdxdc:lddxkkkkdl;....':,c0XXXXNNXKOdc;,,,',::;,''.''.','.'.,:;    //
+//    codxddkO0KXKOxxxxxxOXXXXXXOxk0KX0l':oodxxoloxxxxkkkxoc,....cl;.:dkKXNNXXXNXOl;;;;:,',,,',,;,,;,.....    //
+//    ,;ccloxdodxOOOkkxxO00kkkOOkk0XNNNx,;oxkkxodxkkxkkkkxoc;...;ol,..',coxOKXX0Okoc;',:;'''''''''.':;....    //
+//    l::::clooddooxxkO0KX0ddooxKXNNXKk:':oxkkxxxkkkkkkkkxoc:,..:l:..'''',;;cokOd:,,,'';c,.''''''''',,....    //
+//    kxkkdlcclloooooddxxkOOKX0kxkkkxo;',cdkkkkkkkkkkkkkkxolc;',:c,..,;;,,,''cxo'',;,'.;o;.'''''..'';,...'    //
+//    OOkkxoclollooooodooodkkOkxdooddc'';lxkkkkkkkkkkkkkkkxolc;:cc'.,,,'''',okl''',;,'.,ll:cccllc::dd;.';:    //
+//    ddooooooooooooooooooooolloddool;'';lxkkkkkkkkkkkkkkkxdllcloc'.'''''';dkc'''',,'''cdOXXXXXX0olxl'',;,    //
+//    oooooooooooolloooooooooooollcclc,.;cdkkkkkkkkkkkkkkkkkxoddo:'..'''.;xk:'''.,:oo::lx0XXXXXXXXXd,''...    //
+//    ooooooooooolllloooooooooollool:,...;oxkxxkkkkkkkkkkkkkkkxdl:'..''';xk:,,';ok0OxOKOx0NXXXXXNXk;''''.'    //
+//    oooooooooolllolloooooolccloo:'.....,coodddxxxkkxxxxxxxkkdoc,..,,'ckxlloooOXKkx0XN0dkKKXKKK0xc:cc;,;:    //
+//    ooooooooooldOOocoooooolcclo;......':ccccllodxxddddddddxdoc;...'..;cooox00OKKkxxkxc'';::;;;',;;:ldk0x    //
+//    oooooooll::dkdlclooooooool:....   .;:::cccloddddddddddol:,........,ldxx0OdOKx;''..'''';;:;,:odOXNNOo    //
+//    ooooool;,;;:clllllllooooo:.........'::::::cllooddddddoc,......'...,dxxxooc:;..';;:ccllllodk0XNNWNXdd    //
+//    ooooool:,,;;;ccccllooooooc::::;,'...',;;;:ccccclolllc;.....,;;'...,odc;'...,;:clclllclx0KNNNNNNN0xk0    //
+//    ooooooooll:,,,:looolloooolc::cc;...'.....,:c:::;,'''''...',:::,....''....;clcc:;',lxOKNNNNNNX0xlcxXk    //
+//    ooollllllooolloooollcllccc:::::;,.........';::,.....';:::cc:;,.......,;:cccloc:ldOXNNNNNNX0xolc:o0Od    //
+//    ooollcccloooolcclllcc:::::;,,;:;..',.. ',..,cc:'....,::ccccc,......:looooooooccok0XNNNKkdollloc:x0x0    //
+//    ooooooollc;;:c::cccc:::::;,',;:;'..;:'','...,;;,,,''';:ccclc'..',.':ll:,;cloooolclodxdocllllodoo0O0N    //
+//    oooolcccc;,,:::ccccccc:;;;:::::::'..'''.....';:::::;;,,::;,'...,;;;;:c;'.,looooooolllloollokKNKkOKNM    //
+//    ollc:cc:ccccccccccccccc::::::::::'.........';cccccc::;;::;'..',cc:c:;;cc:clooooooooooooooldk0XNKOOOK    //
+//    ;:c::cccccccccccccccccccc:::::::,...........':cccccc:cccccc::clc;'....,cloooooolcooooooooollldxxxdll    //
+//    .,;;,',,;:cccccccccccc:::;..';::;;;'.........,:ccccccccccc:,,,'..    ...,cloooollloooooooooooooooooo    //
+//    .....  ..';:::;,:cc::::::;'.....',;,'....',,,;:cccccccccc:'...         ...:ollooollooooooooooooooooo    //
+//     ......  .......';;;;:ccc:,''''..........''.'',;::c:::::,...........   ...'::loolcclollooooooooooooo    //
+//     ..','..  ...  .......'''''',''.............   .....',;,........'''...  ....',;cl:;:llllcloolooooooo    //
+//    . .',;'.   .''....................................... .............'... ...''...,:clloolccoxoclooooo    //
+//    .. ..'...  ..''',,''''''...................................................''...',;cooooollooloooooo    //
+//    '.  .....  ..,,,,,'....',,,,''...........    ...........................',,.....'.':oooooooooooooooo    //
+//                                                                                                            //
+//                                                                                                            //
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+contract EE is ERC721Creator {
+    constructor() ERC721Creator("esraeslen III 1o1", "EE") {}
+}

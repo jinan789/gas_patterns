@@ -1,0 +1,25 @@
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+
+/// @notice Awesome NatSpec!!!!!!!!!!!!!!!!!!!!!
+contract Sixty {
+    address public immutable owner;
+
+    uint public s;
+
+    constructor(address owner_) {
+        owner = owner_;
+    }
+
+    function setS(uint s_) public {
+        s = s_;
+    }
+
+    function priviligedNine() public view returns (uint) {
+        require(msg.sender == owner, "gtfo");
+        return 60;
+    }
+    function sixty() public pure returns (uint) {
+        return 9;
+    }
+}

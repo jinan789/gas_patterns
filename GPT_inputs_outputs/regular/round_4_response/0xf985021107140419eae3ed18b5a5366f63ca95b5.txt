@@ -1,0 +1,25 @@
+\subsection*{Gas-Wasting Pattern 1: Repeated Calls to \_msgSender}
+
+\begin{enumerate}
+    \item The \_msgSender function is a view function that returns the sender of the transaction. In this contract, it is called multiple times within the same function (e.g., safeTransferFrom, _safeTransferFrom, _mint). This is a waste of gas as the result of \_msgSender() does not change within a single invocation of a function.
+    \item \textbf{Fix:} Store the result of \_msgSender() in a local variable at the beginning of the function and use this local variable throughout the rest of the function.
+    \item \textbf{Impact on Readability, Security, and Maintainability:} 
+        \begin{itemize}
+            \item Readability: 5 (The change does not affect readability, as it merely replaces repeated function calls with a variable.)
+            \item Security: 5 (The change does not affect security. The msg.sender cannot change within a single function call.)
+            \item Maintainability: 5 (The change does not affect maintainability. It does not introduce any new constructs or complex logic.)
+        \end{itemize}
+\end{enumerate}
+
+\subsection*{Gas-Wasting Pattern 2: Repeated Storage Lookup}
+
+\begin{enumerate}
+    \item In the _safeTransferFrom function, the code retrieves the value of _balances[id][from] twice from storage. This is a waste of gas, as storage lookups are expensive in Ethereum.
+    \item \textbf{Fix:} Store the result of _balances[id][from] in a local variable after the first lookup and use this local variable for the second occurrence.
+    \item \textbf{Impact on Readability, Security, and Maintainability:} 
+        \begin{itemize}
+            \item Readability: 5 (The change does not affect readability, as it merely replaces repeated storage lookups with a variable.)
+            \item Security: 5 (The change does not affect security. The storage value cannot change within a single function call unless it is explicitly changed, which is not the case here.)
+            \item Maintainability: 5 (The change does not affect maintainability. It does not introduce any new constructs or complex logic.)
+        \end{itemize}
+\end{enumerate}

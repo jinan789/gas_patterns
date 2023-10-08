@@ -1,0 +1,102 @@
+pragma solidity ^0.8.17;
+
+/*
+ *     ,_,
+ *    (',')
+ *    {/"\}
+ *    -"-"-
+ */
+
+import "ERC721Upgradeable.sol";
+import "IERC20.sol";
+import "OwnableUpgradeable.sol";
+import "SubDomainsFactory.sol";
+
+error IncorrectLength();
+error IncorrectAlgoLength();
+// need a runes generator
+// 10 shapes, 6 orientations
+// 4 bits for shape 3 bits per orientation => 7 bits per hex, round it 8 bits, same word usage
+ contract Runes is ERC721Upgradeable, OwnableUpgradeable{
+
+	IERC20 public ygg = IERC20(0x25f8087EAD173b73D6e8B84329989A8eEA16CF73);
+	address constant public DEAD = 0x000000000000000000000000000000000000dEaD;
+
+	mapping(uint256 => uint256) public runeTierCost;
+
+	mapping(uint256 => uint256) public runeBurn;
+	mapping(uint256 => bytes) public runesAlgo;
+	mapping(bytes32 => bool) public algoBlobs;
+
+	uint256 counter;
+	uint256 public runeCost;
+	address public subDomain;
+	string public updateableURI;
+
+	function initialize(string memory name_, string memory symbol_) public initializer {
+        __ERC721_init(name_, symbol_);
+		__Ownable_init();
+    }
+
+	function updateYGG(address _ygg) external onlyOwner {
+		ygg = IERC20(_ygg);
+	}
+
+	function setCost(uint256 _cost) external onlyOwner {
+		runeCost = _cost;
+	}
+
+	function setSubDomain(address _sub) external onlyOwner {
+		subDomain = _sub;
+	}
+
+	function updateURI(string calldata _uri) external onlyOwner {
+		updateableURI = _uri;
+	}
+
+	function overrideAlgoBlob(uint256 _tokenId, bytes calldata _runeAlgo) external onlyOwner {
+		runesAlgo[_tokenId] = _runeAlgo;
+		algoBlobs[keccak256(abi.encodePacked(_runeAlgo))] = true;
+	}
+
+	function adminMint(uint256 _tokenId, bytes calldata _runeAlgo, string calldata _name, uint256 _amountBurnt) external onlyOwner {
+
+		runesAlgo[_tokenId] = _runeAlgo;
+		_mint(msg.sender, _tokenId);
+		runeBurn[_tokenId] += _amountBurnt;
+
+		RunesEns(subDomain).grabSubdomain(_name, _tokenId, address(this), msg.sender);
+		ygg.transferFrom(msg.sender, DEAD, runeCost);
+	}
+
+	function mint(bytes calldata _runeAlgo, string calldata _name, uint256 _amountBurnt) external {
+		require(!algoBlobs[keccak256(abi.encodePacked(_runeAlgo))], "Algo consumed");
+		require(_amountBurnt >= runeCost, "Min amount");
+		uint256 tokenId = ++counter;
+
+		checkAlgoLength(_runeAlgo);
+		runesAlgo[tokenId] = _runeAlgo;
+		algoBlobs[keccak256(abi.encodePacked(_runeAlgo))] = true;
+		_mint(msg.sender, tokenId);
+		runeBurn[tokenId] += _amountBurnt;
+
+		RunesEns(subDomain).grabSubdomain(_name, tokenId, address(this), msg.sender);
+		ygg.transferFrom(msg.sender, DEAD, _amountBurnt);
+	}
+
+	function boost(uint256 _tokenId, uint256 _amount) external {
+		require(ownerOf(_tokenId) == msg.sender);
+
+		runeBurn[_tokenId] += _amount;
+		ygg.transferFrom(msg.sender, DEAD, _amount);
+	}
+
+	// 1 + (6 * (_edge - 1) * (_edge )) / 2 - 
+	function checkAlgoLength(bytes calldata _runeAlgo) internal pure {
+		if (_runeAlgo.length != 61) revert IncorrectAlgoLength();
+	}
+
+	function _baseURI() internal view override returns (string memory) {
+        return updateableURI;
+    }
+}

@@ -1,0 +1,19 @@
+Sure, I'm happy to help you identify new potential sources of gas waste in Solidity. Here's a new gas-wasting pattern:
+
+9. **Inefficient use of data types**: Solidity supports a variety of data types, both value types (like `uint`, `bool`, `address`, etc.) and reference types (like `arrays`, `structs`, `mappings`, etc.). Inefficient use of data types, especially when storing data, can lead to unnecessary gas usage. 
+
+   - **Discovery Process**: This pattern was identified by understanding the underlying EVM (Ethereum Virtual Machine) and how it handles different data types. For example, using an `uint256` for a variable that will never hold a value larger than `uint8` is wasteful, since `uint256` occupies more storage space compared to `uint8`. The EVM has to deal with this larger data type, which results in unnecessary gas costs.
+   
+   - **Fix Process**: The fix here is to carefully choose the most suitable data type for the situation at hand. Always try to use the smallest data type that can correctly handle the range of values you expect to work with. For example, use `uint8` instead of `uint256` if possible. This approach reduces the storage required and thus saves gas.
+   
+   - **Impact Score**: Readability: 5; Security: 5; Maintainability: 4. This change should not impact readability or security, but maintainability could be slightly affected if future changes require larger data types.
+
+10. **Unnecessary function visibility**: Functions in Solidity can be declared as `public`, `private`, `internal`, or `external`. Using `public` for functions that could be `external` can waste gas, because `public` functions could be called both internally and externally, and when called externally, they need to copy their arguments to memory, which costs gas.
+
+   - **Discovery Process**: This pattern was identified by examining the differences in gas cost between calling `public` versus `external` functions. `External` functions read directly from calldata, which is cheaper than copying arguments to memory.
+   
+   - **Fix Process**: The fix here is to use the `external` keyword where possible for functions that are only called from outside of the contract. If a function is intended to be called only from outside the contract, declare it as `external`.
+   
+   - **Impact Score**: Readability: 5; Security: 5; Maintainability: 4. This change should not impact readability or security, but maintainability could be slightly affected if future changes require the function to be called internally.
+   
+The prompt you provided was quite clear and gave a good foundation for identifying potential gas-wasting patterns. As for reflection, understanding the workings of the EVM and the gas cost associated with different operations was key to identifying these patterns. In the future, maintaining a focus on how the EVM operates and the associated gas costs will continue to be beneficial in identifying further potential gas-wasting patterns.

@@ -1,0 +1,50 @@
+\subsection*{Gas Inefficiency Pattern 1: Redundant Condition Check}
+
+1. This pattern was found in the `withdrawETH` and `withdrawETHWithPermit` functions. The condition check `if (amount == type(uint256).max)` is repeated in both functions. These functions check if the user wants to withdraw all their balance.
+1. To optimize this, we could encapsulate this logic into a separate internal function, let's call it `getAmountToWithdraw`.
+   ```solidity
+   function getAmountToWithdraw(uint256 amount, address user) internal returns (uint256) {
+     if (amount == type(uint256).max) {
+       return IHToken(POOL.getReserveData(address(WETH)).hTokenAddress).balanceOf(user);
+     }
+     return amount;
+   }
+   ```
+   Then, in both `withdrawETH` and `withdrawETHWithPermit` functions, replace the existing logic with a call to this function.
+   ```solidity
+   uint256 amountToWithdraw = getAmountToWithdraw(amount, msg.sender);
+   ```
+1. Readability: 5; Security: 5; Maintainability: 4. It enhances readability by abstracting away the logic into a separate function. Security is not impacted as the logic remains the same. It slightly reduces maintainability as changes may need to be made in two places if the logic changes in the future.
+
+\subsection*{Gas Inefficiency Pattern 2: Repeated Fetching of hWETH token}
+
+1. This pattern was found in `withdrawETH`, `withdrawETHWithPermit`, and `repayETH` functions. hWETH token is fetched repeatedly using the same logic.
+1. Just like the previous issue, we can create a separate internal function to fetch hWETH token.
+   ```solidity
+   function getHWETH() internal returns (IHToken) {
+     return IHToken(POOL.getReserveData(address(WETH)).hTokenAddress);
+   }
+   ```
+   Then, replace the existing logic in `withdrawETH`, `withdrawETHWithPermit`, and `repayETH` functions with a call to `getHWETH`.
+   ```solidity
+   IHToken hWETH = getHWETH();
+   ```
+1. Readability: 5; Security: 5; Maintainability: 4. The readability and security are not impacted, but maintainability is slightly reduced for similar reasons as before.
+
+\subsection*{Gas Inefficiency Pattern 3: Overuse of Storage Variables}
+
+1. This pattern was found in the `repayETH` function where the stableDebt and variableDebt are fetched but not always used.
+1. We should move the fetching of stableDebt and variableDebt inside the relevant conditional blocks. This way, they are fetched from the storage only when necessary.
+   ```solidity
+   uint256 paybackAmount;
+   if (DataTypes.InterestRateMode(rateMode) == DataTypes.InterestRateMode.STABLE) {
+     uint256 stableDebt = DataTypesHelper.getUserCurrentDebt(onBehalfOf, POOL.getReserveData(address(WETH))).stableDebt;
+     paybackAmount = stableDebt;
+   } else {
+     uint256 variableDebt = DataTypesHelper.getUserCurrentDebt(onBehalfOf, POOL.getReserveData(address(WETH))).variableDebt;
+     paybackAmount = variableDebt;
+   }
+   ```
+1. Readability: 4; Security: 5; Maintainability: 5. This change slightly reduces readability because the code is now slightly more complex. However, it doesn't impact security or maintainability.
+
+Please note that these changes are based on the assumption that the code does not have any other dependencies or requirements that are not apparent from the provided code snippet. Always thoroughly test your contracts after making any changes to ensure that they still work as expected and that there are no security vulnerabilities introduced.

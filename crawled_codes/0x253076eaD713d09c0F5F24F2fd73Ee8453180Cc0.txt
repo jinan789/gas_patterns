@@ -1,0 +1,83 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.18;
+
+contract MBASECTPPrice{
+    struct Data{
+        uint start;
+        uint end;
+        uint priceInCents;
+    }
+    mapping(uint level => Data) public rangeAndPrice;
+
+    uint[] private range;
+    address public owner;
+    uint public CTPPrice;
+    uint public maxSupply;
+    uint public currentCirculatingSupply;
+    mapping(uint=>mapping(uint=>uint)) private price;
+
+    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+    event CirculatingSupplyUpdated(uint previousSupply, uint previousPrice, uint newSupply, uint newPrice);
+
+    constructor(uint[] memory rangeList, uint[] memory priceList){ 
+        owner = msg.sender;
+        CTPPrice = 2727;// rate during deployment this contract   
+        currentCirculatingSupply = 127659568; //total supply during deployment of this contract
+        maxSupply = 250000000;
+        range = rangeList;
+
+        for(uint i=0; i < range.length-1; i++){
+            uint start = range[i];
+            uint end = range[i+1];
+            rangeAndPrice[i+1] = Data(start, end-1, priceList[i]);
+            price[start][end] = priceList[i];
+        }
+    }
+    
+    modifier  onlyOwner{
+        require(msg.sender == owner);
+        _;
+    }
+
+    function circulatingSupply(uint tokenAmount) public onlyOwner{
+        require((tokenAmount >= 0 && tokenAmount <= maxSupply), "Invalid circulating supply");
+        uint oldSupply = currentCirculatingSupply;
+        uint oldPrice = CTPPrice;
+        for(uint i=0; i < range.length-1; i++){
+            uint start = range[i];
+            uint end = range[i+1];
+            if(tokenAmount >= start && tokenAmount < end){
+                CTPPrice =  price[start][end];
+                currentCirculatingSupply = tokenAmount;
+                break;
+            }
+        }
+        emit CirculatingSupplyUpdated(oldSupply, oldPrice, currentCirculatingSupply, CTPPrice);
+    }
+
+    function getPriceByRange(uint start, uint end) public view returns(uint){
+        uint priceInRange = price[start][end+1];
+
+        require(start>=0 && priceInRange > 0, "Invalid range");
+
+        return priceInRange;
+    }
+
+    function getRangeAndPriceList() public view returns(Data[] memory){
+        Data[] memory data = new Data[](50);
+        for(uint i; i < range.length-1; i++){
+            data[i] = rangeAndPrice[i+1];
+        }
+        return data;
+    }
+
+    function transferOwnership(address newOwner) public onlyOwner {
+        require(newOwner != address(0), "Ownable: new owner can't be the zero address");
+
+        address oldOwner = owner;
+        owner = newOwner;
+
+        emit OwnershipTransferred(oldOwner, newOwner);
+    }
+
+}

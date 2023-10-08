@@ -1,0 +1,18 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.4;
+
+import "erc721a/contracts/ERC721A.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+
+contract SSNFT is ERC721A, Ownable {
+    constructor() ERC721A("SteadyStack", "SS") {}
+
+    function _baseURI() internal pure override returns (string memory) {
+        return "https://steady-stack.herokuapp.com/api/tokens/metadata/";
+    }
+
+    function mint(address to, uint256 quantity) external onlyOwner {
+        // `_mint`'s second argument now takes in a `quantity`, not a `tokenId`.
+        _mint(to, quantity);
+    }
+}

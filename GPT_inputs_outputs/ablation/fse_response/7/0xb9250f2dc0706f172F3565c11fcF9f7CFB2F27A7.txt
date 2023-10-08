@@ -1,0 +1,58 @@
+Here are some gas-wasting patterns I found in the provided Solidity code:
+
+## Pattern 1 - Redundant Storage Lookup
+
+- **Pattern**: Accessing the same state variable multiple times in a single function. For example, in the `addVote` function, the `applications[_tick]` mapping is accessed several times.
+
+- **Discovery Process**: While exploring the code, I noticed that some state variables were being accessed multiple times within the same function. Every time a state variable is accessed, it costs gas, so repeated accesses can be wasteful.
+
+- **Fix**: Store the result in a local variable and use that for subsequent accesses. For instance, in the `addVote` function, we could store `applications[_tick]` in a local variable.
+
+  ````solidity
+  IVoteForLaunch.Application storage app = applications[_tick];
+  app.totalVotes += _ballots;
+  app.topVotes = app.totalVotes;
+  ```
+
+- **Why It Works**: This reduces the number of times the expensive storage area is accessed, hence saving gas.
+
+- **Impact Score**: Readability: 5; Security: 5; Maintainability: 4. There is no significant impact on readability or security, but maintainability could be slightly impacted if there are many state variables and the function becomes cluttered with local variables.
+
+## Pattern 2 - Repeated External Calls 
+
+- **Pattern**: Repeated calls to external contracts or libraries. For example, in the `newVote` function, `voteToken.allowance()` and `voteToken.balanceOf()` are called twice.
+
+- **Discovery Process**: I noticed that some external functions were being called multiple times, which is expensive in terms of gas.
+
+- **Fix**: Again, store the result in a local variable to avoid redundant calls. For example:
+
+  ````solidity
+  uint256 allowance = voteToken.allowance(msg.sender, address(this));
+  require(allowance >= newVoteDeposit, "allowance of ferc as deposit not enough");
+  require(allowance >= _amount, "allowance is not enough");
+  ```
+
+- **Why It Works**: Each external call costs a significant amount of gas. By reducing the number of external calls, we can save gas.
+
+- **Impact Score**: Readability: 5; Security: 5; Maintainability: 4. There is no significant impact on readability or security, but maintainability could be slightly impacted if there are many external calls and the function becomes cluttered with local variables.
+
+## Pattern 3 - Unnecessary Storage Writes
+
+- **Pattern**: Writing to storage unnecessarily. For example, in the `newVote` function, the `tickIds[_tick]` mapping is updated every time the function is called, even if the `_tick` already exists in the mapping.
+
+- **Discovery Process**: I noticed that some state variables are always written to, even when it might not be necessary.
+
+- **Fix**: Add a condition to check if the write is necessary. For example:
+
+  ````solidity
+  if(tickIds[_tick] == 0) {
+      tickArray.push(_tick);
+      tickIds[_tick] = tickArray.length;
+  }
+  ```
+
+- **Why It Works**: Writing to storage is one of the most expensive operations in terms of gas. By reducing unnecessary writes, we can save gas.
+
+- **Impact Score**: Readability: 4; Security: 5; Maintainability: 4. This could slightly reduce readability because the code becomes a bit more complex, but it does not impact security or maintainability significantly.
+
+The given prompt was clear, but it would be helpful to also provide the complete code (including contract state variables and used libraries) for a more accurate analysis. Regarding improvements, I think I could have been quicker in identifying the patterns if I had focused on the most commonly known gas-wasting patterns first.

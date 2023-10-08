@@ -1,0 +1,450 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.1;
+
+
+import "@openzeppelin/contracts/utils/Address.sol";
+
+/**
+ * @dev Interface of the ERC20 Permit extension allowing approvals to be made via signatures, as defined in
+ * https://eips.ethereum.org/EIPS/eip-2612[EIP-2612].
+ *
+ * Adds the {permit} method, which can be used to change an account's ERC20 allowance (see {IERC20-allowance}) by
+ * presenting a message signed by the account. By not relying on {IERC20-approve}, the token holder account doesn't
+ * need to send a transaction, and thus is not required to hold Ether at all.
+ */
+interface IERC20Permit {
+    /**
+     * @dev Sets `value` as the allowance of `spender` over ``owner``'s tokens,
+     * given ``owner``'s signed approval.
+     *
+     * IMPORTANT: The same issues {IERC20-approve} has related to transaction
+     * ordering also apply here.
+     *
+     * Emits an {Approval} event.
+     *
+     * Requirements:
+     *
+     * - `spender` cannot be the zero address.
+     * - `deadline` must be a timestamp in the future.
+     * - `v`, `r` and `s` must be a valid `secp256k1` signature from `owner`
+     * over the EIP712-formatted function arguments.
+     * - the signature must use ``owner``'s current nonce (see {nonces}).
+     *
+     * For more information on the signature format, see the
+     * https://eips.ethereum.org/EIPS/eip-2612#specification[relevant EIP
+     * section].
+     */
+    function permit(
+        address owner,
+        address spender,
+        uint256 value,
+        uint256 deadline,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) external;
+
+    /**
+     * @dev Returns the current nonce for `owner`. This value must be
+     * included whenever a signature is generated for {permit}.
+     *
+     * Every successful call to {permit} increases ``owner``'s nonce by one. This
+     * prevents a signature from being used multiple times.
+     */
+    function nonces(address owner) external view returns (uint256);
+
+    /**
+     * @dev Returns the domain separator used in the encoding of the signature for {permit}, as defined by {EIP712}.
+     */
+    // solhint-disable-next-line func-name-mixedcase
+    function DOMAIN_SEPARATOR() external view returns (bytes32);
+}
+
+
+interface IERC20 {
+    /**
+     * @dev Emitted when `value` tokens are moved from one account (`from`) to
+     * another (`to`).
+     *
+     * Note that `value` may be zero.
+     */
+    event Transfer(address indexed from, address indexed to, uint256 value);
+
+    /**
+     * @dev Emitted when the allowance of a `spender` for an `owner` is set by
+     * a call to {approve}. `value` is the new allowance.
+     */
+    event Approval(address indexed owner, address indexed spender, uint256 value);
+
+    /**
+     * @dev Returns the amount of tokens in existence.
+     */
+    function totalSupply() external view returns (uint256);
+
+    /**
+     * @dev Returns the amount of tokens owned by `account`.
+     */
+    function balanceOf(address account) external view returns (uint256);
+
+    /**
+     * @dev Moves `amount` tokens from the caller's account to `to`.
+     *
+     * Returns a boolean value indicating whether the operation succeeded.
+     *
+     * Emits a {Transfer} event.
+     */
+    function transfer(address to, uint256 amount) external returns (bool);
+
+    /**
+     * @dev Returns the remaining number of tokens that `spender` will be
+     * allowed to spend on behalf of `owner` through {transferFrom}. This is
+     * zero by default.
+     *
+     * This value changes when {approve} or {transferFrom} are called.
+     */
+    function allowance(address owner, address spender) external view returns (uint256);
+
+    /**
+     * @dev Sets `amount` as the allowance of `spender` over the caller's tokens.
+     *
+     * Returns a boolean value indicating whether the operation succeeded.
+     *
+     * IMPORTANT: Beware that changing an allowance with this method brings the risk
+     * that someone may use both the old and the new allowance by unfortunate
+     * transaction ordering. One possible solution to mitigate this race
+     * condition is to first reduce the spender's allowance to 0 and set the
+     * desired value afterwards:
+     * https://github.com/ethereum/EIPs/issues/20#issuecomment-263524729
+     *
+     * Emits an {Approval} event.
+     */
+    function approve(address spender, uint256 amount) external returns (bool);
+
+    /**
+     * @dev Moves `amount` tokens from `from` to `to` using the
+     * allowance mechanism. `amount` is then deducted from the caller's
+     * allowance.
+     *
+     * Returns a boolean value indicating whether the operation succeeded.
+     *
+     * Emits a {Transfer} event.
+     */
+    function transferFrom(address from, address to, uint256 amount) external returns (bool);
+
+    function mint(address account, uint256 amount)external returns (bool);
+}
+
+/**
+ * @title SafeERC20
+ * @dev Wrappers around ERC20 operations that throw on failure (when the token
+ * contract returns false). Tokens that return no value (and instead revert or
+ * throw on failure) are also supported, non-reverting calls are assumed to be
+ * successful.
+ * To use this library you can add a `using SafeERC20 for IERC20;` statement to your contract,
+ * which allows you to call the safe operations as `token.safeTransfer(...)`, etc.
+ */
+library SafeERC20 {
+    using Address for address;
+
+    /**
+     * @dev Transfer `value` amount of `token` from the calling contract to `to`. If `token` returns no value,
+     * non-reverting calls are assumed to be successful.
+     */
+    function safeTransfer(IERC20 token, address to, uint256 value) internal {
+        _callOptionalReturn(token, abi.encodeWithSelector(token.transfer.selector, to, value));
+    }
+
+    /**
+     * @dev Transfer `value` amount of `token` from `from` to `to`, spending the approval given by `from` to the
+     * calling contract. If `token` returns no value, non-reverting calls are assumed to be successful.
+     */
+    function safeTransferFrom(IERC20 token, address from, address to, uint256 value) internal {
+        _callOptionalReturn(token, abi.encodeWithSelector(token.transferFrom.selector, from, to, value));
+    }
+
+    /**
+     * @dev Deprecated. This function has issues similar to the ones found in
+     * {IERC20-approve}, and its usage is discouraged.
+     *
+     * Whenever possible, use {safeIncreaseAllowance} and
+     * {safeDecreaseAllowance} instead.
+     */
+    function safeApprove(IERC20 token, address spender, uint256 value) internal {
+        // safeApprove should only be called when setting an initial allowance,
+        // or when resetting it to zero. To increase and decrease it, use
+        // 'safeIncreaseAllowance' and 'safeDecreaseAllowance'
+        require(
+            (value == 0) || (token.allowance(address(this), spender) == 0),
+            "SafeERC20: approve from non-zero to non-zero allowance"
+        );
+        _callOptionalReturn(token, abi.encodeWithSelector(token.approve.selector, spender, value));
+    }
+
+    /**
+     * @dev Increase the calling contract's allowance toward `spender` by `value`. If `token` returns no value,
+     * non-reverting calls are assumed to be successful.
+     */
+    function safeIncreaseAllowance(IERC20 token, address spender, uint256 value) internal {
+        uint256 oldAllowance = token.allowance(address(this), spender);
+        _callOptionalReturn(token, abi.encodeWithSelector(token.approve.selector, spender, oldAllowance + value));
+    }
+
+    /**
+     * @dev Decrease the calling contract's allowance toward `spender` by `value`. If `token` returns no value,
+     * non-reverting calls are assumed to be successful.
+     */
+    function safeDecreaseAllowance(IERC20 token, address spender, uint256 value) internal {
+        unchecked {
+            uint256 oldAllowance = token.allowance(address(this), spender);
+            require(oldAllowance >= value, "SafeERC20: decreased allowance below zero");
+            _callOptionalReturn(token, abi.encodeWithSelector(token.approve.selector, spender, oldAllowance - value));
+        }
+    }
+
+    /**
+     * @dev Set the calling contract's allowance toward `spender` to `value`. If `token` returns no value,
+     * non-reverting calls are assumed to be successful. Compatible with tokens that require the approval to be set to
+     * 0 before setting it to a non-zero value.
+     */
+    function forceApprove(IERC20 token, address spender, uint256 value) internal {
+        bytes memory approvalCall = abi.encodeWithSelector(token.approve.selector, spender, value);
+
+        if (!_callOptionalReturnBool(token, approvalCall)) {
+            _callOptionalReturn(token, abi.encodeWithSelector(token.approve.selector, spender, 0));
+            _callOptionalReturn(token, approvalCall);
+        }
+    }
+
+    /**
+     * @dev Use a ERC-2612 signature to set the `owner` approval toward `spender` on `token`.
+     * Revert on invalid signature.
+     */
+    function safePermit(
+        IERC20Permit token,
+        address owner,
+        address spender,
+        uint256 value,
+        uint256 deadline,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) internal {
+        uint256 nonceBefore = token.nonces(owner);
+        token.permit(owner, spender, value, deadline, v, r, s);
+        uint256 nonceAfter = token.nonces(owner);
+        require(nonceAfter == nonceBefore + 1, "SafeERC20: permit did not succeed");
+    }
+
+    /**
+     * @dev Imitates a Solidity high-level call (i.e. a regular function call to a contract), relaxing the requirement
+     * on the return value: the return value is optional (but if data is returned, it must not be false).
+     * @param token The token targeted by the call.
+     * @param data The call data (encoded using abi.encode or one of its variants).
+     */
+    function _callOptionalReturn(IERC20 token, bytes memory data) private {
+        // We need to perform a low level call here, to bypass Solidity's return data size checking mechanism, since
+        // we're implementing it ourselves. We use {Address-functionCall} to perform this call, which verifies that
+        // the target address contains contract code and also asserts for success in the low-level call.
+
+        bytes memory returndata = address(token).functionCall(data, "SafeERC20: low-level call failed");
+        require(returndata.length == 0 || abi.decode(returndata, (bool)), "SafeERC20: ERC20 operation did not succeed");
+    }
+
+    /**
+     * @dev Imitates a Solidity high-level call (i.e. a regular function call to a contract), relaxing the requirement
+     * on the return value: the return value is optional (but if data is returned, it must not be false).
+     * @param token The token targeted by the call.
+     * @param data The call data (encoded using abi.encode or one of its variants).
+     *
+     * This is a variant of {_callOptionalReturn} that silents catches all reverts and returns a bool instead.
+     */
+    function _callOptionalReturnBool(IERC20 token, bytes memory data) private returns (bool) {
+        // We need to perform a low level call here, to bypass Solidity's return data size checking mechanism, since
+        // we're implementing it ourselves. We cannot use {Address-functionCall} here since this should return false
+        // and not revert is the subcall reverts.
+
+        (bool success, bytes memory returndata) = address(token).call(data);
+        return
+        success && (returndata.length == 0 || abi.decode(returndata, (bool))) && Address.isContract(address(token));
+    }
+}
+
+
+contract IncassoProtocolV2 {
+
+
+    using SafeERC20 for IERC20;
+
+    IERC20 private nfo;
+    IERC20 private usdt;
+    
+    address private owner;
+    address private SERVICE_ADDRESS;
+
+    uint256 private oneYear = 1;            //30556926; 
+    uint256 private threeMonth = 1;        //7789229;
+    uint256 private minInvestAmount = 1;  //10000 * (10 ** 6); == 10000000000
+
+
+    struct Obligation {
+        address investor;
+        uint256 sumNFO;
+        bool isReturn;
+        bool isWithdraw;
+        uint256 startTime;
+        uint256 endTime;
+        mapping(uint256 => Payment) payments;
+    }
+
+    struct Payment {
+        uint256 sumNFO;
+        bool isReturn;
+        uint256 withdrawDate;
+    }
+
+    mapping(address => mapping(uint256 => Obligation)) public userObligations; // user obligations
+    mapping(address => uint256) public userObligationsSum; // obligated sum in nfo
+    mapping(address => uint256) public investmentsCountPerUser; // count of user investments
+
+    modifier canReturnPayment(uint256 obligationNum, uint256 paymentNum) {
+        require(block.timestamp >= userObligations[msg.sender][obligationNum].payments[paymentNum].withdrawDate
+        && userObligations[msg.sender][obligationNum].payments[paymentNum].sumNFO != 0
+        && userObligations[msg.sender][obligationNum].payments[paymentNum].isReturn == false,
+            "Payment date later or payment already returned"
+        );
+        _;
+    }
+
+    modifier canReturnObligation(uint256 obligationNum) {
+        require(block.timestamp >= userObligations[msg.sender][obligationNum].endTime
+        && userObligations[msg.sender][obligationNum].investor == msg.sender
+        && userObligations[msg.sender][obligationNum].isReturn == false,
+            "The obligation is not expired or is not active or you have been withdrawn your obligation"
+        );
+        _;
+    }
+
+    modifier onlyOwner() {
+        require(msg.sender == owner, "You are not onwer");
+        _;
+    }
+
+    constructor(IERC20 _usdt, IERC20 _nfo) {
+        nfo =_nfo;
+        usdt = _usdt;
+        owner = msg.sender;
+        SERVICE_ADDRESS = address(this);
+    }
+
+    function makeInvest(uint256 amount) external {
+        require(amount >= minInvestAmount, "Minimum trading amount is 10.000 USDT");
+        usdt.safeTransferFrom(msg.sender, SERVICE_ADDRESS, amount);
+        investmentsCountPerUser[msg.sender]++;
+
+        uint _withdrawDate = block.timestamp;
+        for (uint i; i < 4; i++) {
+            _withdrawDate+= threeMonth;
+            userObligations[msg.sender][investmentsCountPerUser[msg.sender]].payments[i] = Payment({
+                sumNFO: ((amount * 10 ** 14) * 15) / 4,
+                isReturn: false,
+                withdrawDate: _withdrawDate
+            });
+        }
+        userObligations[msg.sender][investmentsCountPerUser[msg.sender]].investor = msg.sender;
+        userObligations[msg.sender][investmentsCountPerUser[msg.sender]].sumNFO = amount * (10 ** 14);
+        userObligations[msg.sender][investmentsCountPerUser[msg.sender]].isReturn = false;
+        userObligations[msg.sender][investmentsCountPerUser[msg.sender]].isWithdraw = false;
+        userObligations[msg.sender][investmentsCountPerUser[msg.sender]].startTime = block.timestamp;
+        userObligations[msg.sender][investmentsCountPerUser[msg.sender]].endTime = oneYear + block.timestamp;
+
+        userObligationsSum[msg.sender] += amount * (10 ** 14);
+    }
+
+    function withdrawObligatedTokens(uint256 obligationNum) external {
+        require(
+            userObligations[msg.sender][obligationNum].investor == msg.sender
+            && userObligations[msg.sender][obligationNum].isWithdraw == false
+            && userObligations[msg.sender][obligationNum].isReturn == false,
+            "The obligation already withdrawn"
+        );
+        userObligations[msg.sender][obligationNum].isWithdraw = true;
+        uint256 withdrawAmount = userObligations[msg.sender][obligationNum].sumNFO;
+        userObligationsSum[msg.sender] -= withdrawAmount;
+
+        if (withdrawAmount > getSpecialAssestsBalance(nfo)) {
+            uint256 difference = withdrawAmount - getSpecialAssestsBalance(nfo);
+            mintNFO(difference);
+            nfo.safeTransfer(msg.sender, withdrawAmount);
+            return;
+        }
+        nfo.safeTransfer(msg.sender, withdrawAmount);
+    }
+
+    function returnPayment(uint obligationNum, uint paymentNum) external canReturnPayment(obligationNum, paymentNum) {
+        Payment storage payment = userObligations[msg.sender][obligationNum].payments[paymentNum];
+        payment.isReturn = true;
+        uint sumUSDT = payment.sumNFO / 10 ** 16;
+        usdt.safeTransfer(msg.sender, sumUSDT);
+    }
+
+    function returnObligation(uint obligationNum) external canReturnObligation(obligationNum) {
+        Obligation storage obligation = userObligations[msg.sender][obligationNum];
+        uint sumUSDT = obligation.sumNFO / 10 ** 14;
+        if (obligation.isWithdraw) {
+            obligation.isReturn = true;
+            nfo.safeTransferFrom(msg.sender, address(this), obligation.sumNFO);
+            usdt.safeTransfer(msg.sender, sumUSDT);
+            return;
+        }
+        obligation.isReturn = true;
+        userObligationsSum[msg.sender] -= obligation.sumNFO;
+        usdt.safeTransfer(msg.sender, sumUSDT);
+    }
+
+    function getPayments(uint obligationNum, uint index) external view returns(Payment memory) {
+        return userObligations[msg.sender][obligationNum].payments[index];
+    }
+
+    function getSpecialAssestsBalance(IERC20 token) public view returns(uint256) {
+        return token.balanceOf(address(this));
+    }
+
+    function transferAssests(address tokenAddress, uint256 amount, address receiver) external onlyOwner {
+        IERC20(tokenAddress).safeTransfer(receiver, amount);
+    }
+
+    function mintNFO(uint256 difference) private {
+        nfo.mint(address(this), difference);
+    }
+
+    function changeMode(uint256 secInYear, uint256 secInThreeMonth, uint256 _minInvestAmount) external onlyOwner {
+        oneYear = secInYear;
+        threeMonth = secInThreeMonth;
+        minInvestAmount = _minInvestAmount;
+    }
+
+    function changeServiceAddress(address service_address) external onlyOwner {
+        SERVICE_ADDRESS = service_address;
+    }
+    
+    function changeContracts(IERC20 _usdt, IERC20 _nfo) external onlyOwner {
+        nfo =_nfo;
+        usdt = _usdt;
+    }
+
+    function restorePayments(address user, uint obligationNum) private {
+        Obligation storage obligation = userObligations[user][obligationNum];
+        uint _withdrawDate = block.timestamp;
+        for (uint i=4; i<8; i++) {
+            _withdrawDate += threeMonth;
+            obligation.payments[i].sumNFO = (obligation.sumNFO * 15) / 4;
+            obligation.payments[i].withdrawDate = _withdrawDate;
+        }
+    }
+
+    function prolongObligation(uint obligationNum) external canReturnObligation(obligationNum) {
+        Obligation storage obligation = userObligations[msg.sender][obligationNum];
+        obligation.endTime += oneYear;
+        restorePayments(msg.sender, obligationNum);
+    }
+}

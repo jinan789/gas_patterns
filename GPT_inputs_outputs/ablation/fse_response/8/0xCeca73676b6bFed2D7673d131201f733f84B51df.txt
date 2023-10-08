@@ -1,0 +1,31 @@
+## Gas-Wasting Patterns
+
+### Pattern 1: Unnecessary Use of Storage
+
+In the `processExits()` function, the `exits[exitId].owner = exitor;` line is writing to the storage which is not necessary as the exit is finalized and the exit object is not used again.
+
+1. **Discovery Process**: Storage operations in Solidity are costly in terms of gas, so we always aim to minimize the number of storage operations. In this case, the `exits[exitId].owner = exitor;` line writes a value to storage but is not used again, so it is wasteful.
+2. **Fix**: Remove the `exits[exitId].owner = exitor;` line. Since it's not used again, removing it won't affect the logic of the contract but will save gas by avoiding a storage operation.
+3. **Impact Score**: Readability: 5, Security: 5, Maintainability: 5. The impact on readability, security, and maintainability is minimal because we're removing a line of code that isn't used and doesn't contribute to the understanding of the function.
+
+### Pattern 2: Redundant Calculation
+
+In the `verifyInclusion()` function, `vars.branchMask = payload.getBranchMaskAsUint();` is called after `vars.branchMaskBytes = payload.getBranchMaskAsBytes();`. This could be wasteful if both functions are calculating the same value in different formats.
+
+1. **Discovery Process**: I noticed that two methods (`getBranchMaskAsUint` and `getBranchMaskAsBytes`) are called from the same object (`payload`). If these methods perform the same underlying computation, this may introduce redundancy.
+2. **Fix**: If both functions are calculating the same value, consider calculating the value once and converting it to the needed types. For example, if `getBranchMaskAsUint` and `getBranchMaskAsBytes` are doing the same calculation, perform the calculation once, store it in a variable, and convert it to `bytes` or `uint` as needed.
+3. **Impact Score**: Readability: 4, Security: 5, Maintainability: 4. The impact on security is minimal, but readability and maintainability may be slightly impacted as it adds a new step in the process (converting the value to different types).
+
+### Pattern 3: Loop without Gas Consideration
+
+In the `processExits()` function, the `while` loop operates until the gas left is not sufficient for the `ON_FINALIZE_GAS_LIMIT` operation. However, there is no consideration of the gas needed for the remaining operations in the loop, which could potentially run out of gas before the loop finishes.
+
+1. **Discovery Process**: In Solidity, it's crucial to always consider the gas consumption of loops. I noticed that the `while` loop in `processExits()` only considers the gas for the `ON_FINALIZE_GAS_LIMIT` operation, but not for the remaining operations.
+2. **Fix**: Add a buffer in the gas limit condition of the while loop. This buffer should be a constant that is enough to cover the gas cost of the remaining operations in the loop. For example, the condition could be `gasleft() > (ON_FINALIZE_GAS_LIMIT + GAS_BUFFER)`.
+3. **Impact Score**: Readability: 4, Security: 4, Maintainability: 4. The impact on readability, security, and maintainability is minimal as we're only adding a constant in the loop condition. However, it might be slightly harder to understand why the buffer is necessary and to maintain the correct value for GAS_BUFFER.
+
+## Reflection & Improvement
+
+The prompt provided is clear and detailed. However, it may be helpful to provide a bit more context about how the contract is used, as this can influence the gas optimization strategies. For example, if certain functions are called frequently, optimizing those would be more beneficial.
+
+In terms of my process, I first looked for common gas-wasting patterns such as unnecessary storage operations, redundant calculations, and loops without proper gas consideration. I then considered how each of these could be mitigated to save gas. In future, I might improve my process by also considering how the contract is used in practice, as this could reveal additional optimization opportunities. For example, if a function is called frequently with the same input, it might be beneficial to cache the result to avoid redundant calculations.

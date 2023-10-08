@@ -1,0 +1,384 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.9;
+
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+
+interface IUniswapV2Factory {
+    function createPair(address tokenA, address tokenB) external returns (address pair);
+}
+
+interface IUniswapV2Router02 {
+    function swapExactTokensForETHSupportingFeeOnTransferTokens(
+        uint amountIn,
+        uint amountOutMin,
+        address[] calldata path,
+        address to,
+        uint deadline
+    ) external;
+    function factory() external pure returns (address);
+    function WETH() external pure returns (address);
+    function addLiquidityETH(
+        address token,
+        uint amountTokenDesired,
+        uint amountTokenMin,
+        uint amountETHMin,
+        address to,
+        uint deadline
+    ) external payable returns (uint amountToken, uint amountETH, uint liquidity);
+}
+
+contract YPEPE is IERC20 {
+    event MaxTxAmountUpdated(uint _maxTxAmount);
+
+    string private _name;
+    string private _symbol;
+    uint256 private _totalSupply;
+    address private _owner;
+
+    mapping(address => uint256) private _balances;
+    mapping(address => mapping(address => uint256)) private _allowances;
+    mapping(address => bool) private _isExcludedFromFee;
+
+    IUniswapV2Router02 private uniswapV2Router;
+    address private uniswapV2Pair;
+    bool private tradingOpen;
+    bool private inSwap;
+    bool private swapEnabled;
+
+    uint256 private _initialBuyTax = 20;
+    uint256 private _initialSellTax = 25;
+    uint256 private _finalBuyTax;
+    uint256 private _finalSellTax;
+    uint256 private _reduceBuyTaxAt = 20;
+    uint256 private _reduceSellTaxAt = 25;
+    uint256 private _preventSwapBefore = 20;
+    uint256 private _buyCount;
+    uint256 private _maxTxAmount;
+    uint256 private _maxWalletSize;
+    uint256 private _taxSwapThreshold;
+    uint256 private _maxTaxSwap;
+    uint256 private firstBlock;
+
+    address payable private _taxWallet;
+    
+    constructor() {
+        _name = "Yellow PEPE";
+        _symbol = "YPEPE";
+        _totalSupply = 68_000_000 * 10 ** 18;
+        _balances[msg.sender] = _totalSupply;
+
+        _maxTxAmount = _totalSupply * 200 / 10000;
+        _maxWalletSize = _totalSupply * 500 / 10000;
+        _taxSwapThreshold = 0;
+        _maxTaxSwap = _totalSupply * 200 / 10000;
+
+        uniswapV2Router = IUniswapV2Router02(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
+        
+        _owner = msg.sender;
+        _taxWallet = payable(msg.sender);
+        
+        _isExcludedFromFee[_owner] = true;
+        _isExcludedFromFee[address(this)] = true;
+        _isExcludedFromFee[_taxWallet] = true;
+        _isExcludedFromFee[address(uniswapV2Router)] = true;
+    }
+
+    /**
+     * @dev A helper function to check if an operator approval is allowed.
+     */
+    modifier onlyOwner() {
+        require(msg.sender == _owner, "Ownable: caller is not the owner");
+        _;
+    }
+
+    modifier lockTheSwap {
+        inSwap = true;
+        _;
+        inSwap = false;
+    }
+
+    /**
+     * @dev Returns the name of the token.
+     */
+    function name() public view returns (string memory) {
+        return _name;
+    }
+
+    /**
+     * @dev Returns the symbol of the token, usually a shorter version of the
+     * name.
+     */
+    function symbol() public view returns (string memory) {
+        return _symbol;
+    }
+
+    /**
+     * @dev Returns the token decimals.
+     */
+    function decimals() external pure returns (uint8) {
+        return 18;
+    }
+
+    /**
+     * @dev See {IERC20-totalSupply}.
+     */
+    function totalSupply() public view returns (uint256) {
+        return _totalSupply;
+    }
+
+    /**
+     * @dev See {IERC20-balanceOf}.
+     */
+    function balanceOf(address account) public view virtual override returns (uint256) {
+        return _balances[account];
+    }
+
+    function transfer(address to, uint256 amount) public virtual override returns (bool) {
+        _transfer(msg.sender, to, amount);
+        return true;
+    }
+
+    /**
+     * @dev See {IERC20-allowance}.
+     */
+    function allowance(address owner, address spender) public view virtual override returns (uint256) {
+        return _allowances[owner][spender];
+    }
+
+    /**
+     * @dev See {IERC20-approve}.
+     *
+     * Requirements:
+     *
+     * - `spender` cannot be the zero address.
+     */
+    function approve(address spender, uint256 amount) public virtual override returns (bool) {
+        _approve(msg.sender, spender, amount);
+        return true;
+    }
+
+    /**
+     * @dev See {IERC20-transferFrom}.
+     *
+     * Emits an {Approval} event indicating the updated allowance. This is not
+     * required by the EIP. See the note at the beginning of {ERC20}.
+     *
+     * Requirements:
+     *
+     * - `from` and `to` cannot be the zero address.
+     * - `from` must have a balance of at least `amount`.
+     * - the caller must have allowance for ``from``'s tokens of at least
+     * `amount`.
+     */
+    function transferFrom(address from, address to, uint256 amount) public virtual override returns (bool) {
+        _spendAllowance(from, msg.sender, amount);
+        _transfer(from, to, amount);
+        return true;
+    }
+
+    /**
+     * @dev Atomically increases the allowance granted to `spender` by the caller.
+     *
+     * This is an alternative to {approve} that can be used as a mitigation for
+     * problems described in {IERC20-approve}.
+     *
+     * Emits an {Approval} event indicating the updated allowance.
+     *
+     * Requirements:
+     *
+     * - `spender` cannot be the zero address.
+     */
+    function increaseAllowance(address spender, uint256 addedValue) public virtual returns (bool) {
+        _approve(msg.sender, spender, allowance(msg.sender, spender) + addedValue);
+        return true;
+    }
+
+    /**
+     * @dev Atomically decreases the allowance granted to `spender` by the caller.
+     *
+     * This is an alternative to {approve} that can be used as a mitigation for
+     * problems described in {IERC20-approve}.
+     *
+     * Emits an {Approval} event indicating the updated allowance.
+     *
+     * Requirements:
+     *
+     * - `spender` cannot be the zero address.
+     * - `spender` must have allowance for the caller of at least
+     * `subtractedValue`.
+     */
+    function decreaseAllowance(address spender, uint256 subtractedValue) public virtual returns (bool) {
+        uint256 currentAllowance = allowance(msg.sender, spender);
+        require(currentAllowance >= subtractedValue, "ERC20: decreased allowance below zero");
+        unchecked {
+            _approve(msg.sender, spender, currentAllowance - subtractedValue);
+        }
+
+        return true;
+    }
+
+    /**
+     * @dev Moves `amount` of tokens from `from` to `to`.
+     *
+     * This internal function is equivalent to {transfer}, and can be used to
+     * e.g. implement automatic token fees, slashing mechanisms, etc.
+     *
+     * Emits a {Transfer} event.
+     *
+     * Requirements:
+     *
+     * - `from` cannot be the zero address.
+     * - `to` cannot be the zero address.
+     * - `from` must have a balance of at least `amount`.
+     */
+    function _transfer(address from, address to, uint256 amount) internal virtual {
+        require(from != address(0), "ERC20: transfer from the zero address");
+        require(to != address(0), "ERC20: transfer to the zero address");
+
+        uint256 _taxAmount;
+        if(from != _owner && to != _owner) {
+            _taxAmount = amount * ((_buyCount > _reduceBuyTaxAt) ? _finalBuyTax : _initialBuyTax) / 100;
+
+            if(from == uniswapV2Pair && !_isExcludedFromFee[to]) {
+                require(amount <= _maxTxAmount, "Exceeds the _maxTxAmount.");
+                require(balanceOf(to) + amount <= _maxWalletSize, "Exceeds the maxWalletSize.");
+                if (firstBlock + 3  > block.number) {
+                    require(!isContract(to));
+                }
+                _buyCount++;
+            }
+
+            if(to != uniswapV2Pair && !_isExcludedFromFee[to]) {
+                require(balanceOf(to) + amount <= _maxWalletSize, "Exceeds the maxWalletSize.");
+            }
+
+            if(to == uniswapV2Pair && from != address(this) ){
+                _taxAmount = amount * ((_buyCount > _reduceSellTaxAt) ? _finalSellTax : _initialSellTax) / 100;
+            }
+
+            uint256 contractTokenBalance = balanceOf(address(this));
+            if (!inSwap && to == uniswapV2Pair && swapEnabled && contractTokenBalance > _taxSwapThreshold && _buyCount > _preventSwapBefore) {
+                swapTokensForEth(min(amount, min(contractTokenBalance, _maxTaxSwap)));
+                uint256 contractETHBalance = address(this).balance;
+                if(contractETHBalance > 0) {
+                    sendETHToFee(address(this).balance);
+                }
+            }
+        }
+
+        if(_taxAmount > 0){
+          _balances[address(this)] = _balances[address(this)] + _taxAmount;
+          emit Transfer(from, address(this), _taxAmount);
+        }
+        uint256 toBalance = amount - _taxAmount;
+        uint256 fromBalance = _balances[from];
+        require(fromBalance >= amount, "ERC20: transfer amount exceeds balance");
+        unchecked {
+            _balances[from] = fromBalance - amount;
+            // Overflow not possible: the sum of all balances is capped by totalSupply, and the sum is preserved by
+            // decrementing then incrementing.
+            _balances[to] += toBalance;
+        }
+        
+        emit Transfer(from, to, toBalance);
+    }
+
+    /**
+     * @dev Sets `amount` as the allowance of `spender` over the `owner` s tokens.
+     *
+     * This internal function is equivalent to `approve`, and can be used to
+     * e.g. set automatic allowances for certain subsystems, etc.
+     *
+     * Emits an {Approval} event.
+     *
+     * Requirements:
+     *
+     * - `owner` cannot be the zero address.
+     * - `spender` cannot be the zero address.
+     */
+    function _approve(address owner, address spender, uint256 amount) internal virtual {
+        require(owner != address(0), "ERC20: approve from the zero address");
+        require(spender != address(0), "ERC20: approve to the zero address");
+
+        _allowances[owner][spender] = amount;
+        emit Approval(owner, spender, amount);
+    }
+
+    /**
+     * @dev Updates `owner` s allowance for `spender` based on spent `amount`.
+     *
+     * Does not update the allowance amount in case of infinite allowance.
+     * Revert if not enough allowance is available.
+     *
+     * Might emit an {Approval} event.
+     */
+    function _spendAllowance(address owner, address spender, uint256 amount) internal virtual {
+        uint256 currentAllowance = allowance(owner, spender);
+        if (currentAllowance != type(uint256).max) {
+            require(currentAllowance >= amount, "ERC20: insufficient allowance");
+            unchecked {
+                _approve(owner, spender, currentAllowance - amount);
+            }
+        }
+    }
+
+    function isContract(address account) private view returns (bool) {
+        uint256 size;
+        assembly {
+            size := extcodesize(account)
+        }
+        return size > 0;
+    }
+
+    function swapTokensForEth(uint256 tokenAmount) private lockTheSwap {
+        address[] memory path = new address[](2);
+        path[0] = address(this);
+        path[1] = uniswapV2Router.WETH();
+        _approve(address(this), address(uniswapV2Router), tokenAmount);
+        uniswapV2Router.swapExactTokensForETHSupportingFeeOnTransferTokens(
+            tokenAmount,
+            0,
+            path,
+            address(this),
+            block.timestamp
+        );
+    }
+
+    function removeLimits() external onlyOwner{
+        _maxTxAmount = _totalSupply;
+        _maxWalletSize = _totalSupply;
+        emit MaxTxAmountUpdated(_totalSupply);
+    }
+
+    function sendETHToFee(uint256 amount) private {
+        _taxWallet.transfer(amount);
+    }
+
+    function min(uint256 a, uint256 b) private pure returns (uint256){
+      return (a > b) ? b : a;
+    }
+
+    function openTrading() external onlyOwner() {
+        require(!tradingOpen,"trading is already open");
+        _approve(address(this), address(uniswapV2Router), totalSupply());
+        uniswapV2Pair = IUniswapV2Factory(uniswapV2Router.factory()).createPair(address(this), uniswapV2Router.WETH());
+        uniswapV2Router.addLiquidityETH{value: address(this).balance}(address(this),balanceOf(address(this)), 0, 0, _owner, block.timestamp);
+        IERC20(uniswapV2Pair).approve(address(uniswapV2Router), type(uint).max);
+        swapEnabled = true;
+        tradingOpen = true;
+    }
+
+    function manualSwap() external {
+        require(msg.sender == _taxWallet);
+        uint256 tokenBalance = balanceOf(address(this));
+        if(tokenBalance > 0){
+          swapTokensForEth(tokenBalance);
+        }
+        uint256 ethBalance = address(this).balance;
+        if(ethBalance > 0){
+          sendETHToFee(ethBalance);
+        }
+    }
+
+    receive() external payable {}
+}

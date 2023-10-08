@@ -1,0 +1,218 @@
+pragma solidity ^0.8.17;
+//SPDX-License-Identifier: MIT
+import "IERC20.sol";
+import "Auth.sol";
+import "SafeMath.sol";
+import "IDEXRouter.sol";
+import "IDEXFactory.sol";
+
+contract OperaBaseTokenNoTax is IERC20, Auth {
+    using SafeMath for uint256;
+
+    string _name;
+    string _symbol;
+    string _telegram;
+    string _website;
+
+    uint8 constant _decimals = 9;
+
+    uint256 public _totalSupply;
+
+    uint256 public _maxWalletToken;
+
+    mapping(address => uint256) _balances;
+    mapping(address => mapping(address => uint256)) _allowances;
+
+    address public pair;
+    address public routerAddress = 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D;
+    address public DEAD = 0x000000000000000000000000000000000000dEaD;
+    IDEXRouter public router;
+    bool public TradingOpen = false;
+
+    constructor(
+        string[] memory _stringData,
+        uint256[] memory _intData
+    ) Auth(msg.sender) {
+        require(_stringData.length == 4, "String List needs 4 string inputs");
+        require(_intData.length == 2, "Int List needs 2 int inputs");
+        router = IDEXRouter(routerAddress);
+        pair = IDEXFactory(router.factory()).createPair(
+            router.WETH(),
+            address(this)
+        );
+        require(_intData[0] > 0, "Cant start with 0 tokens");
+        authorizations[routerAddress] = true;
+
+        _name = _stringData[0];
+        _symbol = _stringData[1];
+        _telegram = _stringData[2];
+        _website = _stringData[3];
+
+        _totalSupply = _intData[0] * 10 ** _decimals;
+        _balances[msg.sender] = _totalSupply;
+        emit Transfer(address(0), msg.sender, _totalSupply);
+
+        _maxWalletToken = (_totalSupply * _intData[1]) / 1000;
+
+        _allowances[address(this)][address(router)] = _totalSupply;
+
+        require(
+            _maxWalletToken >= (_totalSupply / 500),
+            "Max Wallet must be greater than 0.2%."
+        );
+    }
+
+    receive() external payable {}
+
+    function totalSupply() external view override returns (uint256) {
+        return _totalSupply;
+    }
+
+    function decimals() external pure override returns (uint8) {
+        return _decimals;
+    }
+
+    function symbol() external view override returns (string memory) {
+        return _symbol;
+    }
+
+    function name() external view override returns (string memory) {
+        return _name;
+    }
+
+    function getOwner() external view override returns (address) {
+        return owner;
+    }
+
+    function balanceOf(address account) public view override returns (uint256) {
+        return _balances[account];
+    }
+
+    function allowance(
+        address holder,
+        address spender
+    ) external view override returns (uint256) {
+        return _allowances[holder][spender];
+    }
+
+    function approve(
+        address spender,
+        uint256 amount
+    ) public override returns (bool) {
+        _allowances[msg.sender][spender] = amount;
+        emit Approval(msg.sender, spender, amount);
+        return true;
+    }
+
+    function approveMax(address spender) external returns (bool) {
+        return approve(spender, _totalSupply);
+    }
+
+    function transfer(
+        address recipient,
+        uint256 amount
+    ) external override returns (bool) {
+        if (owner == msg.sender) {
+            return _basicTransfer(msg.sender, recipient, amount);
+        } else {
+            return _transferFrom(msg.sender, recipient, amount);
+        }
+    }
+
+    function _basicTransfer(
+        address sender,
+        address recipient,
+        uint256 amount
+    ) internal returns (bool) {
+        _balances[sender] = _balances[sender].sub(
+            amount,
+            "Insufficient Balance"
+        );
+        _balances[recipient] = _balances[recipient].add(amount);
+        emit Transfer(sender, recipient, amount);
+        return true;
+    }
+
+    function transferFrom(
+        address sender,
+        address recipient,
+        uint256 amount
+    ) external override returns (bool) {
+        require(sender != address(0), "ERC20: transfer from the zero address");
+        require(recipient != address(0), "ERC20: transfer to the zero address");
+        if (_allowances[sender][msg.sender] != _totalSupply) {
+            _allowances[sender][msg.sender] = _allowances[sender][msg.sender]
+                .sub(amount, "Insufficient Allowance");
+        }
+        return _transferFrom(sender, recipient, amount);
+    }
+
+    function _transferFrom(
+        address sender,
+        address recipient,
+        uint256 amount
+    ) internal returns (bool) {
+        require(sender != address(0), "ERC20: transfer from the zero address");
+        require(recipient != address(0), "ERC20: transfer to the zero address");
+        if (authorizations[sender] || authorizations[recipient]) {
+            return _basicTransfer(sender, recipient, amount);
+        }
+        if (!authorizations[sender] && !authorizations[recipient]) {
+            require(TradingOpen, "Trading not open yet");
+        }
+        checkLimits(sender, recipient, amount);
+        return _basicTransfer(sender, recipient, amount);
+    }
+
+    function checkLimits(
+        address sender,
+        address recipient,
+        uint256 amount
+    ) internal view {
+        if (
+            !authorizations[sender] &&
+            recipient != address(this) &&
+            sender != address(this) &&
+            recipient != address(DEAD) &&
+            recipient != pair
+        ) {
+            uint256 heldTokens = balanceOf(recipient);
+            require(
+                (heldTokens + amount) <= _maxWalletToken,
+                "Total Holding is currently limited, you can not buy that much."
+            );
+        }
+    }
+
+    function setMaxWallet(uint256 percent) external onlyOwner {
+        _maxWalletToken = (_totalSupply * percent) / 1000;
+        require(
+            _maxWalletToken >= (_totalSupply / 500),
+            "Max Wallet must be greater than 0.2%."
+        );
+    }
+
+    function getAddress() external view returns (address) {
+        return address(this);
+    }
+
+    function aboutMe() external view returns (string memory, string memory) {
+        return (_telegram, _website);
+    }
+
+    function updateAboutMe(
+        string memory telegram,
+        string memory website
+    ) external onlyOwner {
+        _telegram = telegram;
+        _website = website;
+    }
+
+    function enableTrading() external onlyOwner {
+        TradingOpen = true;
+    }
+
+    function clearStuckBalance() external onlyOwner {
+        payable(msg.sender).transfer(address(this).balance);
+    }
+}

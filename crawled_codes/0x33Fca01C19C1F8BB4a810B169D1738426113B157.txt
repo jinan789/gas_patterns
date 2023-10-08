@@ -1,0 +1,203 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.8;
+
+import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC20BurnableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+
+contract ERC20CNYG is
+    Initializable,
+    ERC20Upgradeable,
+    ERC20BurnableUpgradeable,
+    PausableUpgradeable,
+    AccessControlUpgradeable,
+    UUPSUpgradeable
+{
+    bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
+    bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
+    bytes32 public constant OPERATOR_ROLE = keccak256("OPERATOR_ROLE");
+    bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
+
+    /// config item
+    uint256 public feeStartAmount; // 100 * 1e6;
+    uint256 public feeMaxAmount; // 50 * 1e6;
+    uint256 public feeRate; // 0.05%
+    address public feeCollector; // fee account address
+
+    // whitelist account address => bool
+    mapping(address => bool) public whitelists;
+    // blacklist account address => bool
+    mapping(address => bool) public blacklists;
+
+    /// event
+    event FeeStartAmount(uint256 amount);
+    event FeeMaxAmount(uint256 amount);
+    event FeeRate(uint256 amount);
+    event FeeCollector(address account);
+
+    event AddWhitelist(address account);
+    event RemoveWhitelist(address account);
+    event AddBlacklist(address account);
+    event RemoveBlacklist(address account);
+
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
+    function initialize(uint256 _feeStartAmount, uint256 _feeMaxAmount, uint256 _feeRate, address _feeCollector) public initializer {
+        __ERC20_init("CNYG Token", "CNYG");
+        __ERC20Burnable_init();
+        __Pausable_init();
+        __AccessControl_init();
+        __UUPSUpgradeable_init();
+
+        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
+        _grantRole(PAUSER_ROLE, msg.sender);
+        _grantRole(OPERATOR_ROLE, msg.sender);
+        _grantRole(MINTER_ROLE, msg.sender);
+        _grantRole(UPGRADER_ROLE, msg.sender);
+
+        feeStartAmount = _feeStartAmount;
+        feeMaxAmount = _feeMaxAmount;
+
+        require(_feeRate >= 0 && _feeRate < 100, "invalid amount");
+        feeRate = _feeRate;
+
+        require(_feeCollector != address(0), "invalid fee collector");
+        feeCollector = _feeCollector;
+    }
+
+    // only operator: set minimum amount of transfer
+    function setFeeStartAmount(uint256 _amount) external onlyRole(OPERATOR_ROLE) {
+        require(_amount > 0, "invalid amount");
+        feeStartAmount = _amount;
+        emit FeeStartAmount(_amount);
+    }
+
+    // only operator: set maximum amount of transfer fee
+    function setFeeMaxAmount(uint256 _amount) external onlyRole(OPERATOR_ROLE) {
+        require(_amount > 0, "invalid amount");
+        feeMaxAmount = _amount;
+        emit FeeMaxAmount(_amount);
+    }
+
+    // only operator: set transfer fee rate
+    function setFeeRate(uint256 _amount) external onlyRole(OPERATOR_ROLE) {
+        require(_amount >= 0 && _amount < 100, "invalid amount");
+        feeRate = _amount;
+        emit FeeRate(_amount);
+    }
+
+    // only operator: set fee collector account
+    function setFeeCollector(address _account) external onlyRole(OPERATOR_ROLE) {
+        require(_account != address(0), "invalid account");
+        feeCollector = _account;
+        emit FeeCollector(_account);
+    }
+
+    // only operator: account add whitelists
+    // transfer zero fee
+    function addWhitelist(address _account) external onlyRole(OPERATOR_ROLE) {
+        require(_account != address(0), "invalid account");
+        require(!whitelists[_account], "account is whitelist");
+        whitelists[_account] = true;
+        emit AddWhitelist(_account);
+    }
+
+    // only operator: account remove whitelists
+    function removeWhitelist(address _account) external onlyRole(OPERATOR_ROLE) {
+        require(_account != address(0), "invalid account");
+        require(whitelists[_account], "account is not whitelist");
+        whitelists[_account] = false;
+        emit RemoveWhitelist(_account);
+    }
+
+    // only operator: account add blacklists
+    // no transfer
+    function addBlacklist(address _account) external onlyRole(OPERATOR_ROLE) {
+        require(_account != address(0), "invalid account");
+        require(!blacklists[_account], "account is blacklist");
+        blacklists[_account] = true;
+        emit AddBlacklist(_account);
+    }
+
+    // account remove blacklists
+    function removeBlacklist(address _account) external onlyRole(OPERATOR_ROLE) {
+        require(_account != address(0), "invalid account");
+        require(blacklists[_account], "account is not blacklist");
+        blacklists[_account] = false;
+        emit RemoveBlacklist(_account);
+    }
+
+    function pause() external onlyRole(PAUSER_ROLE) {
+        _pause();
+    }
+
+    function unpause() external onlyRole(PAUSER_ROLE) {
+        _unpause();
+    }
+
+    function mint(address to, uint256 amount) external onlyRole(MINTER_ROLE) {
+        _mint(to, amount);
+    }
+
+    function _beforeTokenTransfer(address from, address to, uint256 amount) internal override whenNotPaused {
+        super._beforeTokenTransfer(from, to, amount);
+        // check account is cannot transfer
+        require(!blacklists[from], "blacklisted account cannot transfer token");
+    }
+
+    function _authorizeUpgrade(address newImplementation) internal override onlyRole(UPGRADER_ROLE) {}
+
+    function decimals() public pure override returns (uint8) {
+        return 6;
+    }
+
+    // calculate transfer fee
+    function _calcFee(address _account, uint256 _amount) private view returns (uint256) {
+        uint256 _fee;
+        if (whitelists[_account]) {
+            return 0;
+        }
+        if (_amount >= feeStartAmount) {
+            _fee = (_amount * feeRate) / 10000;
+            _fee = _fee > feeMaxAmount ? feeMaxAmount : _fee;
+        }
+        return _fee;
+    }
+
+    // account transfer
+    function transfer(address to, uint256 amount) public override returns (bool) {
+        address owner = _msgSender();
+
+        uint256 _fee = _calcFee(owner, amount);
+        if (_fee == 0) {
+            _transfer(owner, to, amount);
+        } else {
+            _transfer(owner, to, amount - _fee);
+            _transfer(owner, feeCollector, _fee);
+        }
+
+        return true;
+    }
+
+    // account transfer
+    function transferFrom(address from, address to, uint256 amount) public override returns (bool) {
+        address spender = _msgSender();
+        _spendAllowance(from, spender, amount);
+
+        uint256 _fee = _calcFee(from, amount);
+        if (_fee == 0) {
+            _transfer(from, to, amount);
+        } else {
+            _transfer(from, to, amount - _fee);
+            _transfer(from, feeCollector, _fee);
+        }
+
+        return true;
+    }
+}

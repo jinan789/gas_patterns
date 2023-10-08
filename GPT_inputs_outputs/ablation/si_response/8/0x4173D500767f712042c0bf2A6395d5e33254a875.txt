@@ -1,0 +1,33 @@
+Here are a few potential gas-wasting patterns that can be discerned from the provided Solidity code:
+
+1. **Repeatedly fetching the same configuration from storage:** In the provided Solidity code, the configuration of the pool for a specific asset is fetched repeatedly from the storage for each different function. This is similar to the first pattern mentioned above, but instead of computing the same expression, it reads the same storage variable repeatedly. Storage operations in Solidity are quite expensive in terms of gas usage, so it is better to minimize them when possible. For instance, `_pool.getConfiguration(asset)` is called multiple times in different functions which leads to repeated storage access. This can be mitigated by fetching the configuration once and passing it as an argument to the functions that need it.
+
+    ```solidity
+    DataTypes.ReserveConfigurationMap memory currentConfig = _pool.getConfiguration(asset);
+    ```
+
+    To fix this, you could consider fetching the configuration once at the beginning of the transaction and then reusing this fetched configuration in the rest of the transaction.
+
+2. **Unnecessary conditional checks:** The provided Solidity code has several conditional checks that might be unnecessary depending on the state of the contract. For example, in the `setReserveBorrowing` function, there is a check to ensure stable rate borrowing is not enabled before disabling borrowing. This could be an unnecessary check if the function is only called when it is known that stable rate borrowing is not enabled.
+
+    ```solidity
+    if (!enabled) {
+      require(!currentConfig.getStableRateBorrowingEnabled(), Errors.STABLE_BORROWING_ENABLED);
+    }
+    ```
+
+    To fix this, you could ensure that the state of the contract is such that these checks are not necessary. This could be done by carefully managing the state of the contract and ensuring that these conditions are met before calling these functions.
+
+3. **Excessive use of events:** In the provided Solidity code, events are emitted every time a configuration is changed. While events are useful for tracking the state of a contract, they also require gas to emit. If these events are not necessary for the operation of the contract, they could be considered a waste of gas.
+
+    ```solidity
+    emit ReserveBorrowing(asset, enabled);
+    ```
+
+    To fix this, you could consider reducing the number of events emitted by the contract. This could be done by only emitting events when necessary, or by combining multiple events into a single event.
+
+4. **Multiple function calls for similar operations:** In the provided Solidity code, there are multiple functions that perform similar operations, such as `setReserveBorrowing`, `setReserveStableRateBorrowing`, `setReserveFlashLoaning`, etc. Each of these functions fetch the current configuration, make a change, and then set the configuration again. This is similar to the "loop fusion" pattern mentioned above, and could be considered a waste of gas.
+
+    To fix this, you could consider combining these operations into a single function that can perform multiple configuration changes at once. This would reduce the number of function calls and potentially save on gas.
+
+Keep in mind that while these patterns might help to save gas, they could also make the contract more complex and harder to understand. Therefore, it's important to strike a balance between gas efficiency and code readability.

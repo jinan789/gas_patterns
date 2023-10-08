@@ -1,0 +1,33 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract PersonalProfile {
+    address public owner;
+    string public twitterHandle;
+    string public description;
+    string public telegramHandle;
+    string public website;
+
+    constructor() {
+        owner = msg.sender;
+        twitterHandle = "@TheApesKing";
+        description = "Cryptocurrency Enthusiast | Ethereum Advocate | Future-Driven Content Creator on X | Educating and Entertaining about the Crypto Universe | Let's dive into the world of #Crypto and #Ethereum together! #Blockchain #ContentCreator";
+    }
+    
+    modifier onlyOwner() {
+        require(msg.sender == owner, "Only the contract owner can perform this action");
+        _;
+    }
+    
+    function updateProfile(
+        string memory _twitterHandle,
+        string memory _description,
+        string memory _telegramHandle,
+        string memory _website
+    ) public onlyOwner {
+        twitterHandle = _twitterHandle;
+        description = _description;
+        telegramHandle = _telegramHandle;
+        website = _website;
+    }
+}

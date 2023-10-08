@@ -1,0 +1,17 @@
+/**
+ *Submitted for verification at Etherscan.io on 2023-08-05
+*/
+
+// SPDX-License-Identifier: GPL-3.0
+pragma solidity ^0.8.10;
+
+contract DoYouLikeBtc {
+        
+    event DoYouLikeBTC(bool isTrue_1_OrFalse_0);
+
+    function doYouLikeBTC(bool _isTrue_1_OrFalse_0) public {
+        emit DoYouLikeBTC(_isTrue_1_OrFalse_0);
+    }
+
+
+}

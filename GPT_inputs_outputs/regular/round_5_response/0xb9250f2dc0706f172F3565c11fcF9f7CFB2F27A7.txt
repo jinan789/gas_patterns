@@ -1,0 +1,24 @@
+Here are some new patterns of gas-wasting I found:
+
+\subsection*{1. Redundant Balance and Allowance Checks}
+In the `newVote`, `withdrawNewVote`, `deposit`, and `withdraw` functions, there are checks for both allowance and balance of tokens. This might be unnecessary and wasteful since allowance check already ensures that the sender has allowed the contract to spend a certain amount of tokens on his behalf. If allowance is sufficient, it implies that the balance is also sufficient.
+
+- \textbf{Finding Process:} I noticed this pattern by examining the `require` statements in these functions. It's common to check for allowance in token-related operations, but checking both allowance and balance seems redundant.
+- \textbf{Fix:} Remove the checks for `voteToken.balanceOf(msg.sender) >= newVoteDeposit` and `voteToken.balanceOf(msg.sender) >= _amount` in the `newVote`, `deposit`, and `withdraw` functions. The allowance check is enough to ensure that the sender has the required amount of tokens.
+- \textbf{Impact Rating:} Readability: 5; Security: 5; Maintainability: 5. This change does not affect the readability, security, or maintainability of the code. It only removes unnecessary gas consumption and makes it more efficient.
+
+\subsection*{2. Repeated Calls to `block.timestamp`}
+In the `newVote` and `addVote` functions, `block.timestamp` is called multiple times. Each call to `block.timestamp` consumes gas, and the value doesn't change within the same transaction. Thus, it's more gas-efficient to read `block.timestamp` once and store it in a local variable if it's used more than once.
+
+- \textbf{Finding Process:} I found this pattern by looking for repeated calls to global variables like `block.timestamp`. Repeated calls to the same global variable within a function often indicate potential for optimization.
+- \textbf{Fix:} Create a local variable `uint40 currentTime = uint40(block.timestamp);` at the beginning of the `newVote` and `addVote` functions and replace all occurrences of `block.timestamp` in these functions with `currentTime`.
+- \textbf{Impact Rating:} Readability: 5; Security: 5; Maintainability: 5. This change does not affect the readability, security, or maintainability of the code. It makes the code more efficient without any trade-offs.
+
+\subsection*{3. Inefficient Storage Usage}
+In the `addVote` function, the `applications[_tick]` struct is read from storage multiple times. Each read from storage consumes a significant amount of gas. It's more efficient to read the entire struct into memory once and then work with the memory copy.
+
+- \textbf{Finding Process:} I found this pattern by looking for repeated accesses to storage variables. In Solidity, reading from and writing to storage is much more expensive than reading from and writing to memory.
+- \textbf{Fix:} At the beginning of the `addVote` function, add `IVoteForLaunch.Application memory application = applications[_tick];`. Then, replace all occurrences of `applications[_tick]` in the function with `application`. Remember to write back to storage at the end of the function with `applications[_tick] = application;`.
+- \textbf{Impact Rating:} Readability: 4; Security: 5; Maintainability: 4. This change slightly reduces readability and maintainability, as developers need to remember to write back to storage. However, it doesn't affect security and significantly increases gas efficiency.
+
+For your next time, I suggest providing the implementation details (if any) related to the external libraries used in the contract. In this case, `TransferHelper` and `IVoteForLaunch` are used, but their implementation details are not given, which might affect the analysis. Also, providing a bit of context about the contract's purpose could help in understanding the code better.
