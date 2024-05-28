@@ -1,0 +1,42 @@
+### New Gas-Wasting Patterns Discovered
+
+#### Pattern 1: Unnecessary Storage Reads in Assertion Conditions
+
+**Explanation**:
+- In several functions (`deploy_gauge`, `set_bridger`, `set_implementation`, `commit_transfer_ownership`), there is a recurring pattern where the `assert` statement is used to check whether `msg.sender` is the owner of the contract. Reading from storage (`self.owner`) for this comparison can be gas expensive especially if done repeatedly within the same transaction.
+- Storage reads are more costly than memory reads, and if the value of `self.owner` can be assumed constant during the execution, this value can be cached in memory at the start of the transaction.
+
+**Fix Steps**:
+1. Introduce a local memory variable at the start of the transaction to hold the owner's address.
+2. Replace all instances of `self.owner` in `assert` statements within the same transaction with this local variable.
+
+**Impact Rating**:
+- Readability: 5; Security: 5; Maintainability: 5
+- This change has minimal impact on readability, security, and maintainability. It improves gas efficiency without altering the logic of the contract.
+
+#### Pattern 2: Repeated Retrieval of Bridger in Multiple Functions
+
+**Explanation**:
+- The `transmit_emissions` and `transmit_emissions_multiple` functions both retrieve the `bridger` address from a gauge and then perform operations with it. Each retrieval involves a call to another contract, which is more expensive than a local operation.
+- If these functions are called multiple times for the same gauge in a single transaction, the bridger address retrieval could be optimized.
+
+**Fix Steps**:
+1. If these functions are to be used in batch operations or expected to be called multiple times for the same gauge in a transaction, consider caching the bridger address at a higher level or passing it as a parameter to save on repeated external calls.
+
+**Impact Rating**:
+- Readability: 4; Security: 5; Maintainability: 4
+- This change might slightly complicate the function interfaces but significantly reduces gas costs by cutting down on external calls.
+
+### Reflections and Improvements
+
+**Prompt Issues**:
+- The original prompt could be more specific about the types of transactions expected and the typical use cases for these contracts. Understanding the common patterns of interaction can help identify more relevant optimizations.
+- More background on the frequency and typical sizes of `_gauge_list` in `transmit_emissions_multiple` could be relevant for optimizing loops and batch operations.
+
+**Improvement in Reasoning Process**:
+- I could improve by further considering the context in which these contracts operate. For example, understanding typical transaction patterns can help prioritize which optimizations will yield the most significant benefits.
+- Including more detailed analysis of transaction costs and profiling data could also strengthen the recommendations for gas optimizations.
+
+**Implemented Improvements**:
+- I expanded the explanations for why certain optimizations were recommended, particularly focusing on the cost differences between storage and memory, and the costs associated with external calls.
+- I also tried to rate the impact of changes more holistically, considering not just gas savings but also the effects on the usability and security of the contract.

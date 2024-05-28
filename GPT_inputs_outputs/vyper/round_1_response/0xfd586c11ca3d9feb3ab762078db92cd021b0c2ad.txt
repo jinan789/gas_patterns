@@ -1,0 +1,49 @@
+### New Gas-Wasting Patterns Identified
+
+#### Pattern: Redundant State Hash Calculations
+
+1. **How I found this pattern**:
+   - **Step-by-step reasoning**:
+     - I noticed that the `state` variable's hash is frequently recalculated (`self._state_hash(state)` and `self._state_hash2(...)`) in multiple functions.
+     - Each hash calculation of the entire state can be gas-intensive, especially if the state is large.
+     - This pattern is similar to the "Repeated computation of the same expression" but specifically focuses on state hash calculations that could be reused across function calls or within the same function.
+
+2. **Steps to fix this pattern**:
+   - **Step-by-step reasoning**:
+     - Calculate the state hash only when the state changes, and store it in a variable.
+     - Use this stored hash value across the function or even across different functions if the state remains unchanged.
+     - This reduces the number of times the expensive hash function needs to be called, thereby saving gas.
+
+3. **Impact on readability, security, and maintainability**:
+   - **Rating**: Readability: 4; Security: 5; Maintainability: 4
+   - This change has minimal impact on readability and security as it doesn't alter the logic but merely optimizes how often the state is calculated. The maintainability is slightly impacted as developers need to ensure that the hash is updated correctly whenever the state changes.
+
+#### Pattern: Excessive Assertions for Constant Conditions
+
+1. **How I found this pattern**:
+   - **Step-by-step reasoning**:
+     - Assertions like `assert self._is_initialised()` are used in multiple functions to check initialization status.
+     - If these conditions are invariant across calls (e.g., once initialized, the contract remains initialized), these assertions unnecessarily consume gas each time they are evaluated.
+     - This pattern relates to reducing redundant checks that do not change once set.
+
+2. **Steps to fix this pattern**:
+   - **Step-by-step reasoning**:
+     - Ensure that such conditions are checked only when necessary (e.g., during state transitions like initialization or finalization).
+     - Avoid placing these assertions in functions where the condition's state is unlikely to change, or use a cheaper way to handle errors if the condition is violated.
+
+3. **Impact on readability, security, and maintainability**:
+   - **Rating**: Readability: 5; Security: 3; Maintainability: 5
+   - Removing some assertions might slightly risk security if not handled properly (e.g., malicious actors exploiting uninitialized states). However, this can be managed by careful design, ensuring checks are done when states are changed.
+
+### Additional Requirements and Reflection
+
+1. **Improvement on Prompt**:
+   - The prompt could specify more details about the typical size of the state and frequency of state changes. Knowing how often the state changes or how large it typically is would help in assessing the impact of optimizations related to state handling.
+   - A brief description or example of typical transaction sequences could help understand where optimizations have the most impact.
+
+2. **Reflection on Reasoning Process**:
+   - Initially, I focused on syntactical patterns similar to the provided examples. However, I realized that understanding the underlying logic and the frequency of state changes could reveal deeper optimizations.
+   - For future tasks, focusing more on the context (e.g., how often functions are called and the typical lifecycle of contracts) could lead to more effective optimizations.
+   - I improved my approach by considering the broader context of how smart contracts operate, leading to the identification of the excessive assertions pattern. Understanding typical use patterns helped in identifying this as a potential optimization area. 
+
+By focusing on these broader operational contexts and contract lifecycle aspects, it's possible to identify more nuanced optimization opportunities that go beyond simple code refactoring.

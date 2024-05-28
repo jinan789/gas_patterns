@@ -1,0 +1,209 @@
+I want you to help me find new gas-wasting patterns for Solidity. Gas is a unique pricing mechanism in Solidity, which measures the amount of computational resources put into the execution of Solidity codes. Gas is paid in money, so saving gas is saving money. The goal of gas optimization is to find an equivalent code instruction sequence that produces the same output while consuming less gas. This may misalign from how people typically write codes, since the gas pricing mechanism is less intuitive and code writers do not often keep it in mind. For example, storage variables in Solidity are expensive in terms of gas, while memory is not, so unnecessary storage operations should be avoided when possible, but programmers from other languages might not be aware of this. 
+
+First, I will give you a list of known gas-wasting patterns as an example. The list is numbered, with each bullet point specifying one gas-wasting pattern and an explanation of why this pattern wastes gas. Please be creative and see if my provided codes contain any gas-wasting patterns beyond the provided ones. The list is as follows:
+
+1. Repeated computation of the same expression: including repetitive reads of the same expensive storage variable (e.g. Overuse of expensive storage variables). This could be solved by introducing an intermediate variable to hold the value
+2. Variable refactoring: by refactoring variable types and thus adjusting memory layout, we could save gas by saving the amount of storage space needed
+3. Redundant operations with same effects: redundant operations that overwrite the effect of the previous operation, making the previous useless
+4. Pre-computable operations on constants: performing comparisons (or other operations) to constants is useless and could be pre-computed
+5. Simplifiable conditional operations: expressions that involve logical operations that could be simplified to reduce the amount of computational workload.
+6. "Loop fusion." If two loops have the same starting and stopping conditions with the same increment steps, then we could consider combining them into one, if they have no dependencies. 
+7. "Repeated computations in a loop." If there are expressions that produce the same outcome in each iteration of a loop, we could move it out of the loop and execute only once, which saves computation.
+8. "Opaque predicate." If the outcome of a predicate could be inferred to be true/false without execution, then we could just replace it with the corresponding value to save the compuation during runtime.
+
+For this analysis, assume that the EVM we are targeting includes the implementation of EIP-1153 and EIP-7609, which collectively introduced the TLOAD and TSTORE opcodes to manage transient storage in smart contracts. This type of storage is temporary, and is discarded at the end of each transaction, unlike the permanent storage accessed via SSTORE and SLOAD. The gas cost of TLOAD is 5 gas, and TSTORE is 8 gas plus expansion_cost. expansion_cost is 0 if the queried key is already in transient storage, and is computed as the number of keys already in transient storage otherwise (i.e., superlinear pricing).
+
+Next, I will provide a chunk of Solidity codes from which you will identify any gas-inefficient patterns, considering the transient storage feature:
+contract KSElasticLMV2 is IKSElasticLMV2, KSAdmin, ReentrancyGuard {
+  function addFarm(
+    address poolAddress,
+    RangeInput[] calldata ranges,
+    PhaseInput calldata phase,
+    bool isUsingToken
+  ) external isOperator returns (uint256 fId) {
+    //new farm id would be current farmCount
+    fId = farmCount;
+    FarmInfo storage farm = farms[fId];
+
+    //validate phase input
+    _isPhaseValid(phase);
+
+    for (uint256 i; i < ranges.length; ) {
+      //validate range input
+      _isRangeValid(ranges[i]);
+
+      //push range into farm ranges array
+      farm.ranges.push(
+        IKSElasticLMV2.RangeInfo({
+          tickLower: ranges[i].tickLower,
+          tickUpper: ranges[i].tickUpper,
+          weight: ranges[i].weight,
+          isRemoved: false
+        })
+      );
+
+      unchecked {
+        ++i;
+      }
+    }
+
+    //update farm data
+    farm.poolAddress = poolAddress;
+    farm.phase.startTime = phase.startTime;
+    farm.phase.endTime = phase.endTime;
+
+    for (uint256 i; i < phase.rewards.length; ) {
+      //push rewards info to farm phase rewards array
+      farm.phase.rewards.push(phase.rewards[i]);
+
+      //sumReward of newly created farm would be, this sumReward is total reward per liquidity until now
+      farm.sumRewardPerLiquidity.push(0);
+
+      unchecked {
+        ++i;
+      }
+    }
+
+    //deploy farmingToken if needed
+    address destination;
+    if (isUsingToken) {
+      bytes memory creationCode = farmingTokenCreationCode;
+      bytes32 salt = keccak256(abi.encode(msg.sender, fId));
+      assembly {
+        destination := create2(0, add(creationCode, 32), mload(creationCode), salt)
+        if iszero(extcodesize(destination)) {
+          revert(0, 0)
+        }
+      }
+
+      farm.farmingToken = destination;
+    }
+
+    //last touched time would be startTime
+    farm.lastTouchedTime = phase.startTime;
+
+    //increase farmCount
+    unchecked {
+      ++farmCount;
+    }
+
+    emit AddFarm(fId, poolAddress, ranges, phase, destination);
+  }
+
+  function withdrawUnusedRewards(
+    address[] calldata tokens,
+    uint256[] calldata amounts
+  ) external isAdmin {
+    uint256 rewardTokenLength = tokens.length;
+    for (uint256 i; i < rewardTokenLength; ) {
+      _safeTransfer(tokens[i], msg.sender, amounts[i]);
+      emit WithdrawUnusedRewards(tokens[i], amounts[i], msg.sender);
+
+      unchecked {
+        ++i;
+      }
+    }
+  }
+
+  //add a new farm
+  function addPhase(uint256 fId, PhaseInput calldata phaseInput) external isOperator {
+    if (fId >= farmCount) revert InvalidFarm();
+
+    //validate phase input
+    _isPhaseValid(phaseInput);
+
+    PhaseInfo storage phase = farms[fId].phase;
+
+    uint256 length = phase.rewards.length;
+    if (phaseInput.rewards.length != length) revert InvalidInput();
+
+    //if phase not settled, update sumReward.
+    //if phase already settled then it's not needed since sumReward would be unchanged
+    if (!phase.isSettled) _updateFarmSumRewardPerLiquidity(fId);
+
+    //override phase data with new data
+    phase.startTime = phaseInput.startTime;
+    phase.endTime = phaseInput.endTime;
+
+    for (uint256 i; i < length; ) {
+      //new phase rewards must be the same as old phase
+      if (phase.rewards[i].rewardToken != phaseInput.rewards[i].rewardToken)
+        revert InvalidReward();
+
+      //update reward amounts
+      phase.rewards[i].rewardAmount = phaseInput.rewards[i].rewardAmount;
+
+      unchecked {
+        ++i;
+      }
+    }
+
+    //newly add phase must is not settled
+    if (phase.isSettled) phase.isSettled = false;
+
+    //set farm lastTouchedTime to startTime
+    farms[fId].lastTouchedTime = phaseInput.startTime;
+
+    emit AddPhase(fId, phaseInput);
+  }
+
+  function forceClosePhase(uint256 fId) external isOperator {
+    if (fId >= farmCount) revert InvalidFarm();
+
+    if (farms[fId].phase.isSettled) revert PhaseSettled();
+
+    //update sumReward
+    _updateFarmSumRewardPerLiquidity(fId);
+
+    //close phase so settled must be true
+    if (!farms[fId].phase.isSettled) farms[fId].phase.isSettled = true;
+
+    emit ForceClosePhase(fId);
+  }
+  function addRange(uint256 fId, RangeInput calldata range) external isOperator {
+    if (fId >= farmCount) revert InvalidFarm();
+    _isRangeValid(range);
+
+    //add a new range into farm ranges array
+    farms[fId].ranges.push(
+      IKSElasticLMV2.RangeInfo({
+        tickLower: range.tickLower,
+        tickUpper: range.tickUpper,
+        weight: range.weight,
+        isRemoved: false
+      })
+    );
+
+    emit AddRange(fId, range);
+  }
+
+  function removeRange(uint256 fId, uint256 rangeId) external isOperator {
+    if (fId >= farmCount) revert InvalidFarm();
+    if (rangeId >= farms[fId].ranges.length || farms[fId].ranges[rangeId].isRemoved)
+      revert RangeNotFound();
+
+    //remove a range aka set isRemoved to true, it's still be in ranges array but cannot deposit to this range anymore
+    farms[fId].ranges[rangeId].isRemoved = true;
+
+    emit RemoveRange(fId, rangeId);
+  }
+  function activateRange(uint256 fId, uint256 rangeId) external isOperator {
+    if (fId >= farmCount) revert InvalidFarm();
+    if (rangeId >= farms[fId].ranges.length || !farms[fId].ranges[rangeId].isRemoved)
+      revert RangeNotFound();
+
+    //activate a removed range aka set isRemoved to false, this range can deposit now
+    farms[fId].ranges[rangeId].isRemoved = false;
+
+    emit ActivateRange(fId, rangeId);
+  }
+  }
+Now I want you to help me find new gas-wasting patterns from the above codes and the list of example patterns, considering the introduction of transient storage. Please be creative and think outside the box beyond the patterns listed above. Please put the new gas-wasting patterns in bullet points, using Latex syntax. Also please answer the following questions for each of the found patterns:
+
+1. How did you find this pattern? Could you explain the reasoning process, step by step, behind the discovery?
+2. What should I do, step by step, to fix the found gas-wasting patterns? Could you explain the reasoning process, step by step, behind the reason why such a fix works?
+3. On a score of 0 to 5, please rate this new pattern in terms of how much it is sacrificing readability, security, and maintainability in exchange for gas optimization (5 is the least impacted. For example, "Readability: 5; Security: 4; Maintainability: 1" means no effect on security while maintainability is largely affected.)
+
+Here are some additional requirements:
+1. If you think my prompt to you has any issues (e.g. ambiguity or lack of information), please tell me how I should improve it the next time.
+2. Please reflect on your reasoning process and tell me how you could do better next time in terms of completing the given task. If you found any issues, please also make corresponding improvements to your output this time and tell me what you did and why such improvement is necessary, in a step-by-step manner.

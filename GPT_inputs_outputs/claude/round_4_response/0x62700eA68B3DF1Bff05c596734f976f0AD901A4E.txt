@@ -1,0 +1,55 @@
+\section*{Analysis of Provided Solidity Code}
+
+Here are some potential new gas-wasting patterns I found in the provided Solidity code, along with explanations and suggested fixes:
+
+1. Repeated calls to `IInscription(token.addr)` in the `addLiquidity` function.
+   
+   1. I noticed that `IInscription(token.addr)` is called multiple times in the `addLiquidity` function. Each time this is called, it performs an external call which consumes gas. If the result of `IInscription(token.addr)` remains the same throughout the function, it would be more gas-efficient to store the result in a variable and reuse it.
+
+   2. To fix this, declare a variable at the beginning of the function to store the result of `IInscription(token.addr)`, like this:
+      ```solidity
+      IInscription inscription = IInscription(token.addr);
+      ```
+      Then replace subsequent calls to `IInscription(token.addr)` with the `inscription` variable. This avoids repeated external calls.
+
+   3. Readability: 5 (using a variable with a descriptive name can improve readability)
+      Security: 5 (no impact on security)  
+      Maintainability: 5 (reduces duplication and makes the code easier to maintain)
+
+2. Inefficient use of `require` statements in the `refund` function.
+   
+   1. The `refund` function has two `require` statements that check the token balance and allowance of `msg.sender`. However, these checks are only necessary in the `else` block of the preceding `if` statement. If the `if` condition is true, the `require` statements will still execute, consuming unnecessary gas.
+
+   2. To fix this, move the `require` statements inside the `else` block, so they are only executed when needed:
+      ```solidity
+      if (token.isVesting && token.customizedVestingContractAddress != address(0x0)) {
+          // ...
+      } else {
+          // check balance and allowance of tokens, if the balance or allowance is smaller than the what he/she get while do mint, the refund fail
+          require(IInscription(token.addr).balanceOf(msg.sender) >= mintData[msg.sender].tokenAmount, "Your balance token not enough");
+          require(IInscription(token.addr).allowance(msg.sender, address(this)) >= mintData[msg.sender].tokenAmount, "Your allowance not enough");
+          
+          // ...
+      }
+      ```
+
+   3. Readability: 4 (nesting the `require` statements makes the code slightly harder to read)
+      Security: 5 (no impact on security)
+      Maintainability: 4 (slightly more complex structure, but avoids unnecessary checks)
+
+3. Duplicate calculations in the `refund` function.
+   
+   1. The expressions `mintData[msg.sender].tokenLiquidity - refundToken` and `mintData[msg.sender].ethAmount - refundEth` are each calculated twice in the `refund` function. Duplicate calculations waste gas.
+
+   2. To fix this, calculate these values once and store them in variables:
+      ```solidity
+      uint128 remainingTokenLiquidity = mintData[msg.sender].tokenLiquidity - refundToken;
+      uint128 remainingEthAmount = mintData[msg.sender].ethAmount - refundEth;
+      ```
+      Then use these variables in place of the duplicate calculations.
+
+   3. Readability: 5 (using descriptive variable names can improve readability)
+      Security: 5 (no impact on security)
+      Maintainability: 5 (reduces duplication and makes the code easier to maintain)
+
+To improve your prompt for next time, you could consider providing more context about the overall purpose and design of the contract. This would help in understanding the intended behavior and identifying potential optimizations that maintain the contract's integrity.

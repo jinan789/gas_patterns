@@ -1,0 +1,35 @@
+### New Gas-Wasting Patterns in Solidity Code
+
+#### Pattern: Inefficient Storage Use for Frequently Computed Values
+1. **How did you find this pattern?**
+   - **Step-by-step reasoning:**
+     - Noticed that values like `chi` from `_getMostRecentChi()` and `_totalPooledDai` are used multiple times across different functions.
+     - These values are computed or retrieved multiple times within transactions that call multiple functions (like `_deposit` and `_withdraw`).
+     - Using transient storage could cache these values for reuse within the same transaction, reducing the need for recomputation and storage reads.
+
+2. **Steps to fix the pattern:**
+   - **Step-by-step fix:**
+     - Modify the `_getMostRecentChi()` and similar functions to check if the value already exists in transient storage and return it if available.
+     - If not in transient storage, compute/store the value in transient storage upon first computation.
+     - Use transient storage keys that are unique to the transaction context to avoid collisions in concurrent transactions.
+
+3. **Impact on code quality (score of 0 to 5):**
+   - **Readability: 4;** slight increase in code complexity due to transient storage checks.
+   - **Security: 5;** does not affect security as transient storage is cleared at transaction end.
+   - **Maintainability: 4;** requires understanding of transient storage but improves performance scalability.
+
+#### Reflections and Improvements:
+
+1. **Improvement of Prompt:**
+   - The prompt could include specific transaction contexts or typical use-case scenarios where multiple functions are called. This would help in identifying where transient storage can be most effectively used.
+   - More clarity on the scope of transactional operations (e.g., are `_deposit` and `_withdraw` likely called in sequence?) would directly influence optimization strategies.
+
+2. **Improvement in Reasoning Process:**
+   - Initially, the focus was predominantly on static analysis of individual functions. A dynamic approach considering transaction-level behavior and function call sequences can uncover deeper optimization opportunities.
+   - Could enhance the analysis by simulating typical transaction patterns to see where redundant computations occur most frequently.
+
+3. **Improvements Made to Output:**
+   - Added specific steps for implementing transient storage checks and updates, providing a clear path to optimization.
+   - Evaluated the impact on code quality more comprehensively, considering how each change affects readability, security, and maintainability.
+
+This approach aims to balance optimization with maintainability and security, ensuring that while gas costs are minimized, the code remains robust and understandable.

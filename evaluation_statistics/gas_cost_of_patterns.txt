@@ -182,11 +182,11 @@ Deployment Execution: 352233 ,  352233,
 Message Call Transaction: 31680 ,  30834,
 Message Call Execution:  4444, 3598 ,
 *******************************************************
-Deployment Input: 
+Deployment Input: N/A
 Message Call Input: (['0', '1','2','3',4','5'], [0x00,0x01,0x02,0x03,0x04,0x05],0x3EEdb6277Db18af72af365a33c6d239981255cD7)
-Address:
-Contract:
-Function: 
+Address: 0x17ccfEFBAa25F5C06344D133B4ce5D5F47D72b9c
+Contract: DoughImplementationM1
+Function: cast
 *******************************************************
 
 
@@ -374,25 +374,7 @@ Function: N/A
 *******************************************************
 
 
-
-26. Struct refactoring by usage frequency
-*******************************************************
-Deployment Transaction: 382703 , 376915,
-Deployment Execution: 305793 , 300387 ,
-Message Call Transaction:  101011,  100891,
-Message Call Execution: 79807 ,  79687,
-*******************************************************
-Deployment Input: N/A
-Message Call Input:(20)
-Notes: This is because that the offset must be computed for each struct access. This is taken from the 
-Address:N/A
-Contract:N/A
-Function:N/A
-*******************************************************
-
-
-
-27. Using bytes32 for string representation
+26. Using bytes32 for string representation
 
 *******************************************************
 Deployment Transaction: 535430 , 407026,

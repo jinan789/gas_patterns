@@ -1,0 +1,33 @@
+### Gas-Wasting Pattern Discovery from Vyper Code
+
+#### New Pattern: Redundant Recomputation of Checkpoints
+
+**Description**: Multiple functions (`update_valset`, `submit_batch`, `submit_logic_call`, `__init__`) in the provided Vyper code repeatedly compute the checkpoint of the current validator set using `self.make_checkpoint(consensus.valset)`. This checkpoint computation involves hashing and encoding, which are computationally expensive operations.
+
+**1. Discovery Process**:
+   - **Step-by-Step Analysis**: By examining the code, I noticed that the `make_checkpoint` function is called multiple times across different functions with the same input (`consensus.valset`).
+   - **Identification of Redundancy**: Since the validator set (`consensus.valset`) is not modified between these calls within the same transaction, the multiple computations of the checkpoint are redundant.
+   - **Impact on Gas**: Each call to `make_checkpoint` consumes gas due to hashing and encoding operations, so reducing the number of calls should save gas.
+
+**2. Steps to Fix**:
+   - **Centralize Checkpoint Calculation**: Modify the contract structure to compute the checkpoint once when the validator set is updated or confirmed and store this value.
+   - **Modify Functions**: Change the functions to reference the stored checkpoint instead of recalculating it. This could be implemented by adding a state variable, say `current_checkpoint`, which is updated every time the validator set changes.
+   - **Use the Cached Value**: Update all functions that require the checkpoint to use this cached `current_checkpoint` variable instead of calling `make_checkpoint`.
+
+**3. Impact Rating**:
+   - **Readability**: 4; Slightly reduces readability as developers need to understand why the checkpoint is cached.
+   - **Security**: 5; Does not compromise security since the checkpoint is computed in the same manner, just stored after computation.
+   - **Maintainability**: 4; Improves maintainability by reducing the number of places where the checkpoint computation code is duplicated, although it requires careful updating of the `current_checkpoint` during state changes.
+
+### Additional Requirements
+
+**1. Prompt Improvement Suggestions**:
+   - **More Code Context**: Including more about how often `consensus.valset` changes or the expected frequency of transactions could help in further understanding potential optimizations.
+   - **Specific Gas Metrics**: If possible, provide specific gas usage data or profiling results to pinpoint costly operations more accurately.
+
+**2. Reflection on Reasoning Process**:
+   - **Deeper Code Analysis**: Initially, I focused on evident patterns and individual function inefficiencies. A more holistic approach considering how different parts of the contract interact could reveal deeper systemic inefficiencies.
+   - **Broader Context Consideration**: Considering the broader operational context of the contract (e.g., frequency of updates to `consensus.valset`) might open up additional optimization avenues.
+   - **Improvement Made**: The focus was shifted from just identifying patterns to understanding how different parts of the contract work together, leading to the detection of the Redundant Recomputation of Checkpoints pattern. This approach provided a more comprehensive optimization strategy.
+
+By addressing these reflections and improvements, the analysis became more thorough, providing a valuable optimization insight that was initially overlooked.

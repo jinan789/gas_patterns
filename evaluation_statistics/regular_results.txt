@@ -1,208 +1,207 @@
-Repeated Condition Check  &  1.1  &  16  &  
-Constant Function Hash Calculation  &  1.2  &  1  &  
-Redundant Success Check  &  1.2  &  A4  &  
-Redundant Address Check  &  1.3  &  A4  &  
-Repeated Calls to External Contracts  &  1.3  &  A5  &  
-Redundant Memory Array Initialization  &  1.3  &  17  &  
-Repeated Check for Zero Addresses  &  1.4  &  A5  &  
-Expensive Storage Operations  &  1.4  &  A3  &  
-Usage of ‘require‘ for Input Validation  &  1.4  &  18  &  
-Repeated computation of ‘\_msgSender()‘  &  1.5  &  A5  &  
-Repeated computation of ‘\_allowances[owner][spender]‘  &  1.5  &  A5  &  
-Redundant Condition Check  &  1.6  &  9  &  
-Multiple Calls to the Same Function  &  1.6  &  A5  &  
-Repeating Expensive Operations  &  1.7  &  A5  &  
-Redundant Conditional Statement  &  1.7  &  A3  &  
-Unnecessary State Updates  &  1.7  &  19  &  
-Redundant Condition Checks in transfer Function  &  1.8  &  A4  &  
+Repeated Condition Check  &  1.1  &  9  &  
+Constant Function Hash Calculation  &  1.2  &  5  &  
+Redundant Success Check  &  1.2  &  A3  &  
+Redundant Address Check  &  1.3  &  A3  &  
+Repeated Calls to External Contracts  &  1.3  &  A4  &  
+Redundant Memory Array Initialization  &  1.3  &  12  &  
+Repeated Check for Zero Addresses  &  1.4  &  A4  &  
+Expensive Storage Operations  &  1.4  &  A2  &  
+Usage of ‘require‘ for Input Validation  &  1.4  &  13  &  
+Repeated computation of ‘\_msgSender()‘  &  1.5  &  A4  &  
+Repeated computation of ‘\_allowances[owner][spender]‘  &  1.5  &  A4  &  
+Redundant Condition Check  &  1.6  &  8  &  
+Multiple Calls to the Same Function  &  1.6  &  A4  &  
+Repeating Expensive Operations  &  1.7  &  A4  &  
+Redundant Conditional Statement  &  1.7  &  A6  &  
+Unnecessary State Updates  &  1.7  &  14  &  
+Redundant Condition Checks in transfer Function  &  1.8  &  7  &  
 Redundant Computation in openTrading Function  &  1.8  &  1  &  
-Inefficient Storage Reading  &  1.9  &  A5  &  
-Redundant Ownership Check  &  1.9  &  A4  &  
-Use of SafeMath library for arithmetic operations  &  1.10  &  22  &  
-Use of public variable setters  &  1.10  &  23  &  
-  &  1.10  &    &  
-Extensive use of storage  &  2.1  &  A3  &  
-Redundant condition checks  &  2.1  &  20  &  
-Frequent emission of events  &  2.1  &  21  &  
-Unnecessary type conversions  &  2.1  &  A4  &  
-Repeated Balance Checks  &  2.2  &  A4  &  
-Excessive use of require statements  &  2.2  &  A4  &  
-Inefficient Storage Access  &  2.2  &  A4  &  
-Redundant balance checking  &  2.3  &  A4  &  
-Avoiding multiple storage reads  &  2.3  &  A4  &  
-Multiple conditional checks  &  2.3  &  A4  &  
-Redundant `require` checks  &  2.4  &  A3  &  
-Multiple contract interactions in a loop  &  2.4  &  A3  &  
-Potential for redundant allowance checks  &  2.4  &  A3  &  
-Redundant Approval Checks  &  2.5  &  A3  &  
-Unnecessary Balance Check  &  2.5  &  A4  &  
-Redundant Gas Calculation  &  2.6  &  A4  &  
-Use of Conditional Statement Where Not Necessary  &  2.6  &  A3  &  
-Multiple Checks for the Same Condition  &  2.6  &  A4  &  
-Redundant Checks  &  2.7  &  A4  &  
-Unnecessary Memory Allocation  &  2.7  &  A10  &  
-Redundant Subtraction  &  2.7  &  A3  &  
-Repeated Calls to External Contract Functions  &  2.8  &  A5  &  
-Use of 'now' alias for 'block.timestamp'  &  2.8  &  A4  &  
-Frequent use of multiplication and division by 1e18  &  2.8  &  A10  &  
-Unnecessary conditional checks  &  2.9  &  A3  &  
-Redundant Balance Calculations  &  2.9  &  A4  &  
-Use of `require` statements  &  2.10  &  A3  &  
-Access of storage variables  &  2.10  &  A4  &  
-Redundant contract interactions  &  2.10  &  A4  &  
-Accessing Length Property Multiple Times  &  3.1  &  A5  &  
+Inefficient Storage Reading  &  1.9  &  A4  &  
+Redundant Ownership Check  &  1.9  &  A3  &  
+Use of SafeMath library for arithmetic operations  &  1.10  &  11  &  
+Use of public variable setters  &  1.10  &  17  &  
+Extensive use of storage  &  2.1  &  A2  &  
+Redundant condition checks  &  2.1  &  15  &  
+Frequent emission of events  &  2.1  &  16  &  
+Unnecessary type conversions  &  2.1  &  A3  &  
+Repeated Balance Checks  &  2.2  &  A3  &  
+Excessive use of require statements  &  2.2  &  A3  &  
+Inefficient Storage Access  &  2.2  &  A3  &  
+Redundant balance checking  &  2.3  &  A3  &  
+Avoiding multiple storage reads  &  2.3  &  A3  &  
+Multiple conditional checks  &  2.3  &  A3  &  
+Redundant `require` checks  &  2.4  &  A2  &  
+Multiple contract interactions in a loop  &  2.4  &  A2  &  
+Potential for redundant allowance checks  &  2.4  &  A2  &  
+Redundant Approval Checks  &  2.5  &  A2  &  
+Unnecessary Balance Check  &  2.5  &  A3  &  
+Redundant Gas Calculation  &  2.6  &  A3  &  
+Use of Conditional Statement Where Not Necessary  &  2.6  &  A2  &  
+Multiple Checks for the Same Condition  &  2.6  &  A3  &  
+Redundant Checks  &  2.7  &  9  &  
+Unnecessary Memory Allocation  &  2.7  &  A8  &  
+Redundant Subtraction  &  2.7  &  A2  &  
+Repeated Calls to External Contract Functions  &  2.8  &  A4  &  
+Use of 'now' alias for 'block.timestamp'  &  2.8  &  A5  &  
+Frequent use of multiplication and division by 1e18  &  2.8  &  A8  &  
+Unnecessary conditional checks  &  2.9  &  A2  &  
+Redundant Balance Calculations  &  2.9  &  A3  &  
+Use of `require` statements  &  2.10  &  A2  &  
+Access of storage variables  &  2.10  &  A3  &  
+Redundant contract interactions  &  2.10  &  A3  &  
+Accessing Length Property Multiple Times  &  3.1  &  A4  &  
 Redundant Balance Check  &  3.2  &  24  &  
-Repeated Use of Storage Variables  &  3.3  &  A4  &  
-Multiple Storage Writes  &  3.3  &  A8  &  
-Multiple Calls to the Same Function  &  3.4  &  A4  &  
-Multiple Comparisons with Zero  &  3.4  &  A15  &  
-Redundant ABI Encodings  &  3.5  &  A3  &  
-Hardcoded Gas Limit  &  3.5  &  A15  &  
-Repeated Access of `params_` Struct Members  &  3.5  &  A4  &  
+Repeated Use of Storage Variables  &  3.3  &  A3  &  
+Multiple Storage Writes  &  3.3  &  A6  &  
+Multiple Calls to the Same Function  &  3.4  &  A3  &  
+Multiple Comparisons with Zero  &  3.4  &  A11  &  
+Redundant ABI Encodings  &  3.5  &  A2  &  
+Hardcoded Gas Limit  &  3.5  &  A11  &  
+Repeated Access of `params_` Struct Members  &  3.5  &  A3  &  
 Repeated External Function Calls  &  3.6  &  1  &  
 Multiple Calls to `IERC20Detailed` and `IStableDebtToken`  &  3.6  &  1  &  
 Multiple Storage Reads  &  3.7  &  1  &  
-Unused Computation  &  3.7  &  A3  &  
-Over-allocation of Memory  &  3.7  &  A3  &  
-Excessive use of inline Assembly  &  3.8  &  A3  &  
-Repeatedly calling \texttt{sload} function.  &  3.8  &  A3  &  
-Unnecessary forced revert  &  3.8  &  A4  &  
-Repeated Keccak256 computation  &  3.9  &  A4  &  
-Redundant computation in require statements  &  3.9  &  A3  &  
-High gas usage in the linearPolynomialEvaluation function  &  3.9  &  A3  &  
-Use of `require` to check conditions multiple times  &  3.10  &  A4  &  
-Repeated computation of hash and unnecessary storage access  &  3.10  &  A4  &  
-Usage of array iteration for rewardInfo  &  4.1  &  A2  &  
+Unused Computation  &  3.7  &  10  &  
+Over-allocation of Memory  &  3.7  &  10  &  
+Excessive use of inline Assembly  &  3.8  &  A2  &  
+Repeatedly calling \texttt{sload} function.  &  3.8  &  A2  &  
+Unnecessary forced revert  &  3.8  &  A3  &  
+Repeated Keccak256 computation  &  3.9  &  A3  &  
+Redundant computation in require statements  &  3.9  &  A2  &  
+High gas usage in the linearPolynomialEvaluation function  &  3.9  &  A2  &  
+Use of `require` to check conditions multiple times  &  3.10  &  A3  &  
+Repeated computation of hash and unnecessary storage access  &  3.10  &  A3  &  
+Usage of array iteration for rewardInfo  &  4.1  &  A4  &  
 Repeated computation of `timeElapsed` and `tokenReward`  &  4.1  &  1  &  
 Usage of division operation  &  4.1  &  A1  &  
-Redundant calculations  &  4.2  &  A4  &  
-Unnecessary casting  &  4.2  &  A3  &  
-Repeated loading of contract state variables  &  4.3  &  A5  &  
+Redundant calculations  &  4.2  &  A3  &  
+Unnecessary casting  &  4.2  &  A2  &  
+Repeated loading of contract state variables  &  4.3  &  A4  &  
 Repetition of code logic  &  4.3  &  2  &  
-Unnecessary assembly usage  &  4.3  &  A6  &  
+Unnecessary assembly usage  &  4.3  &  A5  &  
 Repeated calls to external contracts  &  4.4  &  1  &  
-Unnecessary condition checks  &  4.4  &  A7  &  
+Unnecessary condition checks  &  4.4  &  A4  &  
 Inefficient use of data types  &  4.4  &  3  &  
-Repeated conditional checks in different functions  &  4.5  &  A2  &  
-Repeated computation of rEthToken.balanceOf(address(this))  &  4.5  &  A9  &  
+Repeated conditional checks in different functions  &  4.5  &  A4  &  
+Repeated computation of rEthToken.balanceOf(address(this))  &  4.5  &  A7  &  
 Redundant Assignment in the \_initializePool Function  &  4.6  &  4  &  
 Unnecessary Constant Checking  &  4.6  &  5  &  
 Redundant Zero-Value Check  &  4.6  &  6  &  
 Multiple existence checks  &  4.7  &  2  &  
 Repeated storage reads  &  4.7  &  1  &  
-Repetitive revert statements  &  4.7  &  A6  &  
-Repeated Calls to External Contract Functions  &  4.8  &  1  &  
+Repetitive revert statements  &  4.7  &  A5  &  
+Repeated Calls to External Contract Functions  &  4.8  &  A3  &  
 Duplicate Code in Loop  &  4.8  &  2  &  
-Redundant Function Calls  &  4.9  &  1  &  
-Unnecessary Storage Reads  &  4.9  &  A4  &  
-Condition-based Optimization  &  4.9  &  A4  &  
+Redundant Function Calls  &  4.9  &  A3  &  
+Unnecessary Storage Reads  &  4.9  &  A3  &  
+Condition-based Optimization  &  4.9  &  A3  &  
 Repeated Calls to \_msgSender  &  4.10  &  1  &  
-Repeated Storage Lookup  &  4.10  &  A2  &  
-Redundant storage reads  &  5.1  &  A5  &  
+Repeated Storage Lookup  &  4.10  &  A4  &  
+Redundant storage reads  &  5.1  &  A4  &  
 Repeated conditional checks  &  5.1  &  1  &  
 Repeated function calls  &  5.1  &  1  &  
-Overuse of storage  &  5.1  &  A3  &  
+Overuse of storage  &  5.1  &  A2  &  
 Repeated Access of Storage Variables  &  5.2  &  1  &  
-Repeated Computation of `block.timestamp.sub(ledger[msg.sender][i].from)`  &  5.2  &  A5  &  
-Multiple Calls to the Same Function  &  5.3  &  A5  &  
-Unnecessary Typecasting  &  5.3  &  A4  &  
-Unnecessary Hash Computations  &  5.4  &  A5  &  
-Redundant Length Fetching  &  5.4  &  A4  &  
+Repeated Computation of `block.timestamp.sub(ledger[msg.sender][i].from)`  &  5.2  &  A4  &  
+Multiple Calls to the Same Function  &  5.3  &  A4  &  
+Unnecessary Typecasting  &  5.3  &  A3  &  
+Unnecessary Hash Computations  &  5.4  &  A4  &  
+Redundant Length Fetching  &  5.4  &  A3  &  
 Repeated common computations  &  5.5  &  2  &  
-Repeated storage reads  &  5.5  &  A2  &  
+Repeated storage reads  &  5.5  &  A4  &  
 Unnecessary boolean operations  &  5.5  &  7  &  
-Multiple `getConfiguration` calls for the same asset in a function  &  5.6  &  A5  &  
-Repeated Contract Interactions  &  5.7  &  A4  &  
-Looping over Arrays of Unknown Length  &  5.7  &  A8  &  
-Inefficient Calculation  &  5.7  &  A4  &  
-Redundant Balance and Allowance Checks  &  5.8  &  A3  &  
+Multiple `getConfiguration` calls for the same asset in a function  &  5.6  &  A4  &  
+Repeated Contract Interactions  &  5.7  &  A3  &  
+Looping over Arrays of Unknown Length  &  5.7  &  A6  &  
+Inefficient Calculation  &  5.7  &  A3  &  
+Redundant Balance and Allowance Checks  &  5.8  &  A2  &  
 Repeated Calls to `block.timestamp  &  5.8  &  1  &  
 Inefficient Storage Usage  &  5.8  &  1  &  
 Repeated Calls to Functions Returning Constant Values  &  5.9  &  1  &  
 Unnecessary Storage of Boolean Variables in Memory  &  5.9  &  7  &  
 Repeated Zero Balance Checks  &  5.9  &  7  &  
-Redundant Approvals  &  5.10  &  A4  &  
-Unnecessary Balance Checks  &  5.10  &  A4  &  
-Inefficient Token Comparison  &  5.10  &  A9  &  
+Redundant Approvals  &  5.10  &  A3  &  
+Unnecessary Balance Checks  &  5.10  &  A3  &  
+Inefficient Token Comparison  &  5.10  &  A7  &  
 Repeated computation of the same expression  &  6.1  &  1  &  
-Redundant operations with same effects  &  6.1  &  A3  &  
-Pre-computable operations on constants  &  6.1  &  A3  &  
-Overuse of storage variables in the `_transfer` function  &  6.2  &  A2  &  
-Redundant checks in the `setStructure` function  &  6.2  &  A2  &  
+Redundant operations with same effects  &  6.1  &  A2  &  
+Pre-computable operations on constants  &  6.1  &  A2  &  
+Overuse of storage variables in the `_transfer` function  &  6.2  &  A4  &  
+Redundant checks in the `setStructure` function  &  6.2  &  A4  &  
 Repeated multiplication in `swapAndLiquify` function  &  6.2  &  1  &  
 Inefficient conditions in `setBuyMultiplier` function  &  6.2  &  1  &  
 Redundant Storage Reads  &  6.3  &  1  &  
-Repeated Computation of `address(this).balance`  &  6.3  &  A9  &  
-Overuse of `sendValue`  &  6.3  &  A10  &  
-Redundant Condition Check  &  6.4  &  A8  &  
-Repeated Fetching of hWETH token  &  6.4  &  A8  &  
-Overuse of Storage Variables  &  6.4  &  A8  &  
+Repeated Computation of `address(this).balance`  &  6.3  &  A7  &  
+Overuse of `sendValue`  &  6.3  &  A8  &  
+Redundant Condition Check  &  6.4  &  A6  &  
+Repeated Fetching of hWETH token  &  6.4  &  A6  &  
+Overuse of Storage Variables  &  6.4  &  A6  &  
 Redundant Ownership Checks  &  6.5  &  2  &  
-Loop for Search  &  6.5  &  9  &  
-Array Resizing  &  6.5  &  10  &  
-Unnecessary State Variable  &  6.5  &  A11  &  
-Repetitive Conditional Checks  &  6.6  &  A5  &  
-Persistent Storage Access  &  6.6  &  A2  &  
-Wasteful Assembly Code  &  6.6  &  A6  &  
-Unnecessary use of `try-catch`  &  6.6  &  A6  &  
-Redundant Conditional Checks in Transfer Functions  &  6.7  &  11  &  
+Loop for Search  &  6.5  &  8  &  
+Array Resizing  &  6.5  &  A6  &  
+Unnecessary State Variable  &  6.5  &  A4  &  
+Repetitive Conditional Checks  &  6.6  &  2  &  
+Persistent Storage Access  &  6.6  &  A4  &  
+Wasteful Assembly Code  &  6.6  &  A5  &  
+Unnecessary use of `try-catch`  &  6.6  &  A5  &  
+Redundant Conditional Checks in Transfer Functions  &  6.7  &  9  &  
 Repeated Computation in tokenSwap Function  &  6.7  &  1  &  
-Overuse of Storage Variables in takeFee Function  &  6.7  &  A3  &  
-Pre-computable Operations in setTaxes Function  &  6.7  &  A3  &  
-Repeated Calls to totalSupply  &  6.8  &  A5  &  
+Overuse of Storage Variables in takeFee Function  &  6.7  &  A2  &  
+Pre-computable Operations in setTaxes Function  &  6.7  &  A2  &  
+Repeated Calls to totalSupply  &  6.8  &  1  &  
 Expensive storage writes  &  6.8  &  1  &  
-Redundant conditional checks  &  6.9  &  A3  &  
-Repeated computation of the same expression  &  6.9  &  A2  &  
-Extractable code chunks  &  6.9  &  A8  &  
-Unnecessary Keccak256 Hash Computations  &  6.10  &  A12  &  
+Redundant conditional checks  &  6.9  &  A2  &  
+Repeated computation of the same expression  &  6.9  &  A4  &  
+Extractable code chunks  &  6.9  &  A6  &  
+Unnecessary Keccak256 Hash Computations  &  6.10  &  A9  &  
 Redundant Check in `\_creditTo` function  &  6.10  &  7  &  
-Unnecessary input variable duplication  &  7.1  &  12  &  
-Repeated check for zero address  &  7.1  &  A3  &  
-Repeatedly retrieving token balances  &  7.2  &  A13  &  
-Repeated computation of `keccak256(abi.encodePacked(\_name))  &  7.2  &  A4  &  
-Repeated access to `params.nftPositionManager`  &  7.2  &  13  &  
-Repeated computation of `position.tickLower != -maxTick position.tickUpper != maxTick`  &  7.2  &  A4  &  
+Unnecessary input variable duplication  &  7.1  &  10  &  
+Repeated check for zero address  &  7.1  &  A2  &  
+Repeatedly retrieving token balances  &  7.2  &  A9  &  
+Repeated computation of `keccak256(abi.encodePacked(\_name))  &  7.2  &  A3  &  
+Repeated access to `params.nftPositionManager`  &  7.2  &  1  &  
+Repeated computation of `position.tickLower != -maxTick position.tickUpper != maxTick`  &  7.2  &  A3  &  
 Repeatedly Accessing the Same Contract  &  7.3  &  1  &  
-Unnecessary Conditional Checks in Loop  &  7.3  &  A14  &  
-Repeated Calls to the Same Function with the Same Parameters  &  7.3  &  A5  &  
-Excessive use of `require` for input validation  &  7.4  &  A3  &  
+Unnecessary Conditional Checks in Loop  &  7.3  &  A10  &  
+Repeated Calls to the Same Function with the Same Parameters  &  7.3  &  A4  &  
+Excessive use of `require` for input validation  &  7.4  &  A2  &  
 Repetitive calls to external contracts  &  7.4  &  1  &  
-Repeated assignment of storage variables  &  7.4  &  10  &  
+Repeated assignment of storage variables  &  7.4  &  4  &  
 Repeatedly calling external contract interfaces  &  7.5  &  1  &  
-The use of storage variables for temporary data  &  7.5  &  A11  &  
+The use of storage variables for temporary data  &  7.5  &  A4  &  
 Redundant checks for the exclusion status of `address(this)` and `treasuryWallet`  &  7.5  &  1  &  
 Redundant storage reads for `game` in different functions  &  7.6  &  1  &  
-Repeated computation of `\_gameStatus(game)`  &  7.6  &  A5  &  
-Unnecessary storage writes in `createGame` function  &  7.6  &  A3  &  
-Unnecessary Function Calls  &  7.7  &  A5  &  
+Repeated computation of `\_gameStatus(game)`  &  7.6  &  A4  &  
+Unnecessary storage writes in `createGame` function  &  7.6  &  A2  &  
+Unnecessary Function Calls  &  7.7  &  A4  &  
 Repeated State Variable Accesses  &  7.7  &  1  &  
-Unoptimized Loop  &  7.7  &  A15  &  
-Repeated Invocation of External Contracts  &  7.8  &  A4  &  
-Redundant Condition Check  &  7.9  &  A4  &  
-Unnecessary conditional checks for `revert` operations  &  7.10  &  A3  &  
-Repeated use of contract's state variables  &  7.10  &  A4  &  
-High complexity algorithms  &  7.10  &  9  &  
-Excessive use of the `try-catch` syntax  &  8.1  &  14  &  
-Multiple calls to same function with same parameters  &  8.1  &  A4  &  
-Redundant External Calls  &  8.2  &  A5  &  
-Repeated Zero Address Validation Checks  &  8.2  &  A8  &  
-Use of Division Operation Inside a Loop  &  8.2  &  A4  &  
-Unnecessary use of the `unchecked` keyword  &  8.3  &  15  &  
+Unoptimized Loop  &  7.7  &  A11  &  
+Repeated Invocation of External Contracts  &  7.8  &  A3  &  
+Redundant Condition Check  &  7.9  &  A3  &  
+Unnecessary conditional checks for `revert` operations  &  7.10  &  A2  &  
+Repeated use of contract's state variables  &  7.10  &  A3  &  
+High complexity algorithms  &  7.10  &  8  &  
+Excessive use of the `try-catch` syntax  &  8.1  &  2  &  
+Multiple calls to same function with same parameters  &  8.1  &  A3  &  
+Redundant External Calls  &  8.2  &  A4  &  
+Repeated Zero Address Validation Checks  &  8.2  &  A6  &  
+Use of Division Operation Inside a Loop  &  8.2  &  A3  &  
+Unnecessary use of the `unchecked` keyword  &  8.3  &  11  &  
 Repeated computation of a constant expression  &  8.3  &  1  &  
-Excessive computation in condition checks  &  8.3  &  A5  &  
-Repeated external function calls  &  8.4  &  A3  &  
-Unnecessary re-computation of the same value in different functions  &  8.5  &  A5  &  
+Excessive computation in condition checks  &  8.3  &  A4  &  
+Repeated external function calls  &  8.4  &  A2  &  
+Unnecessary re-computation of the same value in different functions  &  8.5  &  A4  &  
 Repeated map lookups  &  8.5  &  1  &  
-Usage of `require` for input validation  &  8.5  &  A3  &  
-Repeated Calls to the Same Function (getConfiguration)  &  8.6  &  A5  &  
-Unnecessary State Variables  &  8.6  &  A6  &  
-Use of Arrays Where Mapping Would Be More Efficient  &  8.7  &  9  &  
-Using `msg.sender` Repeatedly  &  8.7  &  A4  &  
-Unnecessary function calls  &  8.8  &  A4  &  
+Usage of `require` for input validation  &  8.5  &  A2  &  
+Repeated Calls to the Same Function (getConfiguration)  &  8.6  &  A4  &  
+Unnecessary State Variables  &  8.6  &  A5  &  
+Use of Arrays Where Mapping Would Be More Efficient  &  8.7  &  8  &  
+Using `msg.sender` Repeatedly  &  8.7  &  A3  &  
+Unnecessary function calls  &  8.8  &  A3  &  
 Repeatedly accessing mapping values  &  8.8  &  1  &  
-Repeatedly checking the same condition  &  8.8  &  A4  &  
-Checking conditions that will always be true  &  8.8  &  A4  &  
-Repeated calls to external functions or contracts  &  8.9  &  A4  &  
-Inefficient use of storage  &  8.9  &  A17  &  
-Use of magic numbers  &  8.9  &  A10  &  
+Repeatedly checking the same condition  &  8.8  &  A3  &  
+Checking conditions that will always be true  &  8.8  &  A3  &  
+Repeated calls to external functions or contracts  &  8.9  &  A3  &  
+Inefficient use of storage  &  8.9  &  A13  &  
+Use of magic numbers  &  8.9  &  A8  &  
 Multiple Storage Reads of Structs  &  8.10  &  1  &  

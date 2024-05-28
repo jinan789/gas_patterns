@@ -1,0 +1,5 @@
+storedData: public(int128)
+
+@external
+def set(__x: int128):
+  self.storedData = __x

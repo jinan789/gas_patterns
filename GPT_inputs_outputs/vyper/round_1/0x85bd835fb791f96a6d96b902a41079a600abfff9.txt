@@ -1,0 +1,115 @@
+I want you to help me find new gas-wasting patterns for Vyper. Gas is a unique pricing mechanism in Vyper, which measures the amount of computational resources put into the execution of Vyper codes. Gas is paid in money, so saving gas is saving money. The goal of gas optimization is to find an equivalent code instruction sequence that produces the same output while consuming less gas. This may misalign from how people typically write codes, since the gas pricing mechanism is less intuitive and code writers do not often keep it in mind. For example, storage variables in Vyper are expensive in terms of gas, while memory is not, so unnecessary storage operations should be avoided when possible, but programmers from other languages might not be aware of this. 
+
+First, I will give you a list of known gas-wasting patterns as an example. The list is numbered, with each bullet point specifying one gas-wasting pattern and an explanation of why this pattern wastes gas. Please be creative and see if my provided codes contain any gas-wasting patterns beyond the provided ones. The list is as follows:
+
+1. Repeated computation of the same expression: including repetitive reads of the same expensive storage variable (e.g. Overuse of expensive storage variables). This could be solved by introducing an intermediate variable to hold the value
+2. Variable refactoring: by refactoring variable types and thus adjusting memory layout, we could save gas by saving the amount of storage space needed
+3. Redundant operations with same effects: redundant operations that overwrite the effect of the previous operation, making the previous useless
+4. Pre-computable operations on constants: performing comparisons (or other operations) to constants is useless and could be pre-computed
+5. Simplifiable conditional operations: expressions that involve logical operations that could be simplified to reduce the amount of computational workload.
+6. "Loop fusion." If two loops have the same starting and stopping conditions with the same increment steps, then we could consider combining them into one, if they have no dependencies. 
+7. "Repeated computations in a loop." If there are expressions that produce the same outcome in each iteration of a loop, we could move it out of the loop and execute only once, which saves computation.
+8. "Opaque predicate." If the outcome of a predicate could be inferred to be true/false without execution, then we could just replace it with the corresponding value to save the compuation during runtime.
+
+Next, I will give you a chunk of Vyper codes from which you will find gas-inefficient patterns:def __init__(_blueprint: address, _compass: address, controller_factory: address, _refund_wallet: address, _gas_fee: uint256, _service_fee_collector: address, _service_fee: uint256, router: address):
+    self.blueprint = _blueprint
+    self.compass = _compass
+    self.fee_data = FeeData({
+        refund_wallet: _refund_wallet,
+        gas_fee: _gas_fee,
+        service_fee_collector: _service_fee_collector,
+        service_fee: _service_fee
+    })
+    CONTROLLER_FACTORY = controller_factory
+    WETH = ControllerFactory(controller_factory).WETH()
+    ROUTER = router
+    crvUSD = ControllerFactory(controller_factory).stablecoin()
+    log UpdateCompass(empty(address), _compass)
+    log UpdateBlueprint(empty(address), _blueprint)
+    log UpdateRefundWallet(empty(address), _refund_wallet)
+    log UpdateGasFee(empty(uint256), _gas_fee)
+    log UpdateServiceFeeCollector(empty(address), _service_fee_collector)
+    log UpdateServiceFee(empty(uint256), _service_fee)
+@external
+def add_collateral(bots: DynArray[address, MAX_SIZE], swap_infos: DynArray[DynArray[SwapInfo, MAX_SIZE], MAX_SIZE], collateral: DynArray[address, MAX_SIZE], lend_amount: DynArray[uint256, MAX_SIZE]):
+    assert msg.sender == self.compass, "Not compass"
+    _len: uint256 = len(bots)
+    assert _len == len(collateral) and _len == len(lend_amount) and _len == len(swap_infos), "Validation error"
+    assert convert(slice(msg.data, unsafe_sub(len(msg.data), 32), 32), bytes32) == self.paloma, "Unauthorized"
+    for i in range(MAX_SIZE):
+        if i >= _len:
+            break
+        assert self.bot_to_owner[bots[i]] != empty(address), "Bot not exist"
+        Bot(bots[i]).add_collateral(swap_infos[i], collateral[i], lend_amount[i])
+        log AddCollateral(bots[i], collateral[i], lend_amount[i])
+        log GasPaid(bots[i], self.fee_data.gas_fee)
+@external
+def create_loan_event(collateral: address, collateral_amount: uint256, lend_amount: uint256, debt: uint256, additional_tokens: DynArray[address, MAX_SIZE], additional_amounts: DynArray[uint256, MAX_SIZE], withdraw_amount: uint256, health_threshold: int256, expire: uint256, repayable: bool):
+    assert self.bot_to_owner[msg.sender] != empty(address), "Not bot"
+    log DepositCollateral(msg.sender, collateral, collateral_amount)
+    log AddCollateral(msg.sender, collateral, lend_amount)
+    i: uint256 = 0
+    for add_token in additional_tokens:
+        log AdditionalToken(msg.sender, add_token, additional_amounts[i])
+        i = unsafe_add(i, 1)
+    log Borrow(msg.sender, collateral, debt)
+    log OutputStablecoin(msg.sender, withdraw_amount)
+    log BotStarted(msg.sender, collateral, health_threshold, expire, repayable)
+@external
+def repay(bots: DynArray[address, MAX_SIZE], collateral: DynArray[address, MAX_SIZE], repay_amount: DynArray[uint256, MAX_SIZE]):
+    assert msg.sender == self.compass, "Not compass"
+    _len: uint256 = len(bots)
+    assert _len == len(collateral) and _len == len(repay_amount), "Validation error"
+    payload_len: uint256 = unsafe_add(unsafe_mul(unsafe_add(_len, 2), 96), 36)
+    assert len(msg.data) == payload_len, "Invalid payload"
+    assert self.paloma == convert(slice(msg.data, unsafe_sub(payload_len, 32), 32), bytes32), "Invalid paloma"
+    for i in range(MAX_SIZE):
+        if i >= _len:
+            break
+        assert self.bot_to_owner[bots[i]] != empty(address), "Bot not exist"
+        Bot(bots[i]).repay([], collateral[i], repay_amount[i])
+        log GasPaid(bots[i], self.fee_data.gas_fee)
+@external
+def cancel_event(collateral: address, collateral_amount: uint256, withdraw_amount: uint256, input_amount: uint256, repay_amount: uint256):
+    assert self.bot_to_owner[msg.sender] != empty(address), "Not bot"
+    log InputStablecoin(msg.sender, input_amount)
+    log Repay(msg.sender, collateral, repay_amount)
+    log RemoveCollateral(msg.sender, collateral, collateral_amount)
+    log WithdrawCollateral(msg.sender, collateral, withdraw_amount)
+    log BotCanceled(msg.sender, collateral)
+@external
+@nonreentrant('lock')
+def update_service_fee_collector(new_service_fee_collector: address):
+    assert msg.sender == self.compass and len(msg.data) == 68 and convert(slice(msg.data, 36, 32), bytes32) == self.paloma, "Unauthorized"
+    old_service_fee_collector: address = self.fee_data.service_fee_collector
+    self.fee_data.service_fee_collector = new_service_fee_collector
+    log UpdateServiceFeeCollector(old_service_fee_collector, new_service_fee_collector)
+@external
+def update_refund_wallet(new_refund_wallet: address):
+    assert msg.sender == self.compass and len(msg.data) == 68 and convert(slice(msg.data, 36, 32), bytes32) == self.paloma, "Unauthorized"
+    old_refund_wallet: address = self.fee_data.refund_wallet
+    self.fee_data.refund_wallet = new_refund_wallet
+    log UpdateRefundWallet(old_refund_wallet, new_refund_wallet)
+@external
+def deploy_curve_lending_bot():
+    assert self.owner_to_bot[msg.sender] == empty(address), "Already user has bot"
+    bot: address = create_from_blueprint(self.blueprint, CONTROLLER_FACTORY, WETH, crvUSD, msg.sender, ROUTER, code_offset=3)
+    self.bot_to_owner[bot] = msg.sender
+    self.owner_to_bot[msg.sender] = bot
+    log DeployCurveLendingBot(bot, msg.sender)
+@external
+def update_gas_fee(new_gas_fee: uint256):
+    assert msg.sender == self.compass and len(msg.data) == 68 and convert(slice(msg.data, 36, 32), bytes32) == self.paloma, "Unauthorized"
+    old_gas_fee: uint256 = self.fee_data.gas_fee
+    self.fee_data.gas_fee = new_gas_fee
+    log UpdateGasFee(old_gas_fee, new_gas_fee)
+@external
+Now I want you to help me find new gas-wasting patterns from the above codes and the list of example patterns. Please be creative and think outside the box beyond the patterns listed above. Please put the new gas-wasting patterns in bullet points, using Latex syntax. Also please answer the following questions for each of the found patterns:
+
+1. How did you find this pattern? Could you explain the reasoning process, step by step, behind the discovery?
+2. What should I do, step by step, to fix the found gas-wasting patterns? Could you explain the reasoning process, step by step, behind the reason why such a fix works?
+3. On a score of 0 to 5, please rate this new pattern in terms of how much it is sacrificing readability, security, and maintainability in exchange for gas optimization (5 is the least impacted. For example, "Readability: 5; Security: 4; Maintainability: 1" means no effect on security while maintainability is largely affected.)
+
+Here are some additional requirements:
+1. If you think my prompt to you has any issues (e.g. ambiguity or lack of information), please tell me how I should improve it the next time.
+2. Please reflect on your reasoning process and tell me how you could do better next time in terms of completing the given task. If you found any issues, please also make corresponding improvements to your output this time and tell me what you did and why such improvement is necessary, in a step-by-step manner.

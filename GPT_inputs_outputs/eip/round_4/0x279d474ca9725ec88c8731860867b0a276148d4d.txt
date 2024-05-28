@@ -1,0 +1,206 @@
+I want you to help me find new gas-wasting patterns for Solidity. Gas is a unique pricing mechanism in Solidity, which measures the amount of computational resources put into the execution of Solidity codes. Gas is paid in money, so saving gas is saving money. The goal of gas optimization is to find an equivalent code instruction sequence that produces the same output while consuming less gas. This may misalign from how people typically write codes, since the gas pricing mechanism is less intuitive and code writers do not often keep it in mind. For example, storage variables in Solidity are expensive in terms of gas, while memory is not, so unnecessary storage operations should be avoided when possible, but programmers from other languages might not be aware of this. 
+
+First, I will give you a list of known gas-wasting patterns as an example. The list is numbered, with each bullet point specifying one gas-wasting pattern and an explanation of why this pattern wastes gas. Please be creative and see if my provided codes contain any gas-wasting patterns beyond the provided ones. The list is as follows:
+
+1. Repeated computation of the same expression: including repetitive reads of the same expensive storage variable (e.g. Overuse of expensive storage variables). This could be solved by introducing an intermediate variable to hold the value
+2. Variable refactoring: by refactoring variable types and thus adjusting memory layout, we could save gas by saving the amount of storage space needed
+3. Redundant operations with same effects: redundant operations that overwrite the effect of the previous operation, making the previous useless
+4. Pre-computable operations on constants: performing comparisons (or other operations) to constants is useless and could be pre-computed
+5. Simplifiable conditional operations: expressions that involve logical operations that could be simplified to reduce the amount of computational workload.
+6. "Loop fusion." If two loops have the same starting and stopping conditions with the same increment steps, then we could consider combining them into one, if they have no dependencies. 
+7. "Repeated computations in a loop." If there are expressions that produce the same outcome in each iteration of a loop, we could move it out of the loop and execute only once, which saves computation.
+8. "Opaque predicate." If the outcome of a predicate could be inferred to be true/false without execution, then we could just replace it with the corresponding value to save the compuation during runtime.
+
+For this analysis, assume that the EVM we are targeting includes the implementation of EIP-1153 and EIP-7609, which collectively introduced the TLOAD and TSTORE opcodes to manage transient storage in smart contracts. This type of storage is temporary, and is discarded at the end of each transaction, unlike the permanent storage accessed via SSTORE and SLOAD. The gas cost of TLOAD is 5 gas, and TSTORE is 8 gas plus expansion_cost. expansion_cost is 0 if the queried key is already in transient storage, and is computed as the number of keys already in transient storage otherwise (i.e., superlinear pricing).
+
+Next, I will provide a chunk of Solidity codes from which you will identify any gas-inefficient patterns, considering the transient storage feature::contract WidoZapperUniswapV2 is WidoZapper_ERC20_ERC20 {
+    function calcMinToAmountForZapIn(
+        IUniswapV2Router02 router,
+        IUniswapV2Pair pair,
+        address fromToken,
+        uint256 amount,
+        bytes calldata extra
+    )
+    external view virtual override
+    returns (uint256 minToToken) {
+        (uint112 reserve0, uint112 reserve1,) = pair.getReserves();
+        Asset memory asset0 = Asset(reserve0, pair.token0());
+        Asset memory asset1 = Asset(reserve1, pair.token1());
+
+        require(asset0.token == fromToken || asset1.token == fromToken, "Input token not present in liquidity pair");
+
+        uint256 halfAmount0;
+        uint256 halfAmount1;
+
+        // stack too deep, so we can't store this bool
+        if (asset0.token == fromToken) {
+            uint swapAmount = _getAmountToSwap(router, pair, amount, asset0, true);
+            halfAmount0 = amount - swapAmount;
+            halfAmount1 = _getAmountOut(router, pair, swapAmount, asset0, asset1, extra);
+        } else {
+            uint swapAmount = _getAmountToSwap(router, pair, amount, asset1, false);
+            halfAmount1 = amount - swapAmount;
+            halfAmount0 = _getAmountOut(router, pair, swapAmount, asset1, asset0, extra);
+        }
+
+        uint256 amount0 = IERC20(asset0.token).balanceOf(address(pair));
+        uint256 amount1 = IERC20(asset1.token).balanceOf(address(pair));
+
+        amount0 = amount0 + halfAmount0 - reserve0;
+        amount1 = amount1 + halfAmount1 - reserve1;
+
+        uint256 lpTotalSupply = pair.totalSupply();
+        return Math.min(amount0.mul(lpTotalSupply) / reserve0, amount1.mul(lpTotalSupply) / reserve1);
+    }
+
+    /// @inheritdoc WidoZapper_ERC20_ERC20
+    function calcMinToAmountForZapOut(
+        IUniswapV2Router02 router,
+        IUniswapV2Pair pair,
+        address toToken,
+        uint256 lpAmount,
+        bytes calldata extra
+    )
+    external view virtual override
+    returns (uint256 minToToken) {
+        bool isZapToToken0 = pair.token0() == toToken;
+        require(isZapToToken0 || pair.token1() == toToken, "Input token not present in liquidity pair");
+
+        uint256 amount0;
+        uint256 amount1;
+        Asset memory asset0;
+        Asset memory asset1;
+
+        {
+            (uint256 reserve0, uint256 reserve1,) = pair.getReserves();
+            uint256 lpTotalSupply = pair.totalSupply();
+            if (lpAmount > lpTotalSupply) {
+                revert NotEnoughSupply();
+            }
+            amount0 = (lpAmount * reserve0) / lpTotalSupply;
+            amount1 = (lpAmount * reserve1) / lpTotalSupply;
+            asset0 = Asset(reserve0 - amount0, pair.token0());
+            asset1 = Asset(reserve1 - amount1, pair.token1());
+        }
+
+        if (isZapToToken0) {
+            amount1 = _getAmountOut(
+                router,
+                pair,
+                amount1,
+                asset1, asset0,
+                extra
+            );
+        } else {
+            amount0 = _getAmountOut(
+                router,
+                pair,
+                amount0,
+                asset0, asset1,
+                extra
+            );
+        }
+
+        return amount0 + amount1;
+    }
+
+    /// @inheritdoc WidoZapper_ERC20_ERC20
+    function _swapAndAddLiquidity(
+        IUniswapV2Router02 router,
+        IUniswapV2Pair pair,
+        address tokenA,
+        bytes memory extra
+    )
+    internal virtual override
+    returns (uint256) {
+        _requires(router, pair);
+
+        bool isInputA = pair.token0() == tokenA;
+        require(isInputA || pair.token1() == tokenA, "Input token not present in liquidity pair");
+
+        address tokenB = isInputA
+        ? pair.token1()
+        : pair.token0();
+
+        uint256[] memory balancedAmounts = _balanceAssets(router, pair, tokenA, tokenB, extra);
+
+        _approveTokenIfNeeded(tokenA, address(router), balancedAmounts[0]);
+        _approveTokenIfNeeded(tokenB, address(router), balancedAmounts[1]);
+
+        uint256 poolTokenAmount = _addLiquidity(
+            router,
+            tokenA,
+            tokenB,
+            balancedAmounts[0],
+            balancedAmounts[1],
+            extra
+        );
+
+        return poolTokenAmount;
+    }
+    function _removeLiquidityAndSwap(
+        IUniswapV2Router02 router,
+        IUniswapV2Pair pair,
+        address toToken,
+        bytes memory extra
+    )
+    internal virtual override
+    returns (uint256) {
+        _requires(router, pair);
+
+        address token0 = pair.token0();
+        address token1 = pair.token1();
+        require(token0 == toToken || token1 == toToken, "Desired token not present in liquidity pair");
+
+        IERC20(address(pair)).safeTransfer(
+            address(pair),
+            IERC20(address(pair)).balanceOf(address(this))
+        );
+        pair.burn(address(this));
+
+        address fromToken = token1 == toToken
+        ? token0
+        : token1;
+
+        _approveTokenIfNeeded(fromToken, address(router), IERC20(fromToken).balanceOf(address(this)));
+        _swap(
+            router,
+            IERC20(fromToken).balanceOf(address(this)),
+            fromToken,
+            toToken,
+            extra
+        );
+
+        return IERC20(toToken).balanceOf(address(this));
+    }
+    function _addLiquidity(
+        IUniswapV2Router02 router,
+        address tokenA,
+        address tokenB,
+        uint amountADesired,
+        uint amountBDesired,
+        bytes memory //extra
+    )
+    internal virtual
+    returns (uint256 liquidity) {
+        (,, liquidity) = router.addLiquidity(
+            tokenA,
+            tokenB,
+            amountADesired,
+            amountBDesired,
+            1,
+            1,
+            address(this),
+            block.timestamp
+        );
+    }
+    }
+Now I want you to help me find new gas-wasting patterns from the above codes and the list of example patterns, considering the introduction of transient storage. Please be creative and think outside the box beyond the patterns listed above. Please put the new gas-wasting patterns in bullet points, using Latex syntax. Also please answer the following questions for each of the found patterns:
+
+1. How did you find this pattern? Could you explain the reasoning process, step by step, behind the discovery?
+2. What should I do, step by step, to fix the found gas-wasting patterns? Could you explain the reasoning process, step by step, behind the reason why such a fix works?
+3. On a score of 0 to 5, please rate this new pattern in terms of how much it is sacrificing readability, security, and maintainability in exchange for gas optimization (5 is the least impacted. For example, "Readability: 5; Security: 4; Maintainability: 1" means no effect on security while maintainability is largely affected.)
+
+Here are some additional requirements:
+1. If you think my prompt to you has any issues (e.g. ambiguity or lack of information), please tell me how I should improve it the next time.
+2. Please reflect on your reasoning process and tell me how you could do better next time in terms of completing the given task. If you found any issues, please also make corresponding improvements to your output this time and tell me what you did and why such improvement is necessary, in a step-by-step manner.

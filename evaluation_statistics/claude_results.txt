@@ -1,0 +1,147 @@
+Repeated storage reads in a loop  &  1.1  &  A6  &  
+Redundant calculations in a loop  &  1.1  &  A10  &  
+Inefficient use of memory arrays  &  1.1  &  A2  &  
+Redundant struct unpacking  &  1.2  &  A11  &  
+Repeated external calls  &  1.2  &  A3  &  
+Inefficient price calculation  &  1.2  &  A3  &  
+Repeated storage reads in the \lstinline{beforeSafeTransfer} and \lstinline{beforeTransfer} functions  &  1.3  &  A3  &  
+Unnecessary \lstinline{else} block in the \lstinline{init} function  &  1.3  &  A3  &  
+Potential for short-circuiting in the \lstinline{tokenURI} function  &  1.3  &  A11  &  
+Redundant storage reads in the `calcMinToAmountForZapOut` function.  &  1.4  &  1  &  
+Redundant calculations in the `calcMinToAmountForZapOut` function.  &  1.4  &  A3  &  
+Inefficient use of `safeTransfer` in the `_removeLiquidityAndSwap` function.  &  1.4  &  A3  &  
+Repeated storage reads in a function  &  1.5  &  A4  &  
+Repeated array creation in \_depositInternal and \_redeemInternal  &  1.5  &  A3  &  
+Repeated calls to `IInscription(token.addr)` in the `addLiquidity` function.  &  1.6  &  1  &  
+Inefficient use of `require` statements in the `refund` function.  &  1.6  &  A3  &  
+Duplicate calculations in the `refund` function.  &  1.6  &  1  &  
+Avoiding duplicate existence checks:  &  1.7  &  A2  &  
+Caching repeated storage reads:  &  1.7  &  1  &  
+Packing struct variables:  &  1.7  &  23  &  
+Emitting fewer event parameters:  &  1.7  &  A2  &  
+Repeated storage reads in a loop  &  1.8  &  A10  &  
+Inefficient struct usage  &  1.8  &  A11  &  
+Duplicate logic  &  1.8  &  2  &  
+Unnecessary type conversions in the `getSharesByPooledDai` function.  &  1.9  &  A3  &  
+Redundant storage reads in the `_withdraw` function.  &  1.9  &  A3  &  
+Inefficient event emission in the `_withdraw` function.  &  1.9  &  A3  &  
+Inefficient event emission in loops  &  1.10  &  A3  &  
+Redundant zero-address checks  &  1.10  &  A3  &  
+Inefficient array creation in `balanceOfBatch`  &  1.10  &  A3  &  
+Redundant memory keyword usage  &  2.1  &  A6  &  
+Unnecessary use of safe math operations  &  2.1  &  11  &  
+Repeated storage reads in a loop  &  2.1  &  A3  &  
+Repeated calculations of `block.timestamp.sub(ledger[msg.sender][i].from)` in `get_gains` and `get_gains2` functions.  &  2.2  &  2  &  
+Unnecessary checks for `_interest > 0` and `_interest2 > 0` in the `end` function.  &  2.2  &  A3  &  
+Repeated external calls in a loop  &  2.3  &  A3  &  
+Unnecessary type conversions  &  2.3  &  A3  &  
+Avoid unnecessary storage reads and writes in loops  &  2.4  &  A10  &  
+Use \texttt{unchecked} blocks for safe arithmetic operations  &  2.4  &  A2  &  
+Use events instead of storage for data that doesn't need to be accessed on-chain  &  2.4  &  A2  &  
+Repeated calculations of `tokens_purchased` in `buyTokensUSDT` and `buyTokensUSD` functions.  &  2.5  &  A3  &  
+Redundant check for `presaleEnded` in `buyTokensNative`, `buyTokensUSDT`, and `buyTokensUSD` functions.  &  2.5  &  A3  &  
+Inefficient use of `isAddressInvestor` function in `claimTokens`.  &  2.5  &  1  &  
+Unnecessary boolean variable in `owner` modifier.  &  2.5  &  7  &  
+Repeated calls to \_pool.getConfiguration(asset) within the same function  &  2.6  &  A4  &  
+Unnecessary boolean comparisons  &  2.6  &  A3  &  
+Emitting events when no change occurred  &  2.6  &  A2  &  
+Repeated storage reads in loops  &  2.7  &  A10  &  
+Redundant calculations in \texttt{viewUserPendingRewards}  &  2.7  &  A6  &  
+Duplicate logic in \texttt{viewBakcPairingStatus}  &  2.7  &  2  &  
+Repeated storage reads/writes in loops  &  2.8  &  1  &  
+Unnecessary initialization of loop index  &  2.8  &  14  &  
+Emitting large numbers of parameters in events  &  2.8  &  A13  &  
+Redundant checks in the \texttt{canSwapTokens} function  &  2.9  &  A3  &  
+Unnecessary temporary variable in \texttt{canSwapTokens}  &  2.9  &  4  &  
+Repeated arithmetic in fee calculations  &  2.9  &  A6  &  
+Unnecessary storage reads in loops  &  2.10  &  A3  &  
+Redundant function calls in loops  &  2.10  &  A10  &  
+Inefficient struct usage  &  2.10  &  A3  &  
+Repeated reads of storage variables  &  3.1  &  1  &  
+Repeated external calls to the same contract  &  3.1  &  A9  &  
+Redundant storage of derived values  &  3.1  &  A3  &  
+Unnecessary use of \texttt{.sub()} and \texttt{.add()} for uint256  &  3.2  &  A2  &  
+Inefficient use of \texttt{require()} statements  &  3.2  &  A6  &  
+Duplicate logic in \texttt{compound()} and \texttt{internalDeposit()}  &  3.2  &  A2  &  
+Inefficient calculation in \texttt{swapAndLiquify()}  &  3.2  &  A5  &  
+Repeated storage reads in \_transfer function  &  3.3  &  1  &  
+Redundant calculation in swapForFees  &  3.3  &  A3  &  
+Storage read in loop in swapForFees  &  3.3  &  1  &  
+Repeated SLOAD operations in the `withdrawETHWithPermit` function  &  3.4  &  A3  &  
+Unnecessary type conversion in the `repayETH` function  &  3.4  &  A3  &  
+Redundant storage read in the `withdrawETH` function  &  3.4  &  10  &  
+Repeated storage reads and writes in loops  &  3.5  &  A3  &  
+Redundant checks in loops  &  3.5  &  A11  &  
+Inefficient event emission  &  3.5  &  A11  &  
+Redundant storage reads and writes in loop  &  3.6  &  A10  &  
+Inefficient array searching  &  3.6  &  8  &  
+Repeated code blocks  &  3.6  &  2  &  
+Inefficient arithmetic operations  &  3.6  &  A8  &  
+Repeated storage reads in the \texttt{beforeSafeTransfer} and \texttt{beforeTransfer} functions  &  3.7  &  A4  &  
+Inefficient use of \texttt{try-catch} blocks in the \texttt{beforeSafeTransfer} and \texttt{beforeTransfer} functions  &  3.7  &  A11  &  
+Redundant checks in the \texttt{beforeSafeTransfer} and \texttt{beforeTransfer} functions  &  3.7  &  2  &  
+Inefficient use of \texttt{require} statements  &  3.8  &  9  &  
+Unnecessary calculations in \texttt{tokenSwap}  &  3.8  &  A3  &  
+Redundant initialization of \texttt{tmpSuccess}  &  3.8  &  10  &  
+Unnecessary comparison to boolean values in the `canSendTokens` function  &  3.9  &  A3  &  
+Repeated calculations of total fees in the `updateBuyFees` and `updateSellFees` functions  &  3.9  &  A3  &  
+Inefficient use of `uint256` for small values  &  3.9  &  A3  &  
+Redundant zero initialization  &  3.9  &  A3  &  
+Inefficient loop in the `lockAccount` function  &  3.10  &  A6  &  
+Redundant checks in the `_transferFrom` function  &  3.10  &  A13  &  
+Inefficient use of arrays in the `swapBack` and `addLiquidity` functions  &  3.10  &  A3  &  
+Unnecessary function parameters  &  4.1  &  10  &  
+Inefficient string to bytes32 conversion  &  4.1  &  A3  &  
+Redundant require statements  &  4.1  &  A6  &  
+Unnecessary storage reads in loops  &  4.2  &  A2  &  
+Inefficient event emission  &  4.2  &  A3  &  
+Redundant storage writes  &  4.2  &  A3  &  
+Repeated calls to `IPool(ADDRESSES_PROVIDER.getPool())`  &  4.3  &  1  &  
+Redundant checks in the `getAllReservesTokens` function  &  4.3  &  A10  &  
+Unnecessary storage reads in the `getReserveConfigurationData` function  &  4.3  &  A3  &  
+Unnecessary storage reads and writes  &  4.4  &  1  &  
+Inefficient arithmetic  &  4.4  &  A3  &  
+Unnecessary zero initialization  &  4.4  &  A3  &  
+Repeated reads of storage variables  &  4.5  &  1  &  
+Conditional branches based on \_isExcluded  &  4.5  &  7  &  
+Unnecessary \_approve call  &  4.5  &  A3  &  
+Repeated Transfer event emissions  &  4.5  &  A3  &  
+Unnecessary approve in updateUniswapV2Pair  &  4.5  &  A3  &  
+Repeated storage reads in a loop  &  4.6  &  A3  &  
+Redundant equality checks  &  4.6  &  A6  &  
+Inefficient string comparison  &  4.7  &  A6  &  
+Redundant storage reads  &  4.7  &  1  &  
+Repeated memory allocation for arrays  &  4.8  &  A6  &  
+Unnecessary type conversions  &  4.8  &  A3  &  
+Inefficient use of \texttt{require} statements  &  4.9  &  A3  &  
+Redundant storage reads  &  4.9  &  1  &  
+Using assembly for certain operations  &  4.9  &  A13  &  
+Unnecessary array creation  &  4.10  &  8  &  
+Inefficient loop structure  &  4.10  &  A10  &  
+Redundant storage reads  &  4.10  &  A3  &  
+Repeated calls to external contracts  &  5.1  &  A3  &  
+Repeated storage reads  &  5.1  &  A3  &  
+Unnecessary storage of loop counter  &  5.1  &  A3  &  
+Redundant storage reads in a loop  &  5.2  &  A4  &  
+Inefficient array deletion  &  5.2  &  A6  &  
+Repeated memory allocation for `RangeInfo` struct in loops  &  5.3  &  A10  &  
+Unnecessary storage reads in loops  &  5.3  &  A10  &  
+Redundant storage writes in `forceClosePhase`  &  5.3  &  A3  &  
+Repeated calls to \texttt{TickMath.getSqrtRatioAtTick()} with the same tick values  &  5.4  &  A4  &  
+Unnecessary array creation in \texttt{liquidityToTokenAmounts()}  &  5.4  &  A11  &  
+Inefficient minimum and maximum calculations in \texttt{calculateTvlByMinMaxPrices()}  &  5.4  &  A6  &  
+Unnecessary type conversions  &  5.5  &  A3  &  
+Inefficient use of \texttt{require} statements  &  5.5  &  A3  &  
+Repeated reads of storage variables in a loop  &  5.6  &  A3  &  
+Redundant checks in mutually exclusive conditionals  &  5.6  &  7  &  
+Repeated storage writes in mutually exclusive conditionals  &  5.6  &  A3  &  
+Unnecessary storage reads in loops  &  5.7  &  A3  &  
+Unnecessary storage writes  &  5.7  &  A3  &  
+Unnecessary SLOAD operations  &  5.7  &  A4  &  
+Unnecessary storage reads in a loop  &  5.8  &  A10  &  
+Unnecessary comparison to boolean literal  &  5.8  &  A1  &  
+Unnecessary storage of large structs  &  5.9  &  A2  &  
+Redundant storage reads in loops  &  5.9  &  A3  &  
+Inefficient event emission  &  5.9  &  21  &  
+Unnecessary storage reads in `getStream()`  &  5.10  &  10  &  
+Redundant storage read in `balanceOf()`  &  5.10  &  A11  &  

@@ -1,0 +1,42 @@
+# pragma version 0.3.10
+# pragma evm-version shanghai
+"""
+@title OwnershipMiddleman
+@author Curve.Fi
+@license Copyright (c) Curve.Fi, 2020-2021 - all rights reserved
+@notice DAO-owned entity that simply acts as an ownership middleman.
+"""
+
+interface Pool:
+    def commit_transfer_ownership(_new_owner: address): nonpayable
+    def apply_transfer_ownership(): nonpayable
+    def revert_transfer_ownership(): nonpayable
+
+
+admin: public(constant(address)) = 0x40907540d8a6C65c637785e8f8B742ae6b0b9968
+pool: public(immutable(Pool))
+future_pool_owner: public(address)
+
+
+@external
+def __init__():
+    pool = Pool(0xa1F8A6807c402E4A15ef4EBa36528A3FED24E577)
+
+
+@external
+def commit_transfer_ownership(_new_owner: address):
+    assert msg.sender == admin  # dev: only admin
+    self.future_pool_owner = _new_owner
+    pool.commit_transfer_ownership(_new_owner)
+
+
+@external
+def apply_transfer_ownership():
+    pool.apply_transfer_ownership()
+
+
+@external
+def revert_transfer_ownership():
+    assert msg.sender == admin  # dev: only admin
+    pool.revert_transfer_ownership()
+    self.future_pool_owner = empty(address)

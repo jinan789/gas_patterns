@@ -1,0 +1,124 @@
+I want you to help me find new gas-wasting patterns for Vyper. Gas is a unique pricing mechanism in Vyper, which measures the amount of computational resources put into the execution of Vyper codes. Gas is paid in money, so saving gas is saving money. The goal of gas optimization is to find an equivalent code instruction sequence that produces the same output while consuming less gas. This may misalign from how people typically write codes, since the gas pricing mechanism is less intuitive and code writers do not often keep it in mind. For example, storage variables in Vyper are expensive in terms of gas, while memory is not, so unnecessary storage operations should be avoided when possible, but programmers from other languages might not be aware of this. 
+
+First, I will give you a list of known gas-wasting patterns as an example. The list is numbered, with each bullet point specifying one gas-wasting pattern and an explanation of why this pattern wastes gas. Please be creative and see if my provided codes contain any gas-wasting patterns beyond the provided ones. The list is as follows:
+
+1. Repeated computation of the same expression: including repetitive reads of the same expensive storage variable (e.g. Overuse of expensive storage variables). This could be solved by introducing an intermediate variable to hold the value
+2. Variable refactoring: by refactoring variable types and thus adjusting memory layout, we could save gas by saving the amount of storage space needed
+3. Redundant operations with same effects: redundant operations that overwrite the effect of the previous operation, making the previous useless
+4. Pre-computable operations on constants: performing comparisons (or other operations) to constants is useless and could be pre-computed
+5. Simplifiable conditional operations: expressions that involve logical operations that could be simplified to reduce the amount of computational workload.
+6. "Loop fusion." If two loops have the same starting and stopping conditions with the same increment steps, then we could consider combining them into one, if they have no dependencies. 
+7. "Repeated computations in a loop." If there are expressions that produce the same outcome in each iteration of a loop, we could move it out of the loop and execute only once, which saves computation.
+8. "Opaque predicate." If the outcome of a predicate could be inferred to be true/false without execution, then we could just replace it with the corresponding value to save the compuation during runtime.
+
+Next, I will give you a chunk of Vyper codes from which you will find gas-inefficient patterns:def update_valset(consensus: Consensus, new_valset: Valset):
+    # check if new valset_id is greater than current valset_id
+    assert new_valset.valset_id > consensus.valset.valset_id, "Invalid Valset ID"
+    cumulative_power: uint256 = 0
+    i: uint256 = 0
+    # check cumulative power is enough
+    for validator in new_valset.validators:
+        cumulative_power += new_valset.powers[i]
+        if cumulative_power >= POWER_THRESHOLD:
+            break
+        i = unsafe_add(i, 1)
+    assert cumulative_power >= POWER_THRESHOLD, "Insufficient Power"
+    # check if the supplied current validator set matches the saved checkpoint
+    assert self.last_checkpoint == self.make_checkpoint(consensus.valset), "Incorrect Checkpoint"
+    # calculate the new checkpoint
+    new_checkpoint: bytes32 = self.make_checkpoint(new_valset)
+    # check if enough validators signed new validator set (new checkpoint)
+    self.check_validator_signatures(consensus, new_checkpoint)
+    self.last_checkpoint = new_checkpoint
+    self.last_valset_id = new_valset.valset_id
+    event_id: uint256 = unsafe_add(self.last_event_id, 1)
+    self.last_event_id = event_id
+    log ValsetUpdated(new_checkpoint, new_valset.valset_id, event_id)
+# This makes calls to contracts that execute arbitrary logic
+# message_id is to prevent replay attack and every message_id can be used only once
+@external
+def submit_batch(consensus: Consensus, token: address, args: TokenSendArgs, batch_id: uint256, deadline: uint256):
+    assert block.timestamp <= deadline, "Timeout"
+    assert self.last_batch_id[token] < batch_id, "Wrong batch id"
+    length: uint256 = len(args.receiver)
+    assert length == len(args.amount), "Unmatched Params"
+    # check if the supplied current validator set matches the saved checkpoint
+    assert self.last_checkpoint == self.make_checkpoint(consensus.valset), "Incorrect Checkpoint"
+    # signing data is keccak256 hash of abi_encoded batch_call(args, batch_id, compass_id, deadline)
+    args_hash: bytes32 = keccak256(_abi_encode(token, args, batch_id, compass_id, deadline, method_id=method_id("batch_call(address,(address[],uint256[]),uint256,bytes32,uint256)")))
+    # check if enough validators signed args_hash
+    self.check_validator_signatures(consensus, args_hash)
+    # make call to logic contract
+    for i in range(MAX_BATCH):
+        if  i >= length:
+            break
+        assert ERC20(token).transfer(args.receiver[i], args.amount[i], default_return_value=True), "Tr fail"
+    event_id: uint256 = unsafe_add(self.last_event_id, 1)
+    self.last_event_id = event_id
+    self.last_batch_id[token] = batch_id
+    log BatchSendEvent(token, batch_id, event_id)
+@external
+def check_validator_signatures(consensus: Consensus, hash: bytes32):
+    i: uint256 = 0
+    cumulative_power: uint256 = 0
+    for sig in consensus.signatures:
+        if sig.v != 0:
+            assert self.verify_signature(consensus.valset.validators[i], hash, sig), "Invalid Signature"
+            cumulative_power += consensus.valset.powers[i]
+            if cumulative_power >= POWER_THRESHOLD:
+                break
+        i = unsafe_add(i, 1)
+    assert cumulative_power >= POWER_THRESHOLD, "Insufficient Power"
+# Make a new checkpoint from the supplied validator set
+# A checkpoint is a hash of all relevant information about the valset. This is stored by the contract,
+# instead of storing the information directly. This saves on storage and gas.
+# The format of the checkpoint is:
+# keccak256 hash of abi_encoded checkpoint(validators[], powers[], valset_id, compass_id)
+# The validator powers must be decreasing or equal. This is important for checking the signatures on the
+# next valset, since it allows the caller to stop verifying signatures once a quorum of signatures have been verified.
+@internal
+@view
+def submit_logic_call(consensus: Consensus, args: LogicCallArgs, message_id: uint256, deadline: uint256):
+    assert block.timestamp <= deadline, "Timeout"
+    assert not self.message_id_used[message_id], "Used Message_ID"
+    self.message_id_used[message_id] = True
+    # check if the supplied current validator set matches the saved checkpoint
+    assert self.last_checkpoint == self.make_checkpoint(consensus.valset), "Incorrect Checkpoint"
+    # signing data is keccak256 hash of abi_encoded logic_call(args, message_id, compass_id, deadline)
+    args_hash: bytes32 = keccak256(_abi_encode(args, message_id, compass_id, deadline, method_id=method_id("logic_call((address,bytes),uint256,bytes32,uint256)")))
+    # check if enough validators signed args_hash
+    self.check_validator_signatures(consensus, args_hash)
+    # make call to logic contract
+    raw_call(args.logic_contract_address, args.payload)
+    event_id: uint256 = unsafe_add(self.last_event_id, 1)
+    self.last_event_id = event_id
+    log LogicCallEvent(args.logic_contract_address, args.payload, message_id, event_id)
+@external
+def __init__(_compass_id: bytes32, _event_id: uint256, valset: Valset):
+    compass_id = _compass_id
+    cumulative_power: uint256 = 0
+    i: uint256 = 0
+    # check cumulative power is enough
+    for validator in valset.validators:
+        cumulative_power += valset.powers[i]
+        if cumulative_power >= POWER_THRESHOLD:
+            break
+        i = unsafe_add(i, 1)
+    assert cumulative_power >= POWER_THRESHOLD, "Insufficient Power"
+    new_checkpoint: bytes32 = keccak256(_abi_encode(valset.validators, valset.powers, valset.valset_id, compass_id, method_id=method_id("checkpoint(address[],uint256[],uint256,bytes32)")))
+    self.last_checkpoint = new_checkpoint
+    self.last_valset_id = valset.valset_id
+    self.last_event_id = _event_id
+    log ValsetUpdated(new_checkpoint, valset.valset_id, _event_id)
+# utility function to verify EIP712 signature
+@internal
+@pure
+Now I want you to help me find new gas-wasting patterns from the above codes and the list of example patterns. Please be creative and think outside the box beyond the patterns listed above. Please put the new gas-wasting patterns in bullet points, using Latex syntax. Also please answer the following questions for each of the found patterns:
+
+1. How did you find this pattern? Could you explain the reasoning process, step by step, behind the discovery?
+2. What should I do, step by step, to fix the found gas-wasting patterns? Could you explain the reasoning process, step by step, behind the reason why such a fix works?
+3. On a score of 0 to 5, please rate this new pattern in terms of how much it is sacrificing readability, security, and maintainability in exchange for gas optimization (5 is the least impacted. For example, "Readability: 5; Security: 4; Maintainability: 1" means no effect on security while maintainability is largely affected.)
+
+Here are some additional requirements:
+1. If you think my prompt to you has any issues (e.g. ambiguity or lack of information), please tell me how I should improve it the next time.
+2. Please reflect on your reasoning process and tell me how you could do better next time in terms of completing the given task. If you found any issues, please also make corresponding improvements to your output this time and tell me what you did and why such improvement is necessary, in a step-by-step manner.

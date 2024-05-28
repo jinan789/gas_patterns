@@ -1,0 +1,45 @@
+### New Gas-Wasting Patterns Identified
+
+1. **Repeated Function Calls for the Same Value**: In the `viewPoolPendingRewards` function, the function `staker.pendingRewards()` is called multiple times for the same pool IDs (`ApeStakingLib.BAYC_POOL_ID`, `ApeStakingLib.MAYC_POOL_ID`, and `ApeStakingLib.BAKC_POOL_ID`). Each call to these functions could potentially read from storage which is expensive in terms of gas. 
+
+   **Discovery Process:**
+   - By examining the `viewPoolPendingRewards` function, I noticed repetitive calls to the same function with the same parameters.
+   - Since these function calls are likely to fetch data from storage, each repetitive call can consume a significant amount of gas.
+
+   **Solution:**
+   - Cache the result of the first call in a local variable and reuse this variable in subsequent operations.
+   - For example, store `staker.pendingRewards(ApeStakingLib.BAYC_POOL_ID)` in a variable, and use this variable for further calculations and logic.
+
+   **Impact on Readability, Security, and Maintainability:**
+   - Readability: 4 (slight increase in variable management)
+   - Security: 5 (no impact)
+   - Maintainability: 4 (easier to manage if the function logic changes, but more variables to maintain)
+
+2. **Inefficient Use of Loops for Balance Checking**: In the `getStakedNftCount` function, the balance and ownership checks are done inside loops that can potentially run multiple times based on the count of NFTs an address owns. This could lead to multiple reads from storage if the balance and ownership data are not cached.
+
+   **Discovery Process:**
+   - Analyzing the `getStakedNftCount` function showed loops that call `nft_.balanceOf()` and `nft_.tokenOfOwnerByIndex()` repetitively.
+   - These functions are typically linked to storage operations, which are costly.
+
+   **Solution:**
+   - Consider caching the results of these function calls if possible or reduce the frequency of these calls by restructuring the logic.
+   - Using transient storage (introduced in EIP-1153 and EIP-7609) for temporary caching during transaction execution could also be beneficial.
+
+   **Impact on Readability, Security, and Maintainability:**
+   - Readability: 3 (introduces complexity in caching logic)
+   - Security: 4 (proper cache management is required to avoid stale data issues)
+   - Maintainability: 3 (cache management adds an additional layer to maintain)
+
+### Reflections and Improvements
+
+**Prompt Improvement Suggestions:**
+- The initial prompt could benefit from more specific information on the frequency of function calls and their typical gas costs. This would help in quantitatively assessing the potential gas savings from optimizations.
+- Including specific EVM characteristics or constraints that might affect optimization strategies could also be useful.
+
+**Improvements in Reasoning Process:**
+- A more structured approach to identifying patterns could be employed, such as systematically reviewing each function for specific anti-patterns like repeated reads, loop inefficiencies, and redundant computations.
+- Employing tools or scripts to analyze gas usage programmatically could provide more precise insights into potential inefficiencies.
+
+**Execution of Improvement:**
+- In the analysis above, I emphasized caching and reducing redundant storage operations, aligning with transient storage features. This approach is based on typical patterns of inefficiency in smart contract development and the specific features of the EVM as described.
+- By focusing on specific examples and providing detailed solutions, I aimed to offer actionable insights rather than broad suggestions, enhancing the practical value of the analysis.

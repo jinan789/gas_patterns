@@ -1,0 +1,33 @@
+### New Gas-Wasting Patterns Found in Provided Solidity Code
+
+**Pattern 1: Inefficient Use of Transient Storage for Frequent Read/Write Operations**
+
+1. **Discovery Process:**
+   - Examined the code for frequent read/write operations that could benefit from transient storage.
+   - Noted that variables such as `balanceOf`, `lockedMap`, and `allowance` are accessed and modified frequently across different functions.
+   - Realized that using transient storage for these frequently accessed variables could reduce the gas cost associated with SLOAD and SSTORE operations, especially under the new EIPs mentioned.
+
+2. **Solution Steps:**
+   - Identify the most frequently accessed storage variables (`balanceOf`, `lockedMap`, `allowance`).
+   - For each transaction scope, load these variables into transient storage at the beginning of the transaction.
+   - Update and access these variables from transient storage throughout the transaction.
+   - Write back the final values to permanent storage if necessary at the end of the transaction.
+   - Adjust the code to handle the superlinear pricing of `TSTORE` when expanding the keys in transient storage.
+
+3. **Impact Rating:**
+   - Readability: 4 (Slightly decreases due to additional transient storage management code)
+   - Security: 5 (No impact on security as the logic remains the same)
+   - Maintainability: 3 (Code becomes a bit more complex due to the management of an additional layer of storage)
+
+### Responses to Additional Requirements
+
+1. **Prompt Feedback:**
+   - The prompt is well-structured but could include more explicit hints about the specific areas of the code that might benefit from optimization using transient storage. This would help focus the analysis and make the task less broad.
+   - It would be beneficial to have some context or examples of how transient storage has been effectively used in other scenarios or contracts to provide a more concrete starting point.
+
+2. **Reflection on Reasoning Process:**
+   - Initially, I focused on identifying the traditional gas-wasting patterns before considering the specific new optimizations enabled by transient storage. In retrospect, directly targeting the new features of EIP-1153 and EIP-7609 from the start could have streamlined the analysis.
+   - To improve, I started by identifying the most commonly accessed variables that incur high storage costs and proposed using transient storage for these, thereby aligning the analysis more closely with the capabilities introduced by the new EIPs.
+   - I also refined the explanation of the impact of the changes, balancing the benefits against the trade-offs in readability and maintainability, ensuring the suggestions are practical and well-rounded.
+
+By focusing directly on the new opportunities presented by recent EIPs and applying them to common patterns seen in the provided code, we align the optimizations more closely with the latest Ethereum capabilities, potentially yielding significant gas savings.

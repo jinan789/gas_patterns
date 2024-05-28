@@ -1,0 +1,207 @@
+I want you to help me find new gas-wasting patterns for Solidity. Gas is a unique pricing mechanism in Solidity, which measures the amount of computational resources put into the execution of Solidity codes. Gas is paid in money, so saving gas is saving money. The goal of gas optimization is to find an equivalent code instruction sequence that produces the same output while consuming less gas. This may misalign from how people typically write codes, since the gas pricing mechanism is less intuitive and code writers do not often keep it in mind. For example, storage variables in Solidity are expensive in terms of gas, while memory is not, so unnecessary storage operations should be avoided when possible, but programmers from other languages might not be aware of this. 
+
+First, I will give you a list of known gas-wasting patterns as an example. The list is numbered, with each bullet point specifying one gas-wasting pattern and an explanation of why this pattern wastes gas. Please be creative and see if my provided codes contain any gas-wasting patterns beyond the provided ones. The list is as follows:
+
+1. Repeated computation of the same expression: including repetitive reads of the same expensive storage variable (e.g. Overuse of expensive storage variables). This could be solved by introducing an intermediate variable to hold the value
+2. Variable refactoring: by refactoring variable types and thus adjusting memory layout, we could save gas by saving the amount of storage space needed
+3. Redundant operations with same effects: redundant operations that overwrite the effect of the previous operation, making the previous useless
+4. Pre-computable operations on constants: performing comparisons (or other operations) to constants is useless and could be pre-computed
+5. Simplifiable conditional operations: expressions that involve logical operations that could be simplified to reduce the amount of computational workload.
+6. "Loop fusion." If two loops have the same starting and stopping conditions with the same increment steps, then we could consider combining them into one, if they have no dependencies. 
+7. "Repeated computations in a loop." If there are expressions that produce the same outcome in each iteration of a loop, we could move it out of the loop and execute only once, which saves computation.
+8. "Opaque predicate." If the outcome of a predicate could be inferred to be true/false without execution, then we could just replace it with the corresponding value to save the compuation during runtime.
+
+Next, I will give you a chunk of Solidity codes from which you will find gas-inefficient patterns:
+contract VibraniumrvUSD is RVUSD, Governable {
+    function liquidation(
+        address provider,
+        address onBehalfOf,
+        uint256 etherAmount
+    ) external {
+        uint256 etherPrice = _etherPrice();
+        uint256 onBehalfOfCollateralRate = (depositedEther[onBehalfOf] *
+            etherPrice *
+            100) / borrowed[onBehalfOf];
+        require(
+            onBehalfOfCollateralRate < badCollateralRate,
+            "Borrowers collateral rate should below badCollateralRate"
+        );
+
+        require(
+            etherAmount * 2 <= depositedEther[onBehalfOf],
+            "a max of 50% collateral can be liquidated"
+        );
+        uint256 rvusdAmount = (etherAmount * etherPrice) / 1e18;
+
+        _repay(provider, onBehalfOf, rvusdAmount);
+        uint256 reducedEther = (etherAmount * 11) / 10;
+        totalDepositedEther -= reducedEther;
+        depositedEther[onBehalfOf] -= reducedEther;
+        uint256 reward2keeper;
+        if (provider == msg.sender) {
+            reth.transfer(msg.sender, reducedEther);
+        } else {
+            reward2keeper = (reducedEther * keeperRate) / 110;
+            reth.transfer(provider, reducedEther - reward2keeper);
+            reth.transfer(msg.sender, reward2keeper);
+        }
+        emit LiquidationRecord(
+            provider,
+            msg.sender,
+            onBehalfOf,
+            rvusdAmount,
+            reducedEther,
+            reward2keeper,
+            false,
+            block.timestamp
+        );
+    }
+
+    /**
+     * @notice When overallCollateralRate is below badCollateralRate, borrowers with collateralRate below 125% could be fully liquidated.
+     * Emits a `LiquidationRecord` event.
+     *
+     * Requirements:
+     * - Current overallCollateralRate should be below badCollateralRate
+     * - `onBehalfOf`collateralRate should be below 125%
+     * @dev After Liquidation, borrower's debt is reduced by etherAmount * etherPrice, deposit is reduced by etherAmount * borrower's collateralRate. Keeper gets a liquidation reward of `keeperRate / borrower's collateralRate
+     */
+    function setSafeCollateralRate(uint256 newRatio) external onlyGov {
+        require(
+            newRatio >= 160 * 1e18,
+            "Safe CollateralRate > 160%"
+        );
+        safeCollateralRate = newRatio;
+    }
+    function depositrETHToMint(
+        address onBehalfOf,
+        uint256 rETHamount,
+        uint256 mintAmount
+    ) external {
+        require(onBehalfOf != address(0) && rETHamount >= 1 * 1e17, "INPUT_WRONG");
+        reth.transferFrom(msg.sender, address(this), rETHamount);
+
+        totalDepositedEther += rETHamount;
+        depositedEther[onBehalfOf] += rETHamount;
+        if (mintAmount > 0) {
+            _mintRVUSD(onBehalfOf, onBehalfOf, mintAmount);
+        }
+        emit DepositEther(msg.sender, onBehalfOf, rETHamount, block.timestamp);
+    }
+
+    /**
+     * @notice Withdraw collateral assets to an address
+     * Emits a `WithdrawEther` event.
+     *
+     * Requirements:
+     * - `onBehalfOf` cannot be the zero address.
+     * - `amount` Must be higher than 0.
+     *
+     * @dev Withdraw rETH. Check user’s collateral rate after withdrawal, should be higher than `safeCollateralRate`
+     */
+    function withdraw(address onBehalfOf, uint256 amount) external {
+        require(onBehalfOf != address(0) && amount > 0 && depositedEther[msg.sender] >= amount, "INPUT_WRONG");
+        totalDepositedEther -= amount;
+        depositedEther[msg.sender] -= amount;
+
+        reth.transfer(onBehalfOf, amount);
+        if (borrowed[msg.sender] > 0) {
+            _checkHealth(msg.sender);
+        }
+        emit WithdrawEther(msg.sender, onBehalfOf, amount, block.timestamp);
+    }
+
+    /**
+     * @notice The mint amount number of RVUSD is minted to the address
+     * Emits a `Mint` event.
+     *
+     * Requirements:
+     * - `onBehalfOf` cannot be the zero address.
+     * - `amount` Must be higher than 0. Individual mint amount shouldn't surpass 10% when the circulation reaches 10_000_000
+     */
+    function mint(address onBehalfOf, uint256 amount) public {
+        require(onBehalfOf != address(0) && amount > 0 , "INPUT_WRONG");
+        _mintRVUSD(msg.sender, onBehalfOf, amount);
+        if (
+            (borrowed[msg.sender] * 100) / totalSupply() > 10 &&
+            totalSupply() > 10_000_000 * 1e18
+        ) revert("Mint Amount > 10% of total circulation");
+    }
+    function superLiquidation(
+        address provider,
+        address onBehalfOf,
+        uint256 etherAmount
+    ) external {
+        uint256 etherPrice = _etherPrice();
+        require(
+            (totalDepositedEther * etherPrice * 100) / totalSupply() <
+                badCollateralRate,
+            "overallCollateralRate > 150%"
+        );
+        uint256 onBehalfOfCollateralRate = (depositedEther[onBehalfOf] *
+            etherPrice *
+            100) / borrowed[onBehalfOf];
+        require(
+            onBehalfOfCollateralRate < 125 * 1e18,
+            "borrowers collateralRate > 125%"
+        );
+        require(
+            etherAmount <= depositedEther[onBehalfOf],
+            "total of collateral can be liquidated at most"
+        );
+        uint256 rvusdAmount = (etherAmount * etherPrice) / 1e18;
+        if (onBehalfOfCollateralRate >= 1e20) {
+            rvusdAmount = (rvusdAmount * 1e20) / onBehalfOfCollateralRate;
+        }
+        require(
+            allowance(provider, address(this)) >= rvusdAmount,
+            "provider should authorize to provide liquidation RVUSD"
+        );
+
+        _repay(provider, onBehalfOf, rvusdAmount);
+
+        totalDepositedEther -= etherAmount;
+        depositedEther[onBehalfOf] -= etherAmount;
+        uint256 reward2keeper;
+        if (
+            msg.sender != provider &&
+            onBehalfOfCollateralRate >= 1e20 + keeperRate * 1e18
+        ) {
+            reward2keeper =
+                ((etherAmount * keeperRate) * 1e18) /
+                onBehalfOfCollateralRate;
+            reth.transfer(msg.sender, reward2keeper);
+        }
+        reth.transfer(provider, etherAmount - reward2keeper);
+
+        emit LiquidationRecord(
+            provider,
+            msg.sender,
+            onBehalfOf,
+            rvusdAmount,
+            etherAmount,
+            reward2keeper,
+            true,
+            block.timestamp
+        );
+    }
+
+    /**
+     * @notice When rETH balance increases through LSD or other reasons, the excess income is sold for RVUSD, allocated to RVUSD holders through rebase mechanism.
+     * Emits a `LSDistribution` event.
+     *
+     * *Requirements:
+     * - rETH balance in the contract cannot be less than totalDepositedEther after exchange.
+     * @dev Income is used to cover accumulated Service Fee first.
+     */
+    }
+
+Now I want you to help me find new gas-wasting patterns from the above codes and the list of example patterns. Please be creative and think outside the box beyond the patterns listed above. Please put the new gas-wasting patterns in bullet points, using Latex syntax. Also please answer the following questions for each of the found patterns:
+
+1. How did you find this pattern? Could you explain the reasoning process, step by step, behind the discovery?
+2. What should I do, step by step, to fix the found gas-wasting patterns? Could you explain the reasoning process, step by step, behind the reason why such a fix works?
+3. On a score of 0 to 5, please rate this new pattern in terms of how much it is sacrificing readability, security, and maintainability in exchange for gas optimization (5 is the least impacted. For example, "Readability: 5; Security: 4; Maintainability: 1" means no effect on security while maintainability is largely affected.)
+
+Here are some additional requirements:
+1. If you think my prompt to you has any issues (e.g. ambiguity or lack of information), please tell me how I should improve it the next time.
+2. Please reflect on your reasoning process and tell me how you could do better next time in terms of completing the given task. If you found any issues, please also make corresponding improvements to your output this time and tell me what you did and why such improvement is necessary, in a step-by-step manner.

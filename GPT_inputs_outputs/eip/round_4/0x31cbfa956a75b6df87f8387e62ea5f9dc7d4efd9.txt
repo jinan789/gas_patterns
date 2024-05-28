@@ -1,0 +1,130 @@
+I want you to help me find new gas-wasting patterns for Solidity. Gas is a unique pricing mechanism in Solidity, which measures the amount of computational resources put into the execution of Solidity codes. Gas is paid in money, so saving gas is saving money. The goal of gas optimization is to find an equivalent code instruction sequence that produces the same output while consuming less gas. This may misalign from how people typically write codes, since the gas pricing mechanism is less intuitive and code writers do not often keep it in mind. For example, storage variables in Solidity are expensive in terms of gas, while memory is not, so unnecessary storage operations should be avoided when possible, but programmers from other languages might not be aware of this. 
+
+First, I will give you a list of known gas-wasting patterns as an example. The list is numbered, with each bullet point specifying one gas-wasting pattern and an explanation of why this pattern wastes gas. Please be creative and see if my provided codes contain any gas-wasting patterns beyond the provided ones. The list is as follows:
+
+1. Repeated computation of the same expression: including repetitive reads of the same expensive storage variable (e.g. Overuse of expensive storage variables). This could be solved by introducing an intermediate variable to hold the value
+2. Variable refactoring: by refactoring variable types and thus adjusting memory layout, we could save gas by saving the amount of storage space needed
+3. Redundant operations with same effects: redundant operations that overwrite the effect of the previous operation, making the previous useless
+4. Pre-computable operations on constants: performing comparisons (or other operations) to constants is useless and could be pre-computed
+5. Simplifiable conditional operations: expressions that involve logical operations that could be simplified to reduce the amount of computational workload.
+6. "Loop fusion." If two loops have the same starting and stopping conditions with the same increment steps, then we could consider combining them into one, if they have no dependencies. 
+7. "Repeated computations in a loop." If there are expressions that produce the same outcome in each iteration of a loop, we could move it out of the loop and execute only once, which saves computation.
+8. "Opaque predicate." If the outcome of a predicate could be inferred to be true/false without execution, then we could just replace it with the corresponding value to save the compuation during runtime.
+
+For this analysis, assume that the EVM we are targeting includes the implementation of EIP-1153 and EIP-7609, which collectively introduced the TLOAD and TSTORE opcodes to manage transient storage in smart contracts. This type of storage is temporary, and is discarded at the end of each transaction, unlike the permanent storage accessed via SSTORE and SLOAD. The gas cost of TLOAD is 5 gas, and TSTORE is 8 gas plus expansion_cost. expansion_cost is 0 if the queried key is already in transient storage, and is computed as the number of keys already in transient storage otherwise (i.e., superlinear pricing).
+
+Next, I will provide a chunk of Solidity codes from which you will identify any gas-inefficient patterns, considering the transient storage feature::contract PancakeSwapHelper {
+
+    function tokenAmountsToLiquidity(
+        uint256[] memory tokenAmounts,
+        IPancakeV3Pool pool,
+        uint256 uniV3Nft
+    ) external view returns (uint128 liquidity) {
+        (, , , , , int24 tickLower, int24 tickUpper, , , , , ) = positionManager.positions(uniV3Nft);
+        (uint160 sqrtPriceX96, , , , , , ) = pool.slot0();
+        uint160 sqrtPriceAX96 = TickMath.getSqrtRatioAtTick(tickLower);
+        uint160 sqrtPriceBX96 = TickMath.getSqrtRatioAtTick(tickUpper);
+
+        liquidity = LiquidityAmounts.getLiquidityForAmounts(
+            sqrtPriceX96,
+            sqrtPriceAX96,
+            sqrtPriceBX96,
+            tokenAmounts[0],
+            tokenAmounts[1]
+        );
+    }
+    function tokenAmountsToMaximalLiquidity(
+        uint160 sqrtRatioX96,
+        int24 tickLower,
+        int24 tickUpper,
+        uint256 amount0,
+        uint256 amount1
+    ) external pure returns (uint128 liquidity) {
+        uint160 sqrtRatioAX96 = TickMath.getSqrtRatioAtTick(tickLower);
+        uint160 sqrtRatioBX96 = TickMath.getSqrtRatioAtTick(tickUpper);
+
+        if (sqrtRatioX96 <= sqrtRatioAX96) {
+            liquidity = LiquidityAmounts.getLiquidityForAmount0(sqrtRatioAX96, sqrtRatioBX96, amount0);
+        } else if (sqrtRatioX96 < sqrtRatioBX96) {
+            uint128 liquidity0 = LiquidityAmounts.getLiquidityForAmount0(sqrtRatioX96, sqrtRatioBX96, amount0);
+            uint128 liquidity1 = LiquidityAmounts.getLiquidityForAmount1(sqrtRatioAX96, sqrtRatioX96, amount1);
+
+            liquidity = liquidity0 > liquidity1 ? liquidity0 : liquidity1;
+        } else {
+            liquidity = LiquidityAmounts.getLiquidityForAmount1(sqrtRatioAX96, sqrtRatioBX96, amount1);
+        }
+    }
+
+    /// @dev returns with "Invalid Token ID" for non-existent nfts
+    function calculateTvlByMinMaxPrices(
+        uint256 uniV3Nft,
+        uint256 minPriceX96,
+        uint256 maxPriceX96
+    ) public view returns (uint256[] memory minTokenAmounts, uint256[] memory maxTokenAmounts) {
+        minTokenAmounts = new uint256[](2);
+        maxTokenAmounts = new uint256[](2);
+        (uint256 fees0, uint256 fees1) = PositionValue.fees(positionManager, uniV3Nft);
+
+        uint160 minSqrtPriceX96 = uint160(CommonLibrary.sqrtX96(minPriceX96));
+        uint160 maxSqrtPriceX96 = uint160(CommonLibrary.sqrtX96(maxPriceX96));
+        (uint256 amountMin0, uint256 amountMin1) = PositionValue.principal(positionManager, uniV3Nft, minSqrtPriceX96);
+        (uint256 amountMax0, uint256 amountMax1) = PositionValue.principal(positionManager, uniV3Nft, maxSqrtPriceX96);
+
+        if (amountMin0 > amountMax0) (amountMin0, amountMax0) = (amountMax0, amountMin0);
+        if (amountMin1 > amountMax1) (amountMin1, amountMax1) = (amountMax1, amountMin1);
+
+        minTokenAmounts[0] = amountMin0 + fees0;
+        maxTokenAmounts[0] = amountMax0 + fees0;
+        minTokenAmounts[1] = amountMin1 + fees1;
+        maxTokenAmounts[1] = amountMax1 + fees1;
+    }
+    function getPositionTokenAmountsByCapitalOfToken0(
+        uint256 lowerPriceSqrtX96,
+        uint256 upperPriceSqrtX96,
+        uint256 spotPriceForSqrtFormulasX96,
+        uint256 spotPriceX96,
+        uint256 capital
+    ) external pure returns (uint256 token0Amount, uint256 token1Amount) {
+        // sqrt(upperPrice) * (sqrt(price) - sqrt(lowerPrice))
+        uint256 lowerPriceTermX96 = FullMath.mulDiv(
+            upperPriceSqrtX96,
+            spotPriceForSqrtFormulasX96 - lowerPriceSqrtX96,
+            CommonLibrary.Q96
+        );
+        // sqrt(price) * (sqrt(upperPrice) - sqrt(price))
+        uint256 upperPriceTermX96 = FullMath.mulDiv(
+            spotPriceForSqrtFormulasX96,
+            upperPriceSqrtX96 - spotPriceForSqrtFormulasX96,
+            CommonLibrary.Q96
+        );
+
+        token1Amount = FullMath.mulDiv(
+            FullMath.mulDiv(capital, spotPriceX96, CommonLibrary.Q96),
+            lowerPriceTermX96,
+            lowerPriceTermX96 + upperPriceTermX96
+        );
+
+        token0Amount = capital - FullMath.mulDiv(token1Amount, CommonLibrary.Q96, spotPriceX96);
+    }
+    function calculateCakePriceX96InUnderlying(
+        IPancakeSwapVaultGovernance.StrategyParams memory params
+    ) public view returns (uint256 priceX96) {
+        IPancakeV3Pool poolForSwap = IPancakeV3Pool(params.poolForSwap);
+        (int24 averageTick, , bool withFail) = OracleLibrary.consult(params.poolForSwap, params.averageTickTimespan);
+        require(!withFail, ExceptionsLibrary.INVALID_STATE);
+        uint160 sqrtPriceX96 = TickMath.getSqrtRatioAtTick(averageTick);
+        priceX96 = FullMath.mulDiv(sqrtPriceX96, sqrtPriceX96, CommonLibrary.Q96);
+        if (poolForSwap.token0() == params.underlyingToken) {
+            priceX96 = FullMath.mulDiv(CommonLibrary.Q96, CommonLibrary.Q96, priceX96);
+        }
+    }
+
+Now I want you to help me find new gas-wasting patterns from the above codes and the list of example patterns, considering the introduction of transient storage. Please be creative and think outside the box beyond the patterns listed above. Please put the new gas-wasting patterns in bullet points, using Latex syntax. Also please answer the following questions for each of the found patterns:
+
+1. How did you find this pattern? Could you explain the reasoning process, step by step, behind the discovery?
+2. What should I do, step by step, to fix the found gas-wasting patterns? Could you explain the reasoning process, step by step, behind the reason why such a fix works?
+3. On a score of 0 to 5, please rate this new pattern in terms of how much it is sacrificing readability, security, and maintainability in exchange for gas optimization (5 is the least impacted. For example, "Readability: 5; Security: 4; Maintainability: 1" means no effect on security while maintainability is largely affected.)
+
+Here are some additional requirements:
+1. If you think my prompt to you has any issues (e.g. ambiguity or lack of information), please tell me how I should improve it the next time.
+2. Please reflect on your reasoning process and tell me how you could do better next time in terms of completing the given task. If you found any issues, please also make corresponding improvements to your output this time and tell me what you did and why such improvement is necessary, in a step-by-step manner.

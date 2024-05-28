@@ -1,46 +1,14 @@
 pragma solidity ^0.8.0;
 
-contract CreditDAO  {
-    struct Election {
-        address maxVotes;
-        uint nextCandidateIndex;
-        mapping(address => bool) candidates;
-        mapping(address => bool) userHasVoted;
-        mapping(uint => uint) candidateVotes;
-        
-        uint idProcessed;
-    }
+contract VoteForLaunch {
+    uint32 public MAX_VOTING_DAYS = 10 * 24 * 3600;
+    mapping(bytes32 => bool) public reservedTicks;     // check if tick is occupied
+    event NewApplication(bytes32 tick, address applicant, uint40 expireAt, bytes32 cid, uint128 deposit);
 
-    uint numMaxVotes;
-    uint public nextEId;
-    mapping(uint => Election) public elections;
+    function newVote(bytes32 _tick, uint40 _expireSeconds, bytes32 _cid) public {
+        require(_expireSeconds <= MAX_VOTING_DAYS, "more than max days to vote");
+        require(!reservedTicks[_tick], "reserved ticks can not apply");
 
-    constructor() public {
-        nextEId ++;
-    }
-
-    function submitForElection() public {
-        elections[nextEId - 1].nextCandidateIndex ++;
-        elections[nextEId - 1].candidates[msg.sender] = true;
-    }
-
-    function vote(uint candidateId) public {
-        elections[nextEId - 1].candidateVotes[candidateId] += 1;
-        elections[nextEId - 1].userHasVoted[msg.sender] = true;
-    }
-
-    function finishElections(uint _iterations) public {
-        uint currentVotes;
-        Election storage election = elections[nextEId - 1];
-        uint nextId = election.idProcessed;
-
-        for (uint cnt = 0; cnt < _iterations; cnt++) {
-            currentVotes = election.candidateVotes[nextId];
-            if (currentVotes > numMaxVotes) {
-                numMaxVotes = currentVotes;
-            }
-            nextId++;
-        }
-        election.idProcessed = nextId;
+        emit NewApplication(_tick, msg.sender, uint40(block.timestamp + _expireSeconds), _cid, 10);
     }
 }

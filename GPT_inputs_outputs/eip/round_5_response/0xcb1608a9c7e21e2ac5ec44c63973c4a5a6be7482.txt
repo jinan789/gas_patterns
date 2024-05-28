@@ -1,0 +1,35 @@
+### New Gas-Wasting Patterns Found
+
+#### Pattern: Inefficient Use of Storage for Dynamic Values
+
+1. **Discovery Process:**
+   - I observed that variables like `tokensForSwapping`, `tokensForMarketing`, `tokensForDev`, and `tokensForLiquidity` are frequently updated and their values used only during specific transactions (e.g., in `swapBack()`).
+   - Since these values change often and do not need to persist beyond a single transaction, using persistent storage results in unnecessary SSTORE operations, which are costly.
+   - The introduction of transient storage (EIP-1153 and EIP-7609) provides an opportunity to optimize by using TSTORE for temporary changes.
+
+2. **Fix Steps:**
+   - Refactor the contract to use transient storage for `tokensForSwapping`, `tokensForMarketing`, `tokensForDev`, and `tokensForLiquidity`.
+   - Change the storage declarations from `uint256 tokensForSwapping` to `uint256 transient tokensForSwapping`.
+   - Update all interactions with these variables to use `TSTORE` and `TLOAD` instead of `SSTORE` and `SLOAD`.
+   - This change reduces the cost because `TSTORE` and `TLOAD` are cheaper for variables that do not need to persist post-transaction.
+
+3. **Impact Rating:**
+   - Readability: 4; Security: 5; Maintainability: 4
+   - This approach slightly reduces readability because developers need to understand the use of transient storage, but it does not compromise security or significantly affect maintainability.
+
+### Reflection on the Task and Improvements
+
+- **Prompt Clarity:**
+  - The prompt could benefit from specifying the frequency and context in which certain variables are updated or accessed. This would help identify more specific optimization opportunities.
+  - Include more details about transient storage upfront to guide the analysis better, especially for those unfamiliar with recent EIPs.
+
+- **Improving Reasoning Process:**
+  - Initially, I focused on typical patterns without fully leveraging the unique aspects of transient storage introduced by EIP-1153 and EIP-7609.
+  - A deeper initial analysis of the specific functions and their operations could have led to quicker identification of optimization opportunities.
+  - By understanding the lifecycle and usage pattern of variables better, more targeted optimizations can be suggested.
+
+- **Implemented Improvement:**
+  - I expanded the analysis to consider the lifecycle of variables (`tokensForSwapping`, `tokensForMarketing`, etc.), which are reset and recalculated frequently. This led to the identification of using transient storage as an optimization.
+  - I explained the reasoning behind recommending transient storage, emphasizing its cost-effectiveness for temporary data, which aligns with the latest EIP functionalities.
+
+This approach ensures that the analysis is not only thorough but also practical, focusing on significant gas savings without compromising the contract's integrity or the clarity of the code.

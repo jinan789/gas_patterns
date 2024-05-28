@@ -1,0 +1,144 @@
+I want you to help me find new gas-wasting patterns for Vyper. Gas is a unique pricing mechanism in Vyper, which measures the amount of computational resources put into the execution of Vyper codes. Gas is paid in money, so saving gas is saving money. The goal of gas optimization is to find an equivalent code instruction sequence that produces the same output while consuming less gas. This may misalign from how people typically write codes, since the gas pricing mechanism is less intuitive and code writers do not often keep it in mind. For example, storage variables in Vyper are expensive in terms of gas, while memory is not, so unnecessary storage operations should be avoided when possible, but programmers from other languages might not be aware of this. 
+
+First, I will give you a list of known gas-wasting patterns as an example. The list is numbered, with each bullet point specifying one gas-wasting pattern and an explanation of why this pattern wastes gas. Please be creative and see if my provided codes contain any gas-wasting patterns beyond the provided ones. The list is as follows:
+
+1. Repeated computation of the same expression: including repetitive reads of the same expensive storage variable (e.g. Overuse of expensive storage variables). This could be solved by introducing an intermediate variable to hold the value
+2. Variable refactoring: by refactoring variable types and thus adjusting memory layout, we could save gas by saving the amount of storage space needed
+3. Redundant operations with same effects: redundant operations that overwrite the effect of the previous operation, making the previous useless
+4. Pre-computable operations on constants: performing comparisons (or other operations) to constants is useless and could be pre-computed
+5. Simplifiable conditional operations: expressions that involve logical operations that could be simplified to reduce the amount of computational workload.
+6. "Loop fusion." If two loops have the same starting and stopping conditions with the same increment steps, then we could consider combining them into one, if they have no dependencies. 
+7. "Repeated computations in a loop." If there are expressions that produce the same outcome in each iteration of a loop, we could move it out of the loop and execute only once, which saves computation.
+8. "Opaque predicate." If the outcome of a predicate could be inferred to be true/false without execution, then we could just replace it with the corresponding value to save the compuation during runtime.
+
+Next, I will give you a chunk of Vyper codes from which you will find gas-inefficient patterns:def start_rental(state: VaultState, renter: address, expiration: uint256, delegate: address, protocol_fee: uint256, protocol_wallet: address) -> Rental:
+    """
+    @notice Start a rental of an NFT from the vault.
+    @dev Handles the transfer of rental amount, updates the rental state, and sets up delegation. Any previous rentals' amounts are consolidated into unclaimed_rewards.
+    @param state The current state of the vault.
+    @param renter The address of the renter.
+    @param expiration The expiration timestamp of the rental.
+    @param delegate The address to delegate the NFT to.
+    @param protocol_fee The protocol fee in bps.
+    @param protocol_wallet The wallet to receive the protocol fee.
+    @return The details of the new rental.
+    """
+    assert self._is_initialised(), "not initialised"
+    assert msg.sender == self.caller, "not caller"
+    assert state.listing.price > 0, "listing does not exist"
+    assert state.active_rental.expiration < block.timestamp, "active rental ongoing"
+    assert self._is_within_duration_range(state.listing, block.timestamp, expiration), "duration not respected"
+    assert delegate != empty(address), "delegate is zero address"
+    assert self.state == self._state_hash(state), "invalid state"
+    rental_amount: uint256 = self._compute_rental_amount(block.timestamp, expiration, state.listing.price)
+    assert IERC20(payment_token_addr).allowance(renter, self) >= rental_amount, "insufficient allowance"
+    # transfer rental amount from renter to this contract
+    assert IERC20(payment_token_addr).transferFrom(renter, self, rental_amount), "transferFrom failed"
+    # create delegation
+    if IDelegationRegistry(delegation_registry_addr).getHotWallet(self) == delegate:
+        IDelegationRegistry(delegation_registry_addr).setExpirationTimestamp(expiration)
+    else:
+        IDelegationRegistry(delegation_registry_addr).setHotWallet(delegate, expiration, False)
+    # store unclaimed rewards
+    self._consolidate_claims(state)
+    # create rental
+    rental_id: bytes32 = self._compute_rental_id(renter, state.listing.token_id, block.timestamp, expiration)
+    new_rental: Rental = Rental({
+        id: rental_id,
+        owner: self.owner,
+        renter: renter,
+        delegate: delegate,
+        token_id: state.listing.token_id,
+        start: block.timestamp,
+        min_expiration: block.timestamp + state.listing.min_duration * 3600,
+        expiration: expiration,
+        amount: rental_amount,
+        protocol_fee: protocol_fee,
+        protocol_wallet: protocol_wallet
+    })
+    self.state = self._state_hash2(state.listing, new_rental)
+    return new_rental
+@external
+def close_rental(state: VaultState, sender: address) -> uint256:
+    """
+    @notice Close an active rental and handle any transfers of fees or refunds.
+    @dev Calculates pro-rata rental amounts and handles transfers of funds and revocation of delegation. The revised rental's amount are consolidated into unclaimed_rewards.
+    @param state The current state of the vault.
+    @param sender The address closing the rental, must be the renter.
+    @return The pro-rata rental amount.
+    """
+    assert self._is_initialised(), "not initialised"
+    assert msg.sender == self.caller, "not caller"
+    assert self.state == self._state_hash(state), "invalid state"
+    assert state.active_rental.expiration > block.timestamp, "active rental does not exist"
+    assert sender == state.active_rental.renter, "not renter of active rental"
+    # compute amount to send back to renter
+    real_expiration_adjusted: uint256 = block.timestamp
+    if block.timestamp < state.active_rental.min_expiration:
+        real_expiration_adjusted = state.active_rental.min_expiration
+    pro_rata_rental_amount: uint256 = self._compute_real_rental_amount(
+        state.active_rental.expiration - state.active_rental.start,
+        real_expiration_adjusted - state.active_rental.start,
+        state.active_rental.amount
+    )
+    payback_amount: uint256 = state.active_rental.amount - pro_rata_rental_amount
+    protocol_fee_amount: uint256 = pro_rata_rental_amount * state.active_rental.protocol_fee / 10000
+    # clear active rental
+    self.state = self._state_hash2(state.listing, empty(Rental))
+    # set unclaimed rewards
+    self.unclaimed_rewards += pro_rata_rental_amount - protocol_fee_amount
+    # clear unclaimed protocol fee
+    if self.unclaimed_protocol_fee > 0:
+        protocol_fee_amount += self.unclaimed_protocol_fee
+        self.unclaimed_protocol_fee = 0
+    # revoke delegation
+    IDelegationRegistry(delegation_registry_addr).setHotWallet(empty(address), 0, False)
+    # transfer unused payment to renter
+    assert IERC20(payment_token_addr).transfer(state.active_rental.renter, payback_amount), "transfer failed"
+    # transfer protocol fee to protocol wallet
+    if protocol_fee_amount > 0:
+        assert IERC20(payment_token_addr).transfer(state.active_rental.protocol_wallet, protocol_fee_amount), "transfer failed"
+    return pro_rata_rental_amount
+@external
+def withdraw(state: VaultState, sender: address) -> (uint256, uint256):
+    """
+    @notice Withdraw an NFT from the vault and claim any unclaimed rewards and protocol fees.
+    @dev Handles the transfer of the NFT back to the owner and clears the vault's state.
+    @param state The current state of the vault.
+    @param sender The address withdrawing the NFT, must be the owner.
+    @return A tuple with the amount of rewards and protocol fees claimed.
+    """
+    assert self._is_initialised(), "not initialised"
+    assert msg.sender == self.caller, "not caller"
+    assert sender == self.owner, "not owner of vault"
+    assert state.active_rental.expiration < block.timestamp, "active rental ongoing"
+    assert self.state == self._state_hash(state), "invalid state"
+    # consolidate last renting rewards if existing
+    rental: Rental = self._consolidate_claims(state)
+    rewards_to_claim: uint256 = self.unclaimed_rewards
+    protocol_fee_to_claim: uint256 = self.unclaimed_protocol_fee
+    owner: address = self.owner
+    # clear vault and set state to zero to uninitialize
+    self.unclaimed_rewards = 0
+    self.unclaimed_protocol_fee = 0
+    self.state = empty(bytes32)
+    self.owner = empty(address)
+    # transfer token to owner
+    IERC721(nft_contract_addr).safeTransferFrom(self, owner, state.listing.token_id, b"")
+    # transfer unclaimed rewards to owner
+    if rewards_to_claim > 0:
+        assert IERC20(payment_token_addr).transfer(owner, rewards_to_claim), "transfer failed"
+    # transfer protocol fee to protocol wallet
+    if protocol_fee_to_claim > 0:
+        assert IERC20(payment_token_addr).transfer(state.active_rental.protocol_wallet, protocol_fee_to_claim), "transfer failed"
+    return rewards_to_claim, protocol_fee_to_claim
+@external
+Now I want you to help me find new gas-wasting patterns from the above codes and the list of example patterns. Please be creative and think outside the box beyond the patterns listed above. Please put the new gas-wasting patterns in bullet points, using Latex syntax. Also please answer the following questions for each of the found patterns:
+
+1. How did you find this pattern? Could you explain the reasoning process, step by step, behind the discovery?
+2. What should I do, step by step, to fix the found gas-wasting patterns? Could you explain the reasoning process, step by step, behind the reason why such a fix works?
+3. On a score of 0 to 5, please rate this new pattern in terms of how much it is sacrificing readability, security, and maintainability in exchange for gas optimization (5 is the least impacted. For example, "Readability: 5; Security: 4; Maintainability: 1" means no effect on security while maintainability is largely affected.)
+
+Here are some additional requirements:
+1. If you think my prompt to you has any issues (e.g. ambiguity or lack of information), please tell me how I should improve it the next time.
+2. Please reflect on your reasoning process and tell me how you could do better next time in terms of completing the given task. If you found any issues, please also make corresponding improvements to your output this time and tell me what you did and why such improvement is necessary, in a step-by-step manner.

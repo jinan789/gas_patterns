@@ -1,0 +1,185 @@
+I want you to help me find new gas-wasting patterns for Solidity. Gas is a unique pricing mechanism in Solidity, which measures the amount of computational resources put into the execution of Solidity codes. The goal of gas optimization is to find an equivalent code instruction sequence that produces the same output while consuming less gas, which may misalign from the way people typically write codes, since code writers aim for readability and maintainability, while gas optimization might seem a little unintuitive to newcomers. For example, storage variables in Solidity are expensive in terms of gas, while memory is not, so storage operations should be avoided whenever possible. Gas is paid in real money, so saving gas is saving money.
+
+First, I will give you a list of known gas-wasting patterns. The list is numbered, with each bullet point specifying one gas-wasting pattern, which is followed by an explanation of why this pattern wastes gas. I want you to read through these and learn how to find new gas-wasting patterns from it. The list is as follows:
+
+1. "dead codes." codes that are guaranteed not to be executed (e.g. unreachable conditional branch) should be removed.
+2. "Opaque predicate." If the outcome of a predicate could be inferred to be true/false without execution, then we could just replace it with the corresponding value to save the compuation during runtime.
+3. "Expensive operations in a loop." If an gas-expensive operation is executed multiple times in a loop, while there is a way to equivalently move it out of the loop to execute only once (e.g. storing a storage variable in a memory variable and performing operations on the memory variable inside the loop), then we should do it to save gas.
+4. "Constant outcome of a loop." If the outcome of a loop could be inferred without execution, then we could just replace it with the corresponding value to save the compuation during runtime.
+5. "Loop fusion." If two loops have the same starting and stopping conditions with the same increment steps, then we could consider combining them into one (e.g. delete the second loop, and put its loop body codes into the first one) if they have no dependencies. This way, we save the logical comparisons, conditional jumps, as well as the incremental steps of the second loop, which saves computation and thus gas.
+6. "Repeated computations in a loop." If there are expressions that produce the same outcome in each iteration of a loop, we could move it out of the loop and execute only once, which saves computation.
+8. "Struct variable refactoring." If a struct used in a contract contains some fields that are used more often and some that are less often, then by breaking up the struct into two, where the frequently used fields are now put as a separate struct, we get to avoid unnecessary reads on the less often used fields and save gas.s
+
+Next, I will give you a chunk of Solidity codes from which you will find gas-inefficient patterns; note that I have removed simple functions from the contract and only kept complex ones, with the hope that you could focus on the most complicated function codes:contract HolographDropERC721 is NonReentrant, ERC721H, IHolographDropERC721 {
+  function init(bytes memory initPayload) external override returns (bytes4) {
+    require(!_isInitialized(), "HOLOGRAPH: already initialized");
+
+    DropsInitializer memory initializer = abi.decode(initPayload, (DropsInitializer));
+
+    erc721TransferHelper = initializer.erc721TransferHelper;
+    if (initializer.marketFilterAddress != address(0)) {
+      marketFilterAddress = initializer.marketFilterAddress;
+    }
+
+    // Setup the owner role
+    _setOwner(initializer.initialOwner);
+
+    // to enable sourceExternalCall to work on init, we set holographer here since it's only set after init
+    assembly {
+      sstore(_holographerSlot, caller())
+    }
+
+    // Setup config variables
+    config = Configuration({
+      metadataRenderer: IMetadataRenderer(initializer.metadataRenderer),
+      editionSize: initializer.editionSize,
+      royaltyBPS: initializer.royaltyBPS,
+      fundsRecipient: initializer.fundsRecipient
+    });
+
+    salesConfig = initializer.salesConfiguration;
+
+    // TODO: Need to make sure to initialize the metadata renderer
+    if (initializer.metadataRenderer != address(0)) {
+      IMetadataRenderer(initializer.metadataRenderer).initializeWithData(initializer.metadataRendererInit);
+    }
+
+    if (initializer.enableOpenSeaRoyaltyRegistry && Address.isContract(address(openseaOperatorFilterRegistry))) {
+      if (marketFilterAddress == address(0)) {
+        // this is a default filter that can be used for OS royalty filtering
+        // marketFilterAddress = 0x3cc6CddA760b79bAfa08dF41ECFA224f810dCeB6;
+        // we just register to OS royalties and let OS handle it for us with their default filter contract
+        HolographERC721Interface(holographer()).sourceExternalCall(
+          address(openseaOperatorFilterRegistry),
+          abi.encodeWithSelector(IOperatorFilterRegistry.register.selector, holographer())
+        );
+      } else {
+        // allow user to specify custom filtering contract address
+        HolographERC721Interface(holographer()).sourceExternalCall(
+          address(openseaOperatorFilterRegistry),
+          abi.encodeWithSelector(
+            IOperatorFilterRegistry.registerAndSubscribe.selector,
+            holographer(),
+            marketFilterAddress
+          )
+        );
+      }
+      assembly {
+        sstore(_osRegistryEnabledSlot, true)
+      }
+    }
+
+    setStatus(1);
+
+    return _init(initPayload);
+  }
+
+  /**
+   * PUBLIC NON STATE CHANGING FUNCTIONS
+   * static
+   */
+
+  /**
+   * @notice Returns the version of the contract
+   * @dev Used for contract versioning and validation
+   * @return version string representing the version of the contract
+   */
+  function beforeSafeTransfer(
+    address _from,
+    address /* _to*/,
+    uint256 /* _tokenId*/,
+    bytes calldata /* _data*/
+  ) external view returns (bool) {
+    if (
+      _from != address(0) && // skip on mints
+      _from != msgSender() // skip on transfers from sender
+    ) {
+      bool osRegistryEnabled;
+      assembly {
+        osRegistryEnabled := sload(_osRegistryEnabledSlot)
+      }
+      if (osRegistryEnabled) {
+        try openseaOperatorFilterRegistry.isOperatorAllowed(address(this), msgSender()) returns (bool allowed) {
+          return allowed;
+        } catch {
+          revert OperatorNotAllowed(msgSender());
+        }
+      }
+    }
+    return true;
+  }
+
+  function beforeTransfer(
+    address _from,
+    address /* _to*/,
+    uint256 /* _tokenId*/,
+    bytes calldata /* _data*/
+  ) external view returns (bool) {
+    if (
+      _from != address(0) && // skip on mints
+      _from != msgSender() // skip on transfers from sender
+    ) {
+      bool osRegistryEnabled;
+      assembly {
+        osRegistryEnabled := sload(_osRegistryEnabledSlot)
+      }
+      if (osRegistryEnabled) {
+        try openseaOperatorFilterRegistry.isOperatorAllowed(address(this), msgSender()) returns (bool allowed) {
+          return allowed;
+        } catch {
+          revert OperatorNotAllowed(msgSender());
+        }
+      }
+    }
+    return true;
+  }
+
+  function saleDetails() external view returns (SaleDetails memory) {
+    return
+      SaleDetails({
+        publicSaleActive: _publicSaleActive(),
+        presaleActive: _presaleActive(),
+        publicSalePrice: salesConfig.publicSalePrice,
+        publicSaleStart: salesConfig.publicSaleStart,
+        publicSaleEnd: salesConfig.publicSaleEnd,
+        presaleStart: salesConfig.presaleStart,
+        presaleEnd: salesConfig.presaleEnd,
+        presaleMerkleRoot: salesConfig.presaleMerkleRoot,
+        totalMinted: _currentTokenId,
+        maxSupply: config.editionSize,
+        maxSalePurchasePerAddress: salesConfig.maxSalePurchasePerAddress
+      });
+  }
+
+  /// @notice The Holograph fee is a flat fee for each mint in USD
+  /// @dev Gets the Holograph protocol fee for amount of mints in USD
+  function mintedPerAddress(address minter) external view returns (AddressMintDetails memory) {
+    return
+      AddressMintDetails({
+        presaleMints: presaleMintsByAddress[minter],
+        publicMints: totalMintsByAddress[minter] - presaleMintsByAddress[minter],
+        totalMints: totalMintsByAddress[minter]
+      });
+  }
+
+  /**
+   * @notice Contract URI Getter, proxies to metadataRenderer
+   * @return Contract URI
+   */
+  function tokenURI(uint256 tokenId) external view returns (string memory) {
+    HolographERC721Interface H721 = HolographERC721Interface(holographer());
+    require(H721.exists(tokenId), "ERC721: token does not exist");
+
+    return config.metadataRenderer.tokenURI(tokenId);
+  }
+Now that I have given you the necessary information, I want you to help me find new gas-wasting patterns from the above codes, based on what you learn from the list of patterns. Please be creative and think out of the box beyond the patterns listed above. Please put the new gas wasting patterns in bullet points (in the form of '1.', '2.', etc), and answer the following questions for each of the found patterns (in sub-bullet-points under each bullet point):
+
+1. How did you find this pattern? Could you explain the reasoning process, step by step, behind the discovery?
+
+2. What should I do, step by step, to fix the found gas-wasting patterns? Could you explain the reasoning process, step by step, behind the reason why such a fix works?
+
+3. On a score of 0 to 5, could you please tell me how would you rate this found new pattern, in terms of how much it is sacrificing readability, security, and maintainability in exchange for gas optimization (5 is the least impacted. For example, Security score of 5 means implementing the found gas-optimization pattern would have no effect on security, whereas 1 means it would reduce security)? Please format your answer as in "Readability: 5; Security: 4; Maintainability: 3". Please also provide explanations.
+
+Here are some additional requirements:
+1. If you think my prompt to you has any issues (e.g. ambiguity or lack of information), please tell me how I should improve it in the next time.
+2. please help me format your answer in the form of a Latex section (e.g. \section*{Analysis of Provided Solidity Code}), since I want to assert it to a Latex document.

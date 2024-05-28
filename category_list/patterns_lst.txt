@@ -48,6 +48,4 @@
 
 25. Avoid expensive operations inside loops
 
-26. Struct refactoring by usage frequency
-
-27. Using bytes32 for string representation
+26. Using bytes32 for string representation

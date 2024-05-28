@@ -1,0 +1,58 @@
+### New Gas-Wasting Patterns Identified in the Solidity Code
+
+#### Pattern 1: Inefficient Use of Storage for Frequently Updated Values
+
+**Description**: 
+The Solidity code updates values such as `reward.accTokenPerShare` and `reward.distributedAmount` frequently within loops. These are costly operations due to the high gas cost associated with SSTORE when updating storage variables.
+
+**Discovery**:
+1. Analyzed loops within functions like `_updateReward` where storage variables are updated during each iteration.
+2. Recognized that each update to a storage variable incurs a significant gas cost.
+
+**Solution**:
+1. Use transient storage (if values do not need to persist beyond a transaction) to temporarily hold these values.
+2. At the end of the function or before any external calls or state transitions, update the actual storage variable in a single operation.
+
+**Reasoning**:
+- Transient storage operations (`TLOAD` and `TSTORE`) are cheaper than permanent storage operations (`SLOAD` and `SSTORE`).
+- Reducing the frequency of storage writes minimizes gas costs.
+
+**Impact Rating**: 
+- Readability: 3 (introduces a new concept of transient storage that developers need to understand)
+- Security: 4 (proper handling and final write-back to storage is crucial to avoid state inconsistencies)
+- Maintainability: 3 (additional complexity in managing temporary vs. permanent state)
+
+#### Pattern 2: Re-computation of Values that Could Be Cached
+
+**Description**: 
+The calculation of `timeElapsed` and `tokenReward` is repeated across multiple functions (`_updateReward` and `_pendingTokens`) and can be cached if called within the same transaction context to save gas.
+
+**Discovery**:
+1. Noticed the repeated calculation of `timeElapsed` and `tokenReward` in separate functions.
+2. Realized that caching these values when they are first calculated and reusing them could save computational resources.
+
+**Solution**:
+1. Compute `timeElapsed` and `tokenReward` once at the beginning of the transaction or before the first function that requires them is called.
+2. Store these values in transient storage and read from there in subsequent function calls within the same transaction.
+
+**Reasoning**:
+- Avoids redundant computation by reusing already computed values.
+- Utilizes transient storage for temporary data, reducing the need for repeated computation.
+
+**Impact Rating**: 
+- Readability: 4 (the concept of caching is generally understood and accepted)
+- Security: 5 (no change to security posture)
+- Maintainability: 4 (simplifies the code by removing redundant calculations)
+
+### Additional Requirements and Reflections
+
+**Improvements for User's Prompt**:
+- Specify potential areas or functionalities within the code that might be particularly prone to inefficiencies. This would help focus the analysis on the most relevant parts.
+- Include more context or specifications about the deployment environment or specific constraints (like gas price sensitivity or transaction frequency).
+
+**Reflection on Reasoning Process**:
+- Initially, I focused on identifying patterns explicitly listed in the prompt. However, I realized that a deeper understanding of EVM and Solidity's specific features, like transient storage, could reveal deeper optimizations.
+- For next time, I would immediately consider the unique features of the environment (like EIP implementations) and how they can be leveraged, rather than starting with a direct analysis based on general programming principles.
+
+**Improvement Implemented**:
+- I expanded the analysis to include considerations of transient storage, which was mentioned in the prompt but not initially leveraged in my analysis. This led to more specific and actionable insights.

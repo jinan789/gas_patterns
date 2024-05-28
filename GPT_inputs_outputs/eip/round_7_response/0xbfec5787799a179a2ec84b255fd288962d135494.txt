@@ -1,0 +1,40 @@
+### New Gas-Wasting Patterns Identification
+
+#### Pattern: Excessive Use of Transient Storage for Readily Accessible Data
+
+**How did you find this pattern?**
+1. **Understanding Solidity and EVM**: Knowing that transient storage is a new feature introduced to handle temporary data storage during transactions, which costs less than permanent storage but more than local memory.
+2. **Code Analysis**: By examining the provided Solidity code, I noticed that data like `dex` retrieved from `dexInfo` is used multiple times but not stored in transient storage. This might lead to repeated and unnecessary SLOAD operations which are more expensive than TLOAD.
+3. **Optimization Consideration**: By storing frequently accessed data in transient storage, especially when it's accessed multiple times within the same transaction, the gas cost could be reduced significantly.
+
+**What should I do to fix this?**
+1. **Identify frequently accessed data**: In the provided code, `dex` is accessed multiple times. This data could benefit from being stored in transient storage.
+2. **Implement transient storage**: Modify the code to store `dex` in transient storage after the first retrieval.
+   ```solidity
+   Dex memory dex = dexInfo[uint128(dexId)];
+   tstore(uint128(dexId), dex);
+   // Later accesses use:
+   Dex memory dex = tload(uint128(dexId));
+   ```
+3. **Verify and Test**: Ensure that the changes do not affect the functionality of the contract. Testing should include scenarios with varying transaction sizes to measure the actual gas savings.
+
+**Impact Rating:**
+- Readability: 4 (slightly reduced due to additional transient storage handling)
+- Security: 5 (no impact on security)
+- Maintainability: 4 (slightly more complex due to the management of an additional storage type)
+
+#### Reflections and Improvements
+
+**Issues in the Prompt:**
+- **Complexity and Broad Scope**: The prompt is quite broad and complex, mixing multiple concepts (Solidity, gas optimization, new EVM features). It could be simplified by focusing on specific sections or functionalities.
+- **Lack of Specific Examples for Transient Storage**: Including examples or scenarios where transient storage is effectively used would help in better understanding and applying it in code optimization.
+
+**Improvements for Next Time:**
+1. **Narrow Down the Focus**: Concentrate on specific parts or functionalities of the code to optimize, rather than the entire contract. This would make the analysis more manageable and focused.
+2. **Provide Clear Examples**: When introducing new concepts like transient storage, providing concrete code examples would aid in understanding how to effectively apply these features.
+3. **Iterative Approach**: Start with identifying the most costly operations based on their gas costs and then gradually move to less significant ones. This prioritizes efforts towards the most impactful optimizations first.
+
+**What I Did and Why:**
+- I chose to focus on the use of transient storage because it is a new feature and not typically well-understood or utilized, representing a good opportunity for optimization.
+- I simplified the optimization process into clear steps to aid in implementation and ensure that the changes are practical and effective.
+- I provided an impact rating to help evaluate the trade-offs involved in implementing the suggested changes, ensuring that the decision is well-informed.

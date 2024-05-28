@@ -1,0 +1,156 @@
+I want you to help me find new gas-wasting patterns for Vyper. Gas is a unique pricing mechanism in Vyper, which measures the amount of computational resources put into the execution of Vyper codes. Gas is paid in money, so saving gas is saving money. The goal of gas optimization is to find an equivalent code instruction sequence that produces the same output while consuming less gas. This may misalign from how people typically write codes, since the gas pricing mechanism is less intuitive and code writers do not often keep it in mind. For example, storage variables in Vyper are expensive in terms of gas, while memory is not, so unnecessary storage operations should be avoided when possible, but programmers from other languages might not be aware of this. 
+
+First, I will give you a list of known gas-wasting patterns as an example. The list is numbered, with each bullet point specifying one gas-wasting pattern and an explanation of why this pattern wastes gas. Please be creative and see if my provided codes contain any gas-wasting patterns beyond the provided ones. The list is as follows:
+
+1. Repeated computation of the same expression: including repetitive reads of the same expensive storage variable (e.g. Overuse of expensive storage variables). This could be solved by introducing an intermediate variable to hold the value
+2. Variable refactoring: by refactoring variable types and thus adjusting memory layout, we could save gas by saving the amount of storage space needed
+3. Redundant operations with same effects: redundant operations that overwrite the effect of the previous operation, making the previous useless
+4. Pre-computable operations on constants: performing comparisons (or other operations) to constants is useless and could be pre-computed
+5. Simplifiable conditional operations: expressions that involve logical operations that could be simplified to reduce the amount of computational workload.
+6. "Loop fusion." If two loops have the same starting and stopping conditions with the same increment steps, then we could consider combining them into one, if they have no dependencies. 
+7. "Repeated computations in a loop." If there are expressions that produce the same outcome in each iteration of a loop, we could move it out of the loop and execute only once, which saves computation.
+8. "Opaque predicate." If the outcome of a predicate could be inferred to be true/false without execution, then we could just replace it with the corresponding value to save the compuation during runtime.
+
+Next, I will give you a chunk of Vyper codes from which you will find gas-inefficient patterns:def execute(_script: Bytes[2048]):
+    """
+    @notice Execute a single script consisting of one or more calls
+    @param _script Script to execute
+    """
+    assert self.governors[msg.sender]
+    i: uint256 = 0
+    for x in range(32):
+        if i == len(_script):
+            break
+        assert i + 32 <= len(_script)
+        # extract target and calldata size
+        target: uint256 = extract32(_script, i, output_type=uint256) # calldata size (64) | address (160) | identifier (32)
+        size: uint256 = shift(target, -192)
+        target &= TARGET_MASK
+        i += 28 # calldata size (8 bytes) + address (20 bytes)
+        assert i + size <= len(_script)
+        assert size >= 4 and size <= 2048
+        # check access control
+        access: Access = self.access[target]
+        if access == Access.BLACKLIST:
+            assert not self.blacklisted[target][msg.sender]
+        elif access == Access.WHITELIST:
+            assert self.whitelisted[target][msg.sender]
+        contract: address = empty(address)
+        identifier: bytes4 = empty(bytes4)
+        contract, identifier = self._unpack_target(target)
+        calldata: Bytes[2048] = slice(_script, i, size)
+        i += size
+        assert i <= len(_script)
+        proxy.execute(contract, calldata)
+        log Execute(msg.sender, contract, calldata)
+    assert i == len(_script)
+@external
+@pure
+def execute_single(_to: address, _data: Bytes[2048]):
+    """
+    @notice Execute a single call
+    @param _to The contract to call
+    @param _data Calldata
+    """
+    assert self.governors[msg.sender]
+    assert len(_data) >= 4
+    identifier: bytes4 = convert(slice(_data, 0, 4), bytes4)
+    target: uint256 = self._pack_target(_to, identifier)
+    # check access control
+    access: Access = self.access[target]
+    if access == Access.BLACKLIST:
+        assert not self.blacklisted[target][msg.sender]
+    elif access == Access.WHITELIST:
+        assert self.whitelisted[target][msg.sender]
+    proxy.execute(_to, _data)
+    log Execute(msg.sender, _to, _data)
+@external
+def whitelist(_contract: address, _identifier: bytes4, _caller: address, _whitelisted: bool):
+    """
+    @notice Whitelist a governor for a contract+identifier combination
+    @param _contract Contract address
+    @param _identifier Function identifier
+    @param _caller Governor to apply the whitelist to
+    @param _whitelisted True: add to whitelist, False: remove from whitelist
+    """
+    assert msg.sender == self.management
+    assert _contract != empty(address)
+    target: uint256 = self._pack_target(_contract, _identifier)
+    self.whitelisted[target][_caller] = _whitelisted
+    log Whitelist(_contract, _identifier, _caller, _whitelisted)
+@external
+@view
+def blacklist(_contract: address, _identifier: bytes4, _caller: address, _blacklisted: bool):
+    """
+    @notice Blacklist a governor for a contract+identifier combination
+    @param _contract Contract address
+    @param _identifier Function identifier
+    @param _caller Governor to apply the blacklist to
+    @param _blacklisted True: add to blacklist, False: remove from blacklist
+    """
+    assert msg.sender == self.management
+    assert _contract != empty(address)
+    target: uint256 = self._pack_target(_contract, _identifier)
+    self.blacklisted[target][_caller] = _blacklisted
+    log Blacklist(_contract, _identifier, _caller, _blacklisted)
+@external
+@view
+def set_access(_contract: address, _identifier: bytes4, _access: Access):
+    """
+    @notice Set access control for a contract+identifier combination
+    @param _contract Contract address
+    @param _identifier Function identifier
+    @param _access Whether to enable whitelist or blacklist. Zero to disable access control
+    """
+    assert msg.sender == self.management
+    assert _contract != empty(address)
+    assert convert(_access, uint256) < 3
+    target: uint256 = self._pack_target(_contract, _identifier)
+    self.access[target] = _access
+    log SetAccess(msg.sender, _contract, _identifier, _access)
+@external
+def is_whitelisted(_contract: address, _identifier: bytes4, _caller: address) -> bool:
+    """
+    @notice Query if a governor is whitelisted to call a contract+identifier combination
+    @param _contract Contract address
+    @param _identifier Function identifier
+    @param _caller Governor
+    @return True: on whitelist, False: not on whitelist
+    """
+    target: uint256 = self._pack_target(_contract, _identifier)
+    return self.whitelisted[target][_caller]
+@external
+@view
+def is_blacklisted(_contract: address, _identifier: bytes4, _caller: address) -> bool:
+    """
+    @notice Query if a governor is blacklisted to call a contract+identifier combination
+    @param _contract Contract address
+    @param _identifier Function identifier
+    @param _caller Governor
+    @return True: on blacklist, False: not on blacklist
+    """
+    target: uint256 = self._pack_target(_contract, _identifier)
+    return self.blacklisted[target][_caller]
+@external
+@view
+def script(_to: address, _data: Bytes[2048]) -> Bytes[2080]:
+    """
+    @notice
+        Generate script for a single call.
+        Calls can be chained by concatenating their scripts
+    @param _to The contract to call
+    @param _data Calldata
+    """
+    assert len(_data) >= 4
+    prefix: uint256 = shift(len(_data), 160) | convert(_to, uint256)
+    return concat(convert(convert(prefix, uint224), bytes28), _data)
+@external
+Now I want you to help me find new gas-wasting patterns from the above codes and the list of example patterns. Please be creative and think outside the box beyond the patterns listed above. Please put the new gas-wasting patterns in bullet points, using Latex syntax. Also please answer the following questions for each of the found patterns:
+
+1. How did you find this pattern? Could you explain the reasoning process, step by step, behind the discovery?
+2. What should I do, step by step, to fix the found gas-wasting patterns? Could you explain the reasoning process, step by step, behind the reason why such a fix works?
+3. On a score of 0 to 5, please rate this new pattern in terms of how much it is sacrificing readability, security, and maintainability in exchange for gas optimization (5 is the least impacted. For example, "Readability: 5; Security: 4; Maintainability: 1" means no effect on security while maintainability is largely affected.)
+
+Here are some additional requirements:
+1. If you think my prompt to you has any issues (e.g. ambiguity or lack of information), please tell me how I should improve it the next time.
+2. Please reflect on your reasoning process and tell me how you could do better next time in terms of completing the given task. If you found any issues, please also make corresponding improvements to your output this time and tell me what you did and why such improvement is necessary, in a step-by-step manner.

@@ -1,0 +1,191 @@
+I want you to help me find new gas-wasting patterns for Solidity. Gas is a unique pricing mechanism in Solidity, which measures the amount of computational resources put into the execution of Solidity codes. The goal of gas optimization is to find an equivalent code instruction sequence that produces the same output while consuming less gas, which may misalign from the way people typically write codes, since code writers aim for readability and maintainability, while gas optimization might seem a little unintuitive to newcomers. For example, storage variables in Solidity are expensive in terms of gas, while memory is not, so storage operations should be avoided whenever possible. Gas is paid in real money, so saving gas is saving money.
+
+First, I will give you a list of known gas-wasting patterns. The list is numbered, with each bullet point specifying one gas-wasting pattern, which is followed by an explanation of why this pattern wastes gas. I want you to read through these and learn how to find new gas-wasting patterns from it. The list is as follows:
+
+1. "dead codes." codes that are guaranteed not to be executed (e.g. unreachable conditional branch) should be removed.
+2. "Opaque predicate." If the outcome of a predicate could be inferred to be true/false without execution, then we could just replace it with the corresponding value to save the compuation during runtime.
+3. "Expensive operations in a loop." If an gas-expensive operation is executed multiple times in a loop, while there is a way to equivalently move it out of the loop to execute only once (e.g. storing a storage variable in a memory variable and performing operations on the memory variable inside the loop), then we should do it to save gas.
+4. "Constant outcome of a loop." If the outcome of a loop could be inferred without execution, then we could just replace it with the corresponding value to save the compuation during runtime.
+5. "Loop fusion." If two loops have the same starting and stopping conditions with the same increment steps, then we could consider combining them into one (e.g. delete the second loop, and put its loop body codes into the first one) if they have no dependencies. This way, we save the logical comparisons, conditional jumps, as well as the incremental steps of the second loop, which saves computation and thus gas.
+6. "Repeated computations in a loop." If there are expressions that produce the same outcome in each iteration of a loop, we could move it out of the loop and execute only once, which saves computation.
+8. "Struct variable refactoring." If a struct used in a contract contains some fields that are used more often and some that are less often, then by breaking up the struct into two, where the frequently used fields are now put as a separate struct, we get to avoid unnecessary reads on the less often used fields and save gas.s
+
+Next, I will give you a chunk of Solidity codes from which you will find gas-inefficient patterns; note that I have removed simple functions from the contract and only kept complex ones, with the hope that you could focus on the most complicated function codes:contract InitialFairOffering {
+
+    function _initializePool(
+        address _weth,
+        address _token
+    )
+        private
+        returns (
+            address _token0,
+            address _token1,
+            uint _uintRate,
+            uint160 _sqrtPriceX96,
+            address _pool
+        )
+    {
+        _token0 = _token;
+        _token1 = _weth;
+
+        _uintRate = PriceFormat.getInitialRate(
+            token.crowdFundingRate,
+            token.liquidityEtherPercent,
+            token.liquidityTokenPercent,
+            token.limitPerMint
+        ); // weth quantity per token
+        require(_uintRate > 0, "uint rate zero");
+
+        if (_token < _weth) {
+            _sqrtPriceX96 = PriceFormat.priceToSqrtPriceX96(
+                int(_uintRate),
+                TICK_SPACING
+            );
+        } else {
+            _token0 = _weth;
+            _token1 = _token;
+            _uintRate = 10 ** 36 / _uintRate; // token quantity per weth
+            _sqrtPriceX96 = PriceFormat.priceToSqrtPriceX96(
+                int(_uintRate),
+                TICK_SPACING
+            );
+        }
+        _pool = nonfungiblePositionManager.createAndInitializePoolIfNecessary(
+            _token0,
+            _token1,
+            UNISWAP_FEE,
+            _sqrtPriceX96
+        );
+        poolData = Pool(_pool, _token0, _token1, _uintRate, _sqrtPriceX96);
+    }
+
+    function addLiquidity(uint16 slippage) public {
+        require(slippage >= 0 && slippage <= 10000, "slippage error");
+        require(
+            IInscription(token.addr).totalRollups() >= token.maxRollups,
+            "mint not finished"
+        );
+        require(
+            uniswapV3Factory.getPool(address(weth), token.addr, UNISWAP_FEE) >
+                address(0x0),
+            "Pool not exist, create pool in uniswapV3 manually"
+        );
+        require(token.liquidityEtherPercent > 0, "no liquidity add");
+        uint256 totalTokenLiquidity = IInscription(token.addr).balanceOf(
+            address(this)
+        );
+        require(totalTokenLiquidity > 0, "no token in fto contract");
+        uint256 balanceOfWeth = IWETH(weth).balanceOf(address(this));
+        require(balanceOfWeth > 0, "no eth in fto contract");
+
+        // Send ether back to deployer, the eth liquidity is based on the balance of this contract. So, anyone can send eth to this contract
+        uint256 backToDeployAmount = (balanceOfWeth *
+            (10000 - token.liquidityEtherPercent)) / 10000;
+        uint256 maxBackToDeployAmount = (token.maxRollups *
+            (10000 - inscriptionFactory.fundingCommission()) *
+            token.crowdFundingRate *
+            (10000 - token.liquidityEtherPercent)) / 100000000;
+
+        uint256 sum = totalBackToDeployAmount + backToDeployAmount;
+
+        if (sum <= maxBackToDeployAmount) {
+            weth.withdraw(backToDeployAmount); // Change WETH to ETH
+            TransferHelper.safeTransferETH(token.deployer, backToDeployAmount);
+            totalBackToDeployAmount += backToDeployAmount;
+        } else {
+            backToDeployAmount = 0;
+        }
+
+        liquidityAdded = true; // allow the transferring of token
+
+        _mintNewPosition(
+            balanceOfWeth - backToDeployAmount,
+            totalTokenLiquidity, // ferc20 token amount
+            MIN_TICK,
+            MAX_TICK,
+            slippage
+        );
+    }
+
+    function refund() public {
+        require(mintData[msg.sender].ethAmount > 0, "you have not mint");
+        require(
+            IInscription(token.addr).totalRollups() < token.maxRollups,
+            "mint has finished"
+        );
+
+        if (
+            token.isVesting &&
+            token.customizedVestingContractAddress != address(0x0)
+        ) {
+            // standard fto mode
+            ICustomizedVesting(token.customizedVestingContractAddress)
+                .removeAllocation(msg.sender, mintData[msg.sender].tokenAmount);
+        } else {
+            // not fto mode
+            // check balance and allowance of tokens, if the balance or allowance is smaller than the what he/she get while do mint, the refund fail
+            require(
+                IInscription(token.addr).balanceOf(msg.sender) >=
+                    mintData[msg.sender].tokenAmount,
+                "Your balance token not enough"
+            );
+            require(
+                IInscription(token.addr).allowance(msg.sender, address(this)) >=
+                    mintData[msg.sender].tokenAmount,
+                "Your allowance not enough"
+            );
+
+            // Burn the tokens from msg.sender
+            IInscription(token.addr).burnFrom(
+                msg.sender,
+                mintData[msg.sender].tokenAmount
+            );
+        }
+
+        // Burn the token liquidity in this contract
+        uint128 refundToken = (mintData[msg.sender].tokenLiquidity *
+            token.refundFee) / 10000;
+        IInscription(token.addr).burn(
+            address(this),
+            mintData[msg.sender].tokenLiquidity - refundToken
+        );
+
+        // Refund Ether
+        uint128 refundEth = (mintData[msg.sender].ethAmount * token.refundFee) /
+            10000;
+        weth.withdraw(mintData[msg.sender].ethAmount - refundEth); // Change WETH to ETH
+        TransferHelper.safeTransferETH(
+            msg.sender,
+            mintData[msg.sender].ethAmount - refundEth
+        ); // Send balance to donator
+
+        totalRefundedAmount =
+            totalRefundedAmount +
+            mintData[msg.sender].tokenAmount +
+            mintData[msg.sender].tokenLiquidity -
+            refundToken;
+
+        emit Refund(
+            msg.sender,
+            mintData[msg.sender].ethAmount - refundEth,
+            mintData[msg.sender].tokenAmount,
+            mintData[msg.sender].tokenLiquidity - refundToken,
+            token.refundFee
+        );
+
+        mintData[msg.sender].tokenAmount = 0;
+        mintData[msg.sender].tokenLiquidity = 0;
+        mintData[msg.sender].ethAmount = 0;
+    }
+
+Now that I have given you the necessary information, I want you to help me find new gas-wasting patterns from the above codes, based on what you learn from the list of patterns. Please be creative and think out of the box beyond the patterns listed above. Please put the new gas wasting patterns in bullet points (in the form of '1.', '2.', etc), and answer the following questions for each of the found patterns (in sub-bullet-points under each bullet point):
+
+1. How did you find this pattern? Could you explain the reasoning process, step by step, behind the discovery?
+
+2. What should I do, step by step, to fix the found gas-wasting patterns? Could you explain the reasoning process, step by step, behind the reason why such a fix works?
+
+3. On a score of 0 to 5, could you please tell me how would you rate this found new pattern, in terms of how much it is sacrificing readability, security, and maintainability in exchange for gas optimization (5 is the least impacted. For example, Security score of 5 means implementing the found gas-optimization pattern would have no effect on security, whereas 1 means it would reduce security)? Please format your answer as in "Readability: 5; Security: 4; Maintainability: 3". Please also provide explanations.
+
+Here are some additional requirements:
+1. If you think my prompt to you has any issues (e.g. ambiguity or lack of information), please tell me how I should improve it in the next time.
+2. please help me format your answer in the form of a Latex section (e.g. \section*{Analysis of Provided Solidity Code}), since I want to assert it to a Latex document.

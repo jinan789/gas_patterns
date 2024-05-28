@@ -1,0 +1,46 @@
+### New Gas-Wasting Patterns Identified
+
+#### Pattern: Unoptimized Storage of Repeated Data
+
+1. **Discovery Process**:
+   - Reviewing the code, I noticed that in functions such as `buyTokensNative()`, `buyTokensUSDT()`, and `buyTokensUSD()`, there are multiple instances where `msg.sender` and other variables are repeatedly written to storage (`buyers[msg.sender].tokens_purchased` and `buyers[msg.sender].buyer_address`, etc.).
+   - Storage operations are costly in terms of gas, especially when performed repeatedly for the same data. Given that `msg.sender` doesn't change during the execution of the function, it's inefficient to repeatedly write this and similar data.
+
+2. **Optimization Steps**:
+   - **Step 1**: Store `msg.sender` in a local variable at the start of the function, and use this local variable throughout the function.
+   - **Step 2**: For values that are updated multiple times but only need to be stored once (e.g., `tokens_purchased`), compute the values fully before storing them in state variables.
+   - **Step 3**: Use transient storage for temporary data that doesn't need to be retained beyond the transaction, leveraging the lower gas costs of `TLOAD` and `TSTORE`.
+
+3. **Impact Rating**:
+   - **Readability**: 4; Minor impact as additional local variables may be introduced, but overall structure remains clear.
+   - **Security**: 5; No impact on security as the modifications do not affect the logic or the conditions checked.
+   - **Maintainability**: 4; Slightly more complex due to additional local variables, but significantly improves gas efficiency.
+
+#### Pattern: Inefficient Token Conversion Calculations
+
+1. **Discovery Process**:
+   - In functions like `get_amount_of_tokens_native()`, repeated multiplication and division by constants (like `10 ** 18`) are performed.
+   - Constant expressions, especially involving powers of ten, can be computed once and reused, instead of recalculating them multiple times.
+
+2. **Optimization Steps**:
+   - **Step 1**: Pre-compute `10 ** 18` and other frequently used constants at the contract level as a constant variable.
+   - **Step 2**: Replace all instances of these calculations in the functions with the pre-computed constant.
+
+3. **Impact Rating**:
+   - **Readability**: 5; Improves readability by removing magic numbers and replacing them with descriptive constant names.
+   - **Security**: 5; No impact on security as the mathematical operations remain the same.
+   - **Maintainability**: 5; Enhances maintainability by centralizing the value of constants, making them easier to update and manage.
+
+### Additional Requirements and Reflections
+
+1. **Improvements to Prompt**:
+   - The prompt could specify more clearly the types of transactions and operations that are most frequent in the contract, as this can influence which optimizations are most beneficial.
+   - Including specific gas costs for operations like SLOAD, SSTORE in the context of the current EVM optimizations (post EIP-1153 and EIP-7609) could help in quantifying the potential savings.
+
+2. **Reflection on Reasoning Process**:
+   - Initially, I focused mainly on direct code inefficiencies. A broader view considering the EVM environment and recent changes could yield more nuanced insights.
+   - For future analyses, integrating a more detailed profiling phase could help identify the most impactful optimizations based on actual usage and transaction patterns.
+
+3. **Improvements to Output**:
+   - I included a more detailed step-by-step optimization process to clarify the implementation of suggested changes.
+   - I aimed to quantify the impact of each change on readability, security, and maintainability, providing a more holistic view of the trade-offs involved.

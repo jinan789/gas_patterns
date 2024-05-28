@@ -1,0 +1,158 @@
+I want you to help me find new gas-wasting patterns for Vyper. Gas is a unique pricing mechanism in Vyper, which measures the amount of computational resources put into the execution of Vyper codes. Gas is paid in money, so saving gas is saving money. The goal of gas optimization is to find an equivalent code instruction sequence that produces the same output while consuming less gas. This may misalign from how people typically write codes, since the gas pricing mechanism is less intuitive and code writers do not often keep it in mind. For example, storage variables in Vyper are expensive in terms of gas, while memory is not, so unnecessary storage operations should be avoided when possible, but programmers from other languages might not be aware of this. 
+
+First, I will give you a list of known gas-wasting patterns as an example. The list is numbered, with each bullet point specifying one gas-wasting pattern and an explanation of why this pattern wastes gas. Please be creative and see if my provided codes contain any gas-wasting patterns beyond the provided ones. The list is as follows:
+
+1. Repeated computation of the same expression: including repetitive reads of the same expensive storage variable (e.g. Overuse of expensive storage variables). This could be solved by introducing an intermediate variable to hold the value
+2. Variable refactoring: by refactoring variable types and thus adjusting memory layout, we could save gas by saving the amount of storage space needed
+3. Redundant operations with same effects: redundant operations that overwrite the effect of the previous operation, making the previous useless
+4. Pre-computable operations on constants: performing comparisons (or other operations) to constants is useless and could be pre-computed
+5. Simplifiable conditional operations: expressions that involve logical operations that could be simplified to reduce the amount of computational workload.
+6. "Loop fusion." If two loops have the same starting and stopping conditions with the same increment steps, then we could consider combining them into one, if they have no dependencies. 
+7. "Repeated computations in a loop." If there are expressions that produce the same outcome in each iteration of a loop, we could move it out of the loop and execute only once, which saves computation.
+8. "Opaque predicate." If the outcome of a predicate could be inferred to be true/false without execution, then we could just replace it with the corresponding value to save the compuation during runtime.
+
+Next, I will give you a chunk of Vyper codes from which you will find gas-inefficient patterns:def deploy_new_vault(
+    asset: ERC20, 
+    name: String[64], 
+    symbol: String[32], 
+    role_manager: address, 
+    profit_max_unlock_time: uint256
+) -> address:
+    """
+    @notice Deploys a new vault base on the bLueprint.
+    @param asset The asset to be used for the vault.
+    @param name The name of the new vault.
+    @param symbol The symbol of the new vault.
+    @param role_manager The address of the role manager.
+    @param profit_max_unlock_time The time over which the profits will unlock.
+    @return The address of the new vault.
+    """
+    # Make sure the factory is not shutdown.
+    assert not self.shutdown, "shutdown"
+    # Deploy the new vault using the blueprint.
+    vault_address: address = create_from_blueprint(
+            VAULT_BLUEPRINT, 
+            asset, 
+            name, 
+            symbol, 
+            role_manager, 
+            profit_max_unlock_time, 
+            code_offset=3, 
+            salt=keccak256(_abi_encode(msg.sender, asset.address, name, symbol))
+        )
+    log NewVault(vault_address, asset.address)
+    return vault_address
+@view
+@external
+def set_custom_protocol_fee_bps(vault: address, new_custom_protocol_fee: uint16):
+    """
+    @notice Allows Governance to set custom protocol fees
+    for a specific vault or strategy.
+    @dev Must be below the max allowed fee, and a default
+    fee_recipient must be set so we don't issue fees to the 0 address.
+    @param vault The address of the vault or strategy to customize.
+    @param new_custom_protocol_fee The custom protocol fee in BPS.
+    """
+    assert msg.sender == self.governance, "not governance"
+    assert new_custom_protocol_fee <= MAX_FEE_BPS, "fee too high"
+    assert self.default_protocol_fee_config.fee_recipient != empty(address), "no recipient"
+    self.custom_protocol_fee[vault] = new_custom_protocol_fee
+    # If this is the first time a custom fee is set for this vault
+    # set the bool indicator so it returns the correct fee.
+    if not self.use_custom_protocol_fee[vault]:
+        self.use_custom_protocol_fee[vault] = True
+    log UpdateCustomProtocolFee(vault, new_custom_protocol_fee)
+@external 
+def set_protocol_fee_bps(new_protocol_fee_bps: uint16):
+    """
+    @notice Set the protocol fee in basis points
+    @dev Must be below the max allowed fee, and a default
+    fee_recipient must be set so we don't issue fees to the 0 address.
+    @param new_protocol_fee_bps The new protocol fee in basis points
+    """
+    assert msg.sender == self.governance, "not governance"
+    assert new_protocol_fee_bps <= MAX_FEE_BPS, "fee too high"
+    assert self.default_protocol_fee_config.fee_recipient != empty(address), "no recipient"
+    log UpdateProtocolFeeBps(
+        self.default_protocol_fee_config.fee_bps, 
+        new_protocol_fee_bps
+    )
+    self.default_protocol_fee_config.fee_bps = new_protocol_fee_bps
+@external
+def protocol_fee_config() -> PFConfig:
+    """
+    @notice Called during vault and strategy reports 
+    to retrieve the protocol fee to charge and address
+    to receive the fees.
+    @return The protocol fee config for the msg sender.
+    """
+    # If there is a custom protocol fee set we return it.
+    if self.use_custom_protocol_fee[msg.sender]:
+        # Always use the default fee recipient even with custom fees.
+        return PFConfig({
+            fee_bps: self.custom_protocol_fee[msg.sender],
+            fee_recipient: self.default_protocol_fee_config.fee_recipient
+        })
+    else:
+        # Otherwise return the default config.
+        return self.default_protocol_fee_config
+@external
+def set_protocol_fee_recipient(new_protocol_fee_recipient: address):
+    """
+    @notice Set the protocol fee recipient
+    @dev Can never be set to 0 to avoid issuing fees to the 0 address.
+    @param new_protocol_fee_recipient The new protocol fee recipient
+    """
+    assert msg.sender == self.governance, "not governance"
+    assert new_protocol_fee_recipient != empty(address), "zero address"
+    log UpdateProtocolFeeRecipient(
+        self.default_protocol_fee_config.fee_recipient,
+        new_protocol_fee_recipient
+    )
+    self.default_protocol_fee_config.fee_recipient = new_protocol_fee_recipient
+@external
+def remove_custom_protocol_fee(vault: address):
+    """
+    @notice Allows governance to remove a previously set
+    custom protocol fee.
+    @param vault The address of the vault or strategy to
+    remove the custom fee for.
+    """
+    assert msg.sender == self.governance, "not governance"
+    # Reset the custom fee to 0.
+    self.custom_protocol_fee[vault] = 0
+    # Set custom fee bool back to false.
+    self.use_custom_protocol_fee[vault] = False
+    log RemovedCustomProtocolFee(vault)
+@external
+def shutdown_factory():
+    """
+    @notice To stop new deployments through this factory.
+    @dev A one time switch available for governance to stop
+    new vaults from being deployed through the factory.
+    NOTE: This will have no effect on any previously deployed
+    vaults that deployed from this factory.
+    """
+    assert msg.sender == self.governance, "not governance"
+    assert self.shutdown == False, "shutdown"
+    self.shutdown = True
+    log FactoryShutdown()
+@external
+def set_governance(new_governance: address):
+    """
+    @notice Set the governance address
+    @param new_governance The new governance address
+    """
+    assert msg.sender == self.governance, "not governance"
+    self.pending_governance = new_governance
+    log NewPendingGovernance(new_governance)
+@external
+Now I want you to help me find new gas-wasting patterns from the above codes and the list of example patterns. Please be creative and think outside the box beyond the patterns listed above. Please put the new gas-wasting patterns in bullet points, using Latex syntax. Also please answer the following questions for each of the found patterns:
+
+1. How did you find this pattern? Could you explain the reasoning process, step by step, behind the discovery?
+2. What should I do, step by step, to fix the found gas-wasting patterns? Could you explain the reasoning process, step by step, behind the reason why such a fix works?
+3. On a score of 0 to 5, please rate this new pattern in terms of how much it is sacrificing readability, security, and maintainability in exchange for gas optimization (5 is the least impacted. For example, "Readability: 5; Security: 4; Maintainability: 1" means no effect on security while maintainability is largely affected.)
+
+Here are some additional requirements:
+1. If you think my prompt to you has any issues (e.g. ambiguity or lack of information), please tell me how I should improve it the next time.
+2. Please reflect on your reasoning process and tell me how you could do better next time in terms of completing the given task. If you found any issues, please also make corresponding improvements to your output this time and tell me what you did and why such improvement is necessary, in a step-by-step manner.

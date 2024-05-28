@@ -1,0 +1,39 @@
+\section*{Analysis of Provided Solidity Code}
+
+Here are some potential new gas-wasting patterns I identified in the provided Solidity code:
+
+1. Repeated calculations of `block.timestamp.sub(ledger[msg.sender][i].from)` in `get_gains` and `get_gains2` functions.
+   
+   1. How I found this pattern:
+      - I noticed that the expression `block.timestamp.sub(ledger[msg.sender][i].from)` is calculated twice, once in `get_gains` and once in `get_gains2`.
+      - Since both functions are called within the `end` function, this expression is being redundantly calculated.
+      - Redundant calculations waste gas by performing unnecessary computations.
+
+   2. How to fix this pattern:
+      - Calculate the value of `block.timestamp.sub(ledger[msg.sender][i].from)` once at the beginning of the `end` function and store it in a variable.
+      - Pass this pre-calculated value as an argument to both `get_gains` and `get_gains2` functions.
+      - This eliminates the redundant calculation and saves gas.
+
+   3. Ratings:
+      - Readability: 4; The fix improves readability by reducing duplicated code.
+      - Security: 5; The fix does not impact security.
+      - Maintainability: 4; The fix improves maintainability by reducing code duplication.
+
+2. Unnecessary checks for `_interest > 0` and `_interest2 > 0` in the `end` function.
+
+   1. How I found this pattern: 
+      - I noticed that the `end` function checks if `_interest > 0` and `_interest2 > 0` before attempting to transfer tokens.
+      - However, the `transferFrom` function will revert anyway if the transfer amount is 0.
+      - These explicit checks are redundant and waste gas.
+
+   2. How to fix this pattern:
+      - Remove the explicit checks for `_interest > 0` and `_interest2 > 0`.
+      - The `transferFrom` function will handle the case when the interest is 0 by doing nothing.
+      - This saves gas by eliminating unnecessary comparisons.
+
+   3. Ratings:
+      - Readability: 4; The fix slightly reduces code verbosity but does not significantly impact readability.
+      - Security: 5; The fix does not impact security as the behavior remains the same.
+      - Maintainability: 4; The fix slightly improves maintainability by reducing redundant code.
+
+Regarding your prompt, it provides sufficient information and context for analyzing the Solidity code. The list of known gas-wasting patterns is helpful in guiding the discovery of new patterns. One suggestion for improvement could be to provide more specific instructions on the desired format of the answers, such as specifying the use of sub-bullet points for the three questions under each pattern.

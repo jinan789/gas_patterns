@@ -1,0 +1,162 @@
+I want you to help me find new gas-wasting patterns for Vyper. Gas is a unique pricing mechanism in Vyper, which measures the amount of computational resources put into the execution of Vyper codes. Gas is paid in money, so saving gas is saving money. The goal of gas optimization is to find an equivalent code instruction sequence that produces the same output while consuming less gas. This may misalign from how people typically write codes, since the gas pricing mechanism is less intuitive and code writers do not often keep it in mind. For example, storage variables in Vyper are expensive in terms of gas, while memory is not, so unnecessary storage operations should be avoided when possible, but programmers from other languages might not be aware of this. 
+
+First, I will give you a list of known gas-wasting patterns as an example. The list is numbered, with each bullet point specifying one gas-wasting pattern and an explanation of why this pattern wastes gas. Please be creative and see if my provided codes contain any gas-wasting patterns beyond the provided ones. The list is as follows:
+
+1. Repeated computation of the same expression: including repetitive reads of the same expensive storage variable (e.g. Overuse of expensive storage variables). This could be solved by introducing an intermediate variable to hold the value
+2. Variable refactoring: by refactoring variable types and thus adjusting memory layout, we could save gas by saving the amount of storage space needed
+3. Redundant operations with same effects: redundant operations that overwrite the effect of the previous operation, making the previous useless
+4. Pre-computable operations on constants: performing comparisons (or other operations) to constants is useless and could be pre-computed
+5. Simplifiable conditional operations: expressions that involve logical operations that could be simplified to reduce the amount of computational workload.
+6. "Loop fusion." If two loops have the same starting and stopping conditions with the same increment steps, then we could consider combining them into one, if they have no dependencies. 
+7. "Repeated computations in a loop." If there are expressions that produce the same outcome in each iteration of a loop, we could move it out of the loop and execute only once, which saves computation.
+8. "Opaque predicate." If the outcome of a predicate could be inferred to be true/false without execution, then we could just replace it with the corresponding value to save the compuation during runtime.
+
+Next, I will give you a chunk of Vyper codes from which you will find gas-inefficient patterns:def tweak_price(
+    A_gamma: uint256[2],
+    _xp: uint256[N_COINS],
+    new_D: uint256,
+    K0_prev: uint256 = 0,
+) -> uint256:
+    """
+    @notice Updates price_oracle, last_price and conditionally adjusts
+            price_scale. This is called whenever there is an unbalanced
+            liquidity operation: _exchange, add_liquidity, or
+            remove_liquidity_one_coin.
+    @dev Contains main liquidity rebalancing logic, by tweaking `price_scale`.
+    @param A_gamma Array of A and gamma parameters.
+    @param _xp Array of current balances.
+    @param new_D New D value.
+    @param K0_prev Initial guess for `newton_D`.
+    """
+    # ---------------------------- Read storage ------------------------------
+    price_oracle: uint256 = self.cached_price_oracle
+    last_prices: uint256 = self.last_prices
+    price_scale: uint256 = self.cached_price_scale
+    rebalancing_params: uint256[3] = self._unpack_3(self.packed_rebalancing_params)
+    # Contains: allowed_extra_profit, adjustment_step, ma_time. -----^
+    total_supply: uint256 = self.totalSupply
+    old_xcp_profit: uint256 = self.xcp_profit
+    old_virtual_price: uint256 = self.virtual_price
+    # ----------------------- Update Oracles if needed -----------------------
+    last_timestamp: uint256[2] = self._unpack_2(self.last_timestamp)
+    alpha: uint256 = 0
+    if last_timestamp[0] < block.timestamp:  # 0th index is for price_oracle.
+        #   The moving average price oracle is calculated using the last_price
+        #      of the trade at the previous block, and the price oracle logged
+        #              before that trade. This can happen only once per block.
+        # ------------------ Calculate moving average params -----------------
+        alpha = MATH.wad_exp(
+            -convert(
+                unsafe_div(
+                    unsafe_sub(block.timestamp, last_timestamp[0]) * 10**18,
+                    rebalancing_params[2]  # <----------------------- ma_time.
+                ),
+                int256,
+            )
+        )
+        # ---------------------------------------------- Update price oracles.
+        # ----------------- We cap state price that goes into the EMA with
+        #                                                 2 x price_scale.
+        price_oracle = unsafe_div(
+            min(last_prices, 2 * price_scale) * (10**18 - alpha) +
+            price_oracle * alpha,  # ^-------- Cap spot price into EMA.
+            10**18
+        )
+        self.cached_price_oracle = price_oracle
+        last_timestamp[0] = block.timestamp
+    # ----------------------------------------------------- Update xcp oracle.
+    if last_timestamp[1] < block.timestamp:
+        cached_xcp_oracle: uint256 = self.cached_xcp_oracle
+        alpha = MATH.wad_exp(
+            -convert(
+                unsafe_div(
+                    unsafe_sub(block.timestamp, last_timestamp[1]) * 10**18,
+                    self.xcp_ma_time  # <---------- xcp ma time has is longer.
+                ),
+                int256,
+            )
+        )
+        self.cached_xcp_oracle = unsafe_div(
+            self.last_xcp * (10**18 - alpha) + cached_xcp_oracle * alpha,
+            10**18
+        )
+        # Pack and store timestamps:
+        last_timestamp[1] = block.timestamp
+    self.last_timestamp = self._pack_2(last_timestamp[0], last_timestamp[1])
+    #  `price_oracle` is used further on to calculate its vector distance from
+    # price_scale. This distance is used to calculate the amount of adjustment
+    # to be done to the price_scale.
+    # ------------------------------------------------------------------------
+    # ------------------ If new_D is set to 0, calculate it ------------------
+    D_unadjusted: uint256 = new_D
+    if new_D == 0:  #  <--------------------------- _exchange sets new_D to 0.
+        D_unadjusted = MATH.newton_D(A_gamma[0], A_gamma[1], _xp, K0_prev)
+    # ----------------------- Calculate last_prices --------------------------
+    self.last_prices = unsafe_div(
+        MATH.get_p(_xp, D_unadjusted, A_gamma) * price_scale,
+        10**18
+    )
+    # ---------- Update profit numbers without price adjustment first --------
+    xp: uint256[N_COINS] = [
+        unsafe_div(D_unadjusted, N_COINS),
+        D_unadjusted * PRECISION / (N_COINS * price_scale)  # <------ safediv.
+    ]  #                                                     with price_scale.
+    xcp_profit: uint256 = 10**18
+    virtual_price: uint256 = 10**18
+    if old_virtual_price > 0:
+        xcp: uint256 = isqrt(xp[0] * xp[1])
+        virtual_price = 10**18 * xcp / total_supply
+        xcp_profit = unsafe_div(
+            old_xcp_profit * virtual_price,
+            old_virtual_price
+        )  # <---------------- Safu to do unsafe_div as old_virtual_price > 0.
+        #       If A and gamma are not undergoing ramps (t < block.timestamp),
+        #         ensure new virtual_price is not less than old virtual_price,
+        #                                        else the pool suffers a loss.
+        if self.future_A_gamma_time < block.timestamp:
+            assert virtual_price > old_virtual_price, "Loss"
+        # -------------------------- Cache last_xcp --------------------------
+        self.last_xcp = xcp  # geometric_mean(D * price_scale)
+    self.xcp_profit = xcp_profit
+    # ------------ Rebalance liquidity if there's enough profits to adjust it:
+    if virtual_price * 2 - 10**18 > xcp_profit + 2 * rebalancing_params[0]:
+        #                          allowed_extra_profit --------^
+        # ------------------- Get adjustment step ----------------------------
+        #                Calculate the vector distance between price_scale and
+        #                                                        price_oracle.
+        norm: uint256 = unsafe_div(
+            unsafe_mul(price_oracle, 10**18), price_scale
+        )
+        if norm > 10**18:
+            norm = unsafe_sub(norm, 10**18)
+        else:
+            norm = unsafe_sub(10**18, norm)
+        adjustment_step: uint256 = max(
+            rebalancing_params[1], unsafe_div(norm, 5)
+        )  #           ^------------------------------------- adjustment_step.
+        if norm > adjustment_step:  # <---------- We only adjust prices if the
+            #          vector distance between price_oracle and price_scale is
+            #             large enough. This check ensures that no rebalancing
+            #           occurs if the distance is low i.e. the pool prices are
+            #                                     pegged to the oracle prices.
+            # ------------------------------------- Calculate new price scale.
+            p_new: uint256 = unsafe_div(
+                price_scale * unsafe_sub(norm, adjustment_step) +
+                adjustment_step * price_oracle,
+                norm
+            )  # <---- norm is non-zero and gt adjustment_step; unsafe = safe.
+            # ---------------- Update stale xp (using price_scale) with p_new.
+            xp = [
+                _xp[0],
+                unsafe_div(_xp[1] * p_new, price_scale)
+            ]
+
+Now I want you to help me find new gas-wasting patterns from the above codes and the list of example patterns. Please be creative and think outside the box beyond the patterns listed above. Please put the new gas-wasting patterns in bullet points, using Latex syntax. Also please answer the following questions for each of the found patterns:
+
+1. How did you find this pattern? Could you explain the reasoning process, step by step, behind the discovery?
+2. What should I do, step by step, to fix the found gas-wasting patterns? Could you explain the reasoning process, step by step, behind the reason why such a fix works?
+3. On a score of 0 to 5, please rate this new pattern in terms of how much it is sacrificing readability, security, and maintainability in exchange for gas optimization (5 is the least impacted. For example, "Readability: 5; Security: 4; Maintainability: 1" means no effect on security while maintainability is largely affected.)
+
+Here are some additional requirements:
+1. If you think my prompt to you has any issues (e.g. ambiguity or lack of information), please tell me how I should improve it the next time.
+2. Please reflect on your reasoning process and tell me how you could do better next time in terms of completing the given task. If you found any issues, please also make corresponding improvements to your output this time and tell me what you did and why such improvement is necessary, in a step-by-step manner.

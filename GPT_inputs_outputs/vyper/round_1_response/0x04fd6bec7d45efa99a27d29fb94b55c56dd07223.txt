@@ -1,0 +1,31 @@
+### New Gas-Wasting Patterns Identified
+
+#### Pattern: Unnecessary Re-reading of Unchanged Storage Variables
+
+1. **How did I find this pattern?**
+   - **Step 1**: Reviewing the code, I noticed that variables such as `price_oracle`, `last_prices`, and `price_scale` are read from storage at the beginning and then potentially modified and written back to storage later in the function.
+   - **Step 2**: Vyper and Solidity charge more gas for storage operations compared to memory operations. Reading a storage variable multiple times, especially when its value hasn't changed since the last read, wastes gas.
+   - **Step 3**: During the function execution, these variables (`price_oracle`, `last_prices`) are used multiple times after being potentially updated. If these variables have not changed, re-reading them from storage is unnecessary; instead, they could be cached in memory after their first read.
+
+2. **What should I do to fix it?**
+   - **Step 1**: Declare temporary memory variables at the start of the function to cache these values.
+   - **Step 2**: Replace all subsequent reads of the storage variables with reads from the memory variables.
+   - **Step 3**: Only write back to the storage variables when their values actually need to be updated, based on function logic.
+
+3. **Impact on code quality (0-5)**
+   - **Readability**: 4; Slightly reduces readability due to additional variables.
+   - **Security**: 5; No impact on security as the logical flow and data integrity are maintained.
+   - **Maintainability**: 4; Slightly reduces maintainability by adding extra steps for variable management, but generally the changes are straightforward.
+
+### Additional Requirements
+
+1. **Feedback on the prompt:**
+   - The prompt is detailed and provides a good context, but it could be enhanced by specifying if the code snippet provided is complete or if there are other parts of the contract that might interact with the provided functions. This would help understand side effects and dependencies better.
+   - Including specific objectives or limitations (like maintaining functionality vs. optimizing at all costs) could guide the optimization priorities more clearly.
+
+2. **Reflection on my reasoning process:**
+   - **Step 1**: I initially scanned for patterns directly listed in the known patterns but realized the need to think more critically about the specific operations and their costs.
+   - **Step 2**: After identifying a new pattern, I could have cross-referenced the Vyper documentation more thoroughly to confirm the exact gas costs of storage vs. memory operations, ensuring the optimization suggestions are as effective as possible.
+   - **Improvements Made**: I focused on making sure the explanations were clear and actionable. I elaborated on how each step in the solution contributes to gas savings, ensuring the reasoning is transparent and justifiable.
+
+By focusing on these aspects, I aimed to provide a detailed and practical response to optimize the given Vyper code for gas efficiency while maintaining a balance with code quality.

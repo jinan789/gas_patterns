@@ -1,0 +1,31 @@
+### Analyzing the Solidity Code for Gas-Wasting Patterns
+
+#### New Gas-Wasting Pattern: Excessive Use of Permanent Storage for Read-Only Operations
+
+1. **How did you find this pattern?**
+   - **Observation**: The `getStream` and `deltaOf` functions repeatedly access stream data from permanent storage (`_streams[streamId]`).
+   - **Reasoning**: Accessing permanent storage (`SLOAD`) is significantly more expensive in terms of gas than accessing transient storage or memory. Since these functions are read-only (they do not modify the state), the repeated access of stream data from permanent storage each time these functions are called is inefficient.
+   - **Conclusion**: By caching this data in transient storage at the start of the transaction, subsequent accesses could retrieve data from the cheaper transient storage.
+
+2. **Steps to fix this pattern**:
+   - **Step 1**: In the function where the stream data is first read, store this data in transient storage using `TSTORE`.
+   - **Step 2**: Modify the `getStream` and `deltaOf` functions to first check if the stream data is available in transient storage and use it if available. If not, read from permanent storage and then store it in transient storage.
+   - **Step 3**: This reduces the number of expensive `SLOAD` operations by leveraging the cheaper `TLOAD` operations for subsequent reads within the same transaction.
+
+3. **Impact on Code Qualities**:
+   - **Readability**: 4; The logic is slightly more complex but remains clear.
+   - **Security**: 5; No impact on security as data integrity is maintained.
+   - **Maintainability**: 3; Developers need to ensure that transient storage handling is correctly implemented and maintained, which adds a layer of complexity.
+
+### Recommendations for Improvement
+
+1. **Clarification on Usage of Transient Storage**:
+   - **Issue**: The initial prompt could include specific guidance or examples on how transient storage could be leveraged, especially for newcomers to EIP-1153 and EIP-7609.
+   - **Suggestion**: Provide a brief example of how transient storage can be used effectively in Solidity, particularly in contexts involving frequent data reads within a single transaction.
+
+2. **Reflection on Reasoning Process**:
+   - **Self-Evaluation**: Initially, the analysis focused on the explicit patterns listed in the prompt. A deeper dive into EVM specifics and the implications of new EIPs could enhance the identification of inefficiencies.
+   - **Improvement**: By exploring the broader implications of EIP-1153 and EIP-7609, I extended the analysis to include how transient storage can optimize read-heavy operations within transactions, thus leading to a more thorough examination of potential optimizations.
+   - **Implementation of Improvement**: The analysis of the `getStream` and `deltaOf` functions was enhanced by considering the use of transient storage, which was not initially highlighted. This adjustment followed a more comprehensive understanding of the EIPs mentioned and their impact on Solidity development practices.
+
+By considering these improvements and focusing on broader EVM features, the analysis becomes more robust and useful for developers aiming to optimize gas usage in Solidity smart contracts.

@@ -1,0 +1,106 @@
+Here are some potential gas-wasting patterns I identified in the provided Solidity code:
+
+\begin{enumerate}
+\item Repeated reads of storage variables like \_tTotal, \_rTotal, \_rOwned, \_tOwned, etc. These could be optimized by storing their values in memory variables within the local scope.
+\item The \_tokenTransfer function has many conditional branches based on \_isExcluded status of sender and recipient. The gas cost could potentially be reduced by restructuring the logic to minimize the number of checks needed.
+\item The \_approve function is called in updateUniswapV2Router even if the new router address is the same as the existing one. This could be avoided by adding a check upfront.
+\item The calculation and emit of the Transfer event is repeated in both the treasuryBurn and \_tokenTransfer functions. This could be refactored into a shared internal function.
+\item In updateUniswapV2Pair, the IERC20 approval is done even if the new base token is the same as the existing one. Adding a check could avoid this.
+\end{enumerate}
+
+Here are my thought processes and answers to your questions for each pattern:
+
+1. \textbf{Repeated reads of storage variables}
+
+I noticed that storage variables like \_tTotal, \_rTotal, \_rOwned, \_tOwned are being read multiple times in the \_tokenTransfer function. Since storage reads are expensive (100 gas after the 1st one in a transaction), it's generally more efficient to load them into memory variables and refer to those instead.
+
+To optimize this, the values could be loaded into local variables with the memory keyword at the start of the function, like:
+uint256 tTotal = \_tTotal;
+uint256 rTotal = \_rTotal; 
+mapping(address => uint256) storage rOwned = \_rOwned;
+mapping(address => uint256) storage tOwned = \_tOwned;
+
+Then refer to the memory versions in the rest of the function body and write any updated values back to storage at the end.
+
+Ratings:
+Readability: 4 (mostly the same, just need to track the new variables)  
+Security: 5 (no impact)
+Maintainability: 4 (low impact, just need to ensure writes go back to storage)
+
+2. \textbf{Conditional branches based on \_isExcluded}
+
+The \_tokenTransfer function has branching logic that checks the \_isExcluded status of the sender and recipient addresses. Each additional conditional has an associated gas cost.
+
+One potential optimization is to try to structure the logic to minimize the number of conditionals needed. For example, the "else" case that applies when both sender and recipient are not excluded could be checked first. And then a more simplified check for if either one is excluded could be done after.
+
+The exact refactoring would depend on the details of the \_isExcluded mapping and transfer use case. But in general, minimizingConditions can help reduce gas costs.
+
+Ratings: 
+Readability: 3 (nesting conditionals can reduce readability)
+Security: 5 
+Maintainability: 3 (more complex branching logic is harder to mentally trace)
+
+3. \textbf{Unnecessary \_approve call}
+
+In updateUniswapV2Router, the \_approve function is called to set the router address approval for this contract. However, this call happens even if the new router address is the same as the existing mainRouter address. 
+
+To avoid this, a check could be added to only call \_approve if newAddress != address(mainRouter).
+
+This is a minor optimization, but every bit of gas counts. The code would look like:
+
+if (newAddress != address(mainRouter)) {
+    \_approve(address(this), newAddress, MAX); 
+}
+
+Ratings:
+Readability: 5
+Security: 5
+Maintainability: 5
+
+4. \textbf{Repeated Transfer event emissions}
+
+The treasuryBurn and \_tokenTransfer functions both have logic to calculate tBurn and emit a Transfer event from an address to address(0). 
+
+This could be extracted into an internal function to avoid repeating the logic. Something like:
+
+function emitBurnTransfer(address from, uint256 tBurn) private {
+    \_tTotal = \_tTotal - tBurn;
+    \_rTotal = \_rTotal - tBurn*\_getRate();
+    emit Transfer(from, address(0), tBurn);
+}
+
+Then both places could just call emitBurnTransfer(sender, tBurn).
+
+Ratings:
+Readability: 4 (pushes some logic into a separate function)
+Security: 5
+Maintainability: 4 (avoids repeating logic, but one more function to maintain)
+
+5. \textbf{Unnecessary approve in updateUniswapV2Pair}
+
+Similar to point 3, the IERC20 approval in updateUniswapV2Pair happens even if the new base token is the same as the existing one. A check could be added to avoid this:
+
+if (\_baseTokenForPair != baseTokenForPair && \_baseTokenForPair != mainRouter.WETH()) { 
+    IERC20(\_baseTokenForPair).approve(address(mainRouter), MAX);
+}
+
+Ratings:
+Readability: 5 
+Security: 5
+Maintainability: 5
+
+In terms of how I could improve my process next time:
+
+- I could more systematically go through the code line by line to identify expensive operations like storage reads/writes and emitting events. Creating a checklist of known gas-intensive actions could help with this.
+
+- I could analyze the control flow and data flow more comprehensively to find opportunities to restructure logic and reduce redundant operations. Drawing out the flow could help visualize this.
+
+- I could consider more holistically how the contract is meant to be used to find opportunities to optimize for the common case. Looking at what functions are called externally vs internally would help with this.
+
+The main things I'd improve in my analysis this time are:
+
+1. Extracting the \_isExcluded logic into a separate internal function. This would make the \_tokenTransfer function easier to read and maintain. 
+
+2. Considering whether emitBurnTransfer needs to be its own function or if it's simple enough to just keep inline. Introducing a new function has readability and maintainability tradeoffs.
+
+Let me know if you have any other questions! Gas optimization is a complex topic and there's always more to consider.

@@ -1,0 +1,201 @@
+I want you to help me find new gas-wasting patterns for Solidity. Gas is a unique pricing mechanism in Solidity, which measures the amount of computational resources put into the execution of Solidity codes. Gas is paid in money, so saving gas is saving money. The goal of gas optimization is to find an equivalent code instruction sequence that produces the same output while consuming less gas. This may misalign from how people typically write codes, since the gas pricing mechanism is less intuitive and code writers do not often keep it in mind. For example, storage variables in Solidity are expensive in terms of gas, while memory is not, so unnecessary storage operations should be avoided when possible, but programmers from other languages might not be aware of this. 
+
+First, I will give you a list of known gas-wasting patterns as an example. The list is numbered, with each bullet point specifying one gas-wasting pattern and an explanation of why this pattern wastes gas. Please be creative and see if my provided codes contain any gas-wasting patterns beyond the provided ones. The list is as follows:
+
+1. Repeated computation of the same expression: including repetitive reads of the same expensive storage variable (e.g. Overuse of expensive storage variables). This could be solved by introducing an intermediate variable to hold the value
+2. Variable refactoring: by refactoring variable types and thus adjusting memory layout, we could save gas by saving the amount of storage space needed
+3. Redundant operations with same effects: redundant operations that overwrite the effect of the previous operation, making the previous useless
+4. Pre-computable operations on constants: performing comparisons (or other operations) to constants is useless and could be pre-computed
+5. Simplifiable conditional operations: expressions that involve logical operations that could be simplified to reduce the amount of computational workload.
+6. "Loop fusion." If two loops have the same starting and stopping conditions with the same increment steps, then we could consider combining them into one, if they have no dependencies. 
+7. "Repeated computations in a loop." If there are expressions that produce the same outcome in each iteration of a loop, we could move it out of the loop and execute only once, which saves computation.
+8. "Opaque predicate." If the outcome of a predicate could be inferred to be true/false without execution, then we could just replace it with the corresponding value to save the compuation during runtime.
+
+For this analysis, assume that the EVM we are targeting includes the implementation of EIP-1153 and EIP-7609, which collectively introduced the TLOAD and TSTORE opcodes to manage transient storage in smart contracts. This type of storage is temporary, and is discarded at the end of each transaction, unlike the permanent storage accessed via SSTORE and SLOAD. The gas cost of TLOAD is 5 gas, and TSTORE is 8 gas plus expansion_cost. expansion_cost is 0 if the queried key is already in transient storage, and is computed as the number of keys already in transient storage otherwise (i.e., superlinear pricing).
+
+Next, I will provide a chunk of Solidity codes from which you will identify any gas-inefficient patterns, considering the transient storage feature:
+contract Donate3 is Ownable, IDonate3, ReentrancyGuard {
+    function donateToken(
+        uint256 amountIn,
+        address to,
+        bytes calldata message,
+        bytes32[] calldata _merkleProof
+    ) external payable nonReentrant {
+        address from = _msgSender();
+        require(from != to, "The donor address is equal to receive");
+
+        require(amountIn > 0, "Invalid input amount.");
+
+        require(msg.value == amountIn,"msg value error.");
+        
+       // Project memory p = _findProject(to, pid);
+        require(address(to) != address(0), "The project is not exist");
+
+       // require(p.status == ProjectStatus.resume, "The project is deleted");
+
+        uint32 fee = _merkleProof.length > 0 &&
+            _verifyFreeAllowList(from, _merkleProof)
+            ? 0
+            : handlingFee;
+
+        uint256 amountOut = amountIn.mul(uint256(1000).sub(fee)).div(1000);
+        require(amountOut <= amountIn, "Invalid output amount");
+
+        // transfer
+        (bool success, ) = to.call{value: amountOut}("");
+        if (!success) {
+            revert CallFailed();
+        }
+
+        // refund dust eth, if any
+        if (msg.value > amountIn) {
+            TransferHelper.safeTransferETH(from, msg.value - amountIn);
+        }
+
+        _record(from, to, tokenSymbol, amountOut, message);
+    }
+
+    function setHandleFee(uint32 _fee) external onlyOwner {
+        require(_fee <= 200, "Fee out of range.");
+        require(_fee != handlingFee, "Fee is equal.");
+
+        emit HandleFeeChanged(_msgSender(), handlingFee, _fee);
+
+        handlingFee = _fee;
+    }
+    function _verifyFreeAllowList(
+        address pOwner,
+        bytes32[] calldata _merkleProof
+    ) internal view returns (bool) {
+        require(pOwner != address(0), "Owner is the zero address.");
+
+        bytes32 leaf = keccak256(abi.encodePacked(pOwner));
+        return MerkleProof.verify(_merkleProof, freeMerkleRoot, leaf);
+    }
+    function donateERC20(
+        address _token,
+        string calldata _tokenSymbol,
+        uint256 _amountInDesired,
+        address _to,
+        bytes calldata _message,
+        bytes32[] calldata _merkleProof
+    ) external nonReentrant {
+        address from = _msgSender();
+        string calldata symbol = _tokenSymbol;
+        bytes calldata message = _message;
+        address token = _token;
+        bytes32[] calldata merkleProof = _merkleProof;
+        uint256 amountInDesired = _amountInDesired;
+
+        address to = _to;
+        require(from != to, "The donor address is equal to receive");
+
+        uint256 amountOut = _transferToken(
+            token,
+            from,
+            amountInDesired,
+            to,
+            merkleProof
+        );
+
+        // record
+        _record(from, to, symbol, amountOut, message);
+    }
+    function _transferToken(
+        address token,
+        address from,
+        uint256 amountInDesired,
+        address rAddress,
+        bytes32[] calldata merkleProof
+    ) internal returns (uint256 amountOut) {
+        uint256 balanceBefore = IERC20(token).balanceOf(address(this));
+
+        // transfer to contract
+        TransferHelper.safeTransferFrom(
+            token,
+            from,
+            address(this),
+            amountInDesired
+        );
+
+        uint256 balanceAfter = IERC20(token).balanceOf(address(this));
+        uint256 amountIn = balanceAfter - balanceBefore;
+        amountOut = _getAmount(from, amountIn, merkleProof);
+        require(amountOut <= amountIn, "Invalid output amount");
+
+        // transfer to user
+        TransferHelper.safeApprove(token, rAddress, amountOut);
+        TransferHelper.safeTransfer(token, rAddress, amountOut);
+    }
+    function _getAmount(
+        address from,
+        uint256 amountIn,
+        bytes32[] calldata _merkleProof
+    ) internal view returns (uint256) {
+        uint32 fee = _merkleProof.length > 0 &&
+            _verifyFreeAllowList(from, _merkleProof)
+            ? 0
+            : handlingFee;
+        uint256 amountOut = amountIn.mul(uint256(1000).sub(fee)).div(1000);
+        return amountOut;
+    }
+    function stringToBytes32(string memory source)
+        private
+        pure
+        returns (bytes32 result)
+    {
+        assembly {
+            result := mload(add(source, 32))
+        }
+    }
+
+    function withDrawToken(address to, uint256 amount) external onlyOwner {
+        require(to != address(0), "ZERO_ADDRESS");
+        require(amount > 0 && amount <= to.balance, "Invalid input amount.");
+
+        // transfer
+        (bool success, ) = to.call{value: amount}("");
+        if (!success) {
+            revert CallFailed();
+        }
+        emit withDraw(tokenSymbol, _msgSender(), to, amount);
+    }
+
+    function withDrawERC20List(
+        address[] calldata tokens,
+        string[] calldata symbols,
+        address to,
+        uint256[] calldata amounts
+    ) external onlyOwner {
+        require(to != address(0), "ZERO_ADDRESS");
+        require(
+            tokens.length == symbols.length && symbols.length == amounts.length,
+            "Invalid input length"
+        );
+
+        for (uint256 i = 0; i < tokens.length; i++) {
+            address token = tokens[i];
+            string memory symbol = symbols[i];
+            uint256 amount = amounts[i];
+
+            uint256 balance = IERC20(token).balanceOf(address(this));
+            require(amount > 0 && amount <= balance, "Invalid input amount.");
+
+            // transfer to user
+            TransferHelper.safeApprove(token, to, amount);
+            TransferHelper.safeTransfer(token, to, amount);
+
+            emit withDraw(symbol, _msgSender(), to, amount);
+        }
+    }
+
+    }
+Now I want you to help me find new gas-wasting patterns from the above codes and the list of example patterns, considering the introduction of transient storage. Please be creative and think outside the box beyond the patterns listed above. Please put the new gas-wasting patterns in bullet points, using Latex syntax. Also please answer the following questions for each of the found patterns:
+
+1. How did you find this pattern? Could you explain the reasoning process, step by step, behind the discovery?
+2. What should I do, step by step, to fix the found gas-wasting patterns? Could you explain the reasoning process, step by step, behind the reason why such a fix works?
+3. On a score of 0 to 5, please rate this new pattern in terms of how much it is sacrificing readability, security, and maintainability in exchange for gas optimization (5 is the least impacted. For example, "Readability: 5; Security: 4; Maintainability: 1" means no effect on security while maintainability is largely affected.)
+
+Here are some additional requirements:
+1. If you think my prompt to you has any issues (e.g. ambiguity or lack of information), please tell me how I should improve it the next time.
+2. Please reflect on your reasoning process and tell me how you could do better next time in terms of completing the given task. If you found any issues, please also make corresponding improvements to your output this time and tell me what you did and why such improvement is necessary, in a step-by-step manner.

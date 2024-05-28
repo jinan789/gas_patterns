@@ -1,0 +1,46 @@
+Excessive Assertions for Constants or Known Values  &  1.1  &  A3  &  
+Unnecessary Contract Calls and Redundant Checks  &  1.2  &  1  &  
+Excessive Logging  &  1.2  &  16  &  
+Unnecessary Re-reading of Unchanged Storage Variables  &  1.3  &  10  &  
+Redundant Condition Checks  &  1.4  &  1  &  
+Unnecessary Initial Assignment  &  1.4  &  10  &  
+Unnecessary Data Unpacking in Loops  &  1.5  &  A10  &  
+Unnecessary Storage of Constants  &  1.6  &  17  &  
+Log Duplication  &  1.6  &  A11  &  
+Inefficient Conditional Checks  &  1.7  &  A2  &  
+Excessive Use of Unsafe Operations  &  1.7  &  A11  &  
+Inefficient Storage Read and Write Patterns in `rate_write` Function  &  1.8  &  A11  &  
+Loop Redundancy in Controller Update Logic  &  1.8  &  A3  &  
+Excessive Assertion Checks  &  1.9  &  A11  &  
+Redundant State Hash Calculations  &  1.10  &  A4  &  
+Excessive Assertions for Constant Conditions  &  1.10  &  A4  &  
+Unoptimized Conditional Checks  &  2.1  &  A4  &  
+Repeated Access of block.timestamp and block.number  &  2.1  &  1  &  
+Unnecessary Repeated Calls to External Functions  &  2.2  &  A3  &  
+Redundant Calculation in Conditional Statements  &  2.2  &  A11  &  
+Unnecessary Checks and Operations Inside Loops  &  2.3  &  A6  &  
+Redundant Assignment in Conditional Statements  &  2.3  &  A4  &  
+Use of Conditional Statements in Loops  &  2.4  &  A13  &  
+Redundant Calculation of assets_to_withdraw  &  2.4  &  A3  &  
+Inefficient Management of Strategy State Updates  &  2.4  &  A3  &  
+Excessive Use of Unsafe Operations  &  2.5  &  A5  &  
+Over-complicated Expression Evaluation  &  2.5  &  A5  &  
+Excessive Logging Operations  &  2.6  &  A4  &  
+Redundant Condition Checks  &  2.6  &  A4  &  
+Static Value in Dynamic Contexts  &  2.6  &  A13  &  
+Inefficient Handling of Price Updates and Calculations  &  2.7  &  A10  &  
+Inefficient balance updates and redundant state changes  &  2.8  &  4  &  
+Redundant Recomputation of Checkpoints  &  2.9  &  A4  &  
+Excessive State Variable Reads in Conditional and Calculation Statements  &  2.10  &  A3  &  
+Redundant Calculations in Conditional Logic  &  2.10  &  A3  &  
+Unnecessary Storage Reads in Assertion Conditions  &  3.1  &  A11  &  
+Repeated Retrieval of Bridger in Multiple Functions  &  3.1  &  A11  &  
+Inefficient Event Logging Patterns  &  3.2  &  A2  &  
+Unnecessary Checks Before State Modifications  &  3.2  &  A2  &  
+Excessive use of assert statements for state verification  &  3.3  &  A4  &  
+Inefficient Storage Access in Loops  &  3.4  &  A10  &  
+Redundant Condition Checks  &  3.4  &  A4  &  
+Unnecessary Calls to External Contracts  &  3.5  &  A2  &  
+Inefficient Loop Exit Condition in create_from_pool  &  3.5  &  NEW PATTERN  &  
+Unnecessary Read from Storage in Loop  &  3.6  &  A10  &  
+Redundant Approval Call  &  3.6  &  A2  &  

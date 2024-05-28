@@ -1,0 +1,147 @@
+I want you to help me find new gas-wasting patterns for Solidity. Gas is a unique pricing mechanism in Solidity, which measures the amount of computational resources put into the execution of Solidity codes. Gas is paid in money, so saving gas is saving money. The goal of gas optimization is to find an equivalent code instruction sequence that produces the same output while consuming less gas. This may misalign from how people typically write codes, since the gas pricing mechanism is less intuitive and code writers do not often keep it in mind. For example, storage variables in Solidity are expensive in terms of gas, while memory is not, so unnecessary storage operations should be avoided when possible, but programmers from other languages might not be aware of this. 
+
+First, I will give you a list of known gas-wasting patterns as an example. The list is numbered, with each bullet point specifying one gas-wasting pattern and an explanation of why this pattern wastes gas. Please be creative and see if my provided codes contain any gas-wasting patterns beyond the provided ones. The list is as follows:
+
+1. Repeated computation of the same expression: including repetitive reads of the same expensive storage variable (e.g. Overuse of expensive storage variables). This could be solved by introducing an intermediate variable to hold the value
+2. Variable refactoring: by refactoring variable types and thus adjusting memory layout, we could save gas by saving the amount of storage space needed
+3. Redundant operations with same effects: redundant operations that overwrite the effect of the previous operation, making the previous useless
+4. Pre-computable operations on constants: performing comparisons (or other operations) to constants is useless and could be pre-computed
+5. Simplifiable conditional operations: expressions that involve logical operations that could be simplified to reduce the amount of computational workload.
+6. "Loop fusion." If two loops have the same starting and stopping conditions with the same increment steps, then we could consider combining them into one, if they have no dependencies. 
+7. "Repeated computations in a loop." If there are expressions that produce the same outcome in each iteration of a loop, we could move it out of the loop and execute only once, which saves computation.
+8. "Opaque predicate." If the outcome of a predicate could be inferred to be true/false without execution, then we could just replace it with the corresponding value to save the compuation during runtime.
+
+For this analysis, assume that the EVM we are targeting includes the implementation of EIP-1153 and EIP-7609, which collectively introduced the TLOAD and TSTORE opcodes to manage transient storage in smart contracts. This type of storage is temporary, and is discarded at the end of each transaction, unlike the permanent storage accessed via SSTORE and SLOAD. The gas cost of TLOAD is 5 gas, and TSTORE is 8 gas plus expansion_cost. expansion_cost is 0 if the queried key is already in transient storage, and is computed as the number of keys already in transient storage otherwise (i.e., superlinear pricing).
+
+Next, I will provide a chunk of Solidity codes from which you will identify any gas-inefficient patterns, considering the transient storage feature::contract PoolViewer {
+    function viewPool() external view returns (PoolState memory poolState) {
+        poolState.coinPoolPendingApeCoin = coinPool.pendingApeCoin();
+        poolState.coinPoolPendingRewards = staker.pendingRewards(0);
+        poolState.coinPoolStakedAmount = staker.stakedApeCoin(0);
+        poolState.baycPoolMaxCap = apeCoinStaking.getCurrentTimeRange(ApeStakingLib.BAYC_POOL_ID).capPerPosition;
+        poolState.maycPoolMaxCap = apeCoinStaking.getCurrentTimeRange(ApeStakingLib.MAYC_POOL_ID).capPerPosition;
+        poolState.bakcPoolMaxCap = apeCoinStaking.getCurrentTimeRange(ApeStakingLib.BAKC_POOL_ID).capPerPosition;
+    }
+
+
+    function viewBakcPairingStatus(
+        uint256[] calldata baycTokenIds_,
+        uint256[] calldata maycTokenIds_
+    ) external view returns (bool[] memory baycPairs, bool[] memory maycPairs) {
+        baycPairs = new bool[](baycTokenIds_.length);
+        maycPairs = new bool[](maycTokenIds_.length);
+        uint256 tokenId_;
+        for (uint256 i = 0; i < baycTokenIds_.length; i++) {
+            tokenId_ = baycTokenIds_[i];
+            baycPairs[i] = apeCoinStaking.mainToBakc(ApeStakingLib.BAYC_POOL_ID, tokenId_).isPaired;
+        }
+        for (uint256 i = 0; i < maycTokenIds_.length; i++) {
+            tokenId_ = maycTokenIds_[i];
+            maycPairs[i] = apeCoinStaking.mainToBakc(ApeStakingLib.MAYC_POOL_ID, tokenId_).isPaired;
+        }
+    }
+
+    function viewPoolPendingRewards() public view returns (PendingRewards memory rewards) {
+        rewards.coinPoolRewards = staker.pendingRewards(ApeStakingLib.APE_COIN_POOL_ID);
+
+        // bayc
+        rewards.baycPoolRewards = staker.pendingRewards(ApeStakingLib.BAYC_POOL_ID);
+        uint256 coinRewards = rewards.baycPoolRewards.mulDiv(
+            PERCENTAGE_FACTOR - staker.getNftRewardsShare(bayc),
+            PERCENTAGE_FACTOR,
+            Math.Rounding.Down
+        );
+        rewards.baycPoolRewards -= coinRewards;
+        rewards.coinPoolRewards += coinRewards;
+
+        // mayc
+        rewards.maycPoolRewards = staker.pendingRewards(ApeStakingLib.MAYC_POOL_ID);
+        coinRewards = rewards.maycPoolRewards.mulDiv(
+            PERCENTAGE_FACTOR - staker.getNftRewardsShare(mayc),
+            PERCENTAGE_FACTOR,
+            Math.Rounding.Down
+        );
+        rewards.maycPoolRewards -= coinRewards;
+        rewards.coinPoolRewards += coinRewards;
+
+        // bakc
+        rewards.bakcPoolRewards = staker.pendingRewards(ApeStakingLib.BAKC_POOL_ID);
+        coinRewards = rewards.bakcPoolRewards.mulDiv(
+            PERCENTAGE_FACTOR - staker.getNftRewardsShare(bakc),
+            PERCENTAGE_FACTOR,
+            Math.Rounding.Down
+        );
+        rewards.bakcPoolRewards -= coinRewards;
+        rewards.coinPoolRewards += coinRewards;
+
+        rewards.coinPoolRewards -= staker.calculateFee(rewards.coinPoolRewards);
+        rewards.baycPoolRewards -= staker.calculateFee(rewards.baycPoolRewards);
+        rewards.maycPoolRewards -= staker.calculateFee(rewards.maycPoolRewards);
+        rewards.bakcPoolRewards -= staker.calculateFee(rewards.bakcPoolRewards);
+    }
+    function viewUserPendingRewards(address userAddr_) external view returns (PendingRewards memory rewards) {
+        rewards = viewPoolPendingRewards();
+
+        uint256 totalSupply = coinPool.totalSupply();
+        if (totalSupply > 0) {
+            rewards.coinPoolRewards = rewards.coinPoolRewards.mulDiv(
+                coinPool.balanceOf(userAddr_),
+                totalSupply,
+                Math.Rounding.Down
+            );
+        }
+
+        uint256 totalStakedNft = staker.stBayc().totalStaked(address(staker));
+        if (totalStakedNft > 0) {
+            rewards.baycPoolRewards = rewards.baycPoolRewards.mulDiv(
+                getStakedNftCount(staker.stBayc(), userAddr_),
+                totalStakedNft,
+                Math.Rounding.Down
+            );
+        }
+
+        totalStakedNft = staker.stMayc().totalStaked(address(staker));
+        if (totalStakedNft > 0) {
+            rewards.maycPoolRewards = rewards.maycPoolRewards.mulDiv(
+                getStakedNftCount(staker.stMayc(), userAddr_),
+                totalStakedNft,
+                Math.Rounding.Down
+            );
+        }
+
+        totalStakedNft = staker.stBakc().totalStaked(address(staker));
+        if (totalStakedNft > 0) {
+            rewards.bakcPoolRewards = rewards.bakcPoolRewards.mulDiv(
+                getStakedNftCount(staker.stBakc(), userAddr_),
+                totalStakedNft,
+                Math.Rounding.Down
+            );
+        }
+    }
+
+    function getStakedNftCount(IStakedNft nft_, address userAddr_) public view returns (uint256 count) {
+        for (uint256 i = 0; i < nft_.balanceOf(userAddr_); i++) {
+            if (nft_.stakerOf(nft_.tokenOfOwnerByIndex(userAddr_, i)) == address(staker)) {
+                count += 1;
+            }
+        }
+        (address bnftProxy, ) = bnftRegistry.getBNFTAddresses(address(nft_));
+        if (bnftProxy != address(0)) {
+            IERC721Enumerable bnft = IERC721Enumerable(bnftProxy);
+            for (uint256 i = 0; i < bnft.balanceOf(userAddr_); i++) {
+                if (nft_.stakerOf(bnft.tokenOfOwnerByIndex(userAddr_, i)) == address(staker)) {
+                    count += 1;
+                }
+            }
+        }
+    }
+}
+Now I want you to help me find new gas-wasting patterns from the above codes and the list of example patterns, considering the introduction of transient storage. Please be creative and think outside the box beyond the patterns listed above. Please put the new gas-wasting patterns in bullet points, using Latex syntax. Also please answer the following questions for each of the found patterns:
+
+1. How did you find this pattern? Could you explain the reasoning process, step by step, behind the discovery?
+2. What should I do, step by step, to fix the found gas-wasting patterns? Could you explain the reasoning process, step by step, behind the reason why such a fix works?
+3. On a score of 0 to 5, please rate this new pattern in terms of how much it is sacrificing readability, security, and maintainability in exchange for gas optimization (5 is the least impacted. For example, "Readability: 5; Security: 4; Maintainability: 1" means no effect on security while maintainability is largely affected.)
+
+Here are some additional requirements:
+1. If you think my prompt to you has any issues (e.g. ambiguity or lack of information), please tell me how I should improve it the next time.
+2. Please reflect on your reasoning process and tell me how you could do better next time in terms of completing the given task. If you found any issues, please also make corresponding improvements to your output this time and tell me what you did and why such improvement is necessary, in a step-by-step manner.

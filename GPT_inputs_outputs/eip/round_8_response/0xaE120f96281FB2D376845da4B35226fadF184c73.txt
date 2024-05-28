@@ -1,0 +1,65 @@
+## New Gas-Wasting Patterns Identified
+
+### Pattern 1: Unoptimized Token Reservation Updates
+#### Description
+In the `_charge_fee` function, `projects[project_id].tokens_reserved += amount;` is executed every time the function is called for token transactions, which results in a costly storage update.
+
+#### Discovery Process
+1. Analyzed all storage operations in the code to identify potentially repetitive and costly updates.
+2. Noticed that `projects[project_id].tokens_reserved` is updated every time without considering if the value really needs to change.
+3. Compared gas costs between storage and memory operations, confirming storage operations are more expensive.
+
+#### Fix Steps
+1. Introduce a check to determine if `amount` is actually greater than zero before updating `tokens_reserved`.
+2. Implement:
+   ```solidity
+   if (amount > 0) {
+       projects[project_id].tokens_reserved += amount;
+   }
+   ```
+3. This avoids unnecessary storage operations when `amount` is zero, saving gas.
+
+#### Impact Rating
+- **Readability**: 5; minimal impact as this change is small and straightforward.
+- **Security**: 5; no security implications as the logic remains consistent.
+- **Maintainability**: 5; easy to maintain as the change is minimal.
+
+### Pattern 2: Redundant Computation of Token Balance in `_charge_fee`
+#### Description
+In the `_charge_fee` function, the token balance is fetched and then immediately the available tokens are calculated by subtracting the reserved tokens.
+
+#### Discovery Process
+1. Noticed repeated fetching and computation involving token balances in the `_charge_fee` function.
+2. These operations occur every time the function is called, regardless of whether the result is needed or not.
+3. Identified that fetching token balances from the ERC20 contract can be optimized.
+
+#### Fix Steps
+1. Use transient storage to cache the token balance for the duration of the transaction.
+2. Replace the direct ERC20 call with a check to transient storage:
+   ```solidity
+   uint token_balance;
+   if (!transient_storage.exists(token)) {
+       token_balance = IERC20(projects[project_id].token).balanceOf(address(this));
+       transient_storage.store(token, token_balance);
+   } else {
+       token_balance = transient_storage.load(token);
+   }
+   ```
+3. This reduces the number of external calls, saving gas.
+
+#### Impact Rating
+- **Readability**: 4; introduces transient storage handling which might be new to some developers.
+- **Security**: 4; as long as transient storage is securely managed, security is maintained.
+- **Maintainability**: 4; requires understanding of transient storage, but overall maintenance is manageable.
+
+### Reflections and Improvements
+
+#### Reflection on Prompt Issues
+The prompt could be more explicit about the specific contract functions or sections where gas inefficiencies are suspected or most critical. Additionally, including more details about the operational context or transactional patterns could help focus the analysis more effectively.
+
+#### Improvements in My Process
+1. **Broader Initial Analysis**: Initially, focus on a broader range of potential inefficiencies, including less obvious ones such as contract-wide patterns or architectural inefficiencies.
+2. **Contextual Consideration**: Incorporate more consideration of how the contract is likely to be used, which impacts which optimizations are most beneficial.
+3. **Iterative Review**: Apply an iterative review process to critically assess each function not just in isolation but also how it interacts with others in terms of state changes and gas usage.
+
+These improvements would enhance the thoroughness and relevance of the analysis, ensuring that suggested optimizations are both practical and impactful.

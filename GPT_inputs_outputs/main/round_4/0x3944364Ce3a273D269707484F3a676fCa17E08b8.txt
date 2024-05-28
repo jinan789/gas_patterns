@@ -1,0 +1,187 @@
+I want you to help me find new gas-wasting patterns for Solidity. Gas is a unique pricing mechanism in Solidity, which measures the amount of computational resources put into the execution of Solidity codes. The goal of gas optimization is to find an equivalent code instruction sequence that produces the same output while consuming less gas, which may misalign from the way people typically write codes, since code writers aim for readability and maintainability, while gas optimization might seem a little unintuitive to newcomers. For example, storage variables in Solidity are expensive in terms of gas, while memory is not, so storage operations should be avoided whenever possible. Gas is paid in real money, so saving gas is saving money.
+
+First, I will give you a list of known gas-wasting patterns. The list is numbered, with each bullet point specifying one gas-wasting pattern, which is followed by an explanation of why this pattern wastes gas. I want you to read through these and learn how to find new gas-wasting patterns from it. The list is as follows:
+
+1. "dead codes." codes that are guaranteed not to be executed (e.g. unreachable conditional branch) should be removed.
+2. "Opaque predicate." If the outcome of a predicate could be inferred to be true/false without execution, then we could just replace it with the corresponding value to save the compuation during runtime.
+3. "Expensive operations in a loop." If an gas-expensive operation is executed multiple times in a loop, while there is a way to equivalently move it out of the loop to execute only once (e.g. storing a storage variable in a memory variable and performing operations on the memory variable inside the loop), then we should do it to save gas.
+4. "Constant outcome of a loop." If the outcome of a loop could be inferred without execution, then we could just replace it with the corresponding value to save the compuation during runtime.
+5. "Loop fusion." If two loops have the same starting and stopping conditions with the same increment steps, then we could consider combining them into one (e.g. delete the second loop, and put its loop body codes into the first one) if they have no dependencies. This way, we save the logical comparisons, conditional jumps, as well as the incremental steps of the second loop, which saves computation and thus gas.
+6. "Repeated computations in a loop." If there are expressions that produce the same outcome in each iteration of a loop, we could move it out of the loop and execute only once, which saves computation.
+8. "Struct variable refactoring." If a struct used in a contract contains some fields that are used more often and some that are less often, then by breaking up the struct into two, where the frequently used fields are now put as a separate struct, we get to avoid unnecessary reads on the less often used fields and save gas.s
+
+Next, I will give you a chunk of Solidity codes from which you will find gas-inefficient patterns; note that I have removed simple functions from the contract and only kept complex ones, with the hope that you could focus on the most complicated function codes:contract DFSRegistry is AdminAuth {
+    function addNewContract(
+        bytes4 _id,
+        address _contractAddr,
+        uint256 _waitPeriod
+    ) public onlyOwner {
+        if (entries[_id].exists){
+            revert EntryAlreadyExistsError(_id);
+        }
+
+        entries[_id] = Entry({
+            contractAddr: _contractAddr,
+            waitPeriod: _waitPeriod,
+            changeStartTime: 0,
+            inContractChange: false,
+            inWaitPeriodChange: false,
+            exists: true
+        });
+
+        emit AddNewContract(msg.sender, _id, _contractAddr, _waitPeriod);
+    }
+
+    /// @notice Reverts to the previous address immediately
+    /// @dev In case the new version has a fault, a quick way to fallback to the old contract
+    /// @param _id Id of contract
+    function revertToPreviousAddress(bytes4 _id) public onlyOwner {
+        if (!(entries[_id].exists)){
+            revert EntryNonExistentError(_id);
+        }
+        if (previousAddresses[_id] == address(0)){
+            revert EmptyPrevAddrError(_id);
+        }
+
+        address currentAddr = entries[_id].contractAddr;
+        entries[_id].contractAddr = previousAddresses[_id];
+
+        emit RevertToPreviousAddress(msg.sender, _id, currentAddr, previousAddresses[_id]);
+    }
+
+    /// @notice Starts an address change for an existing entry
+    /// @dev Can override a change that is currently in progress
+    /// @param _id Id of contract
+    /// @param _newContractAddr Address of the new contract
+    function startContractChange(bytes4 _id, address _newContractAddr) public onlyOwner {
+        if (!entries[_id].exists){
+            revert EntryNonExistentError(_id);
+        }
+        if (entries[_id].inWaitPeriodChange){
+            revert AlreadyInWaitPeriodChangeError(_id);
+        }
+
+        entries[_id].changeStartTime = block.timestamp; // solhint-disable-line
+        entries[_id].inContractChange = true;
+
+        pendingAddresses[_id] = _newContractAddr;
+
+        emit StartContractChange(msg.sender, _id, entries[_id].contractAddr, _newContractAddr);
+    }
+
+    /// @notice Changes new contract address, correct time must have passed
+    /// @param _id Id of contract
+    function approveContractChange(bytes4 _id) public onlyOwner {
+        if (!entries[_id].exists){
+            revert EntryNonExistentError(_id);
+        }
+        if (!entries[_id].inContractChange){
+            revert EntryNotInChangeError(_id);
+        }
+        if (block.timestamp < (entries[_id].changeStartTime + entries[_id].waitPeriod)){// solhint-disable-line
+            revert ChangeNotReadyError(block.timestamp, (entries[_id].changeStartTime + entries[_id].waitPeriod));
+        }
+
+        address oldContractAddr = entries[_id].contractAddr;
+        entries[_id].contractAddr = pendingAddresses[_id];
+        entries[_id].inContractChange = false;
+        entries[_id].changeStartTime = 0;
+
+        pendingAddresses[_id] = address(0);
+        previousAddresses[_id] = oldContractAddr;
+
+        emit ApproveContractChange(msg.sender, _id, oldContractAddr, entries[_id].contractAddr);
+    }
+
+    /// @notice Cancel pending change
+    /// @param _id Id of contract
+    function cancelContractChange(bytes4 _id) public onlyOwner {
+        if (!entries[_id].exists){
+            revert EntryNonExistentError(_id);
+        }
+        if (!entries[_id].inContractChange){
+            revert EntryNotInChangeError(_id);
+        }
+
+        address oldContractAddr = pendingAddresses[_id];
+
+        pendingAddresses[_id] = address(0);
+        entries[_id].inContractChange = false;
+        entries[_id].changeStartTime = 0;
+
+        emit CancelContractChange(msg.sender, _id, oldContractAddr, entries[_id].contractAddr);
+    }
+
+    /// @notice Starts the change for waitPeriod
+    /// @param _id Id of contract
+    /// @param _newWaitPeriod New wait time
+    function startWaitPeriodChange(bytes4 _id, uint256 _newWaitPeriod) public onlyOwner {
+        if (!entries[_id].exists){
+            revert EntryNonExistentError(_id);
+        }
+        if (entries[_id].inContractChange){
+            revert AlreadyInContractChangeError(_id);
+        }
+
+        pendingWaitTimes[_id] = _newWaitPeriod;
+
+        entries[_id].changeStartTime = block.timestamp; // solhint-disable-line
+        entries[_id].inWaitPeriodChange = true;
+
+        emit StartWaitPeriodChange(msg.sender, _id, _newWaitPeriod);
+    }
+
+    /// @notice Changes new wait period, correct time must have passed
+    /// @param _id Id of contract
+    function approveWaitPeriodChange(bytes4 _id) public onlyOwner {
+        if (!entries[_id].exists){
+            revert EntryNonExistentError(_id);
+        }
+        if (!entries[_id].inWaitPeriodChange){
+            revert EntryNotInChangeError(_id);
+        }
+        if (block.timestamp < (entries[_id].changeStartTime + entries[_id].waitPeriod)){ // solhint-disable-line
+            revert ChangeNotReadyError(block.timestamp, (entries[_id].changeStartTime + entries[_id].waitPeriod));
+        }
+
+        uint256 oldWaitTime = entries[_id].waitPeriod;
+        entries[_id].waitPeriod = pendingWaitTimes[_id];
+        
+        entries[_id].inWaitPeriodChange = false;
+        entries[_id].changeStartTime = 0;
+
+        pendingWaitTimes[_id] = 0;
+
+        emit ApproveWaitPeriodChange(msg.sender, _id, oldWaitTime, entries[_id].waitPeriod);
+    }
+
+    /// @notice Cancel wait period change
+    /// @param _id Id of contract
+    function cancelWaitPeriodChange(bytes4 _id) public onlyOwner {
+        if (!entries[_id].exists){
+            revert EntryNonExistentError(_id);
+        }
+        if (!entries[_id].inWaitPeriodChange){
+            revert EntryNotInChangeError(_id);
+        }
+
+        uint256 oldWaitPeriod = pendingWaitTimes[_id];
+
+        pendingWaitTimes[_id] = 0;
+        entries[_id].inWaitPeriodChange = false;
+        entries[_id].changeStartTime = 0;
+
+        emit CancelWaitPeriodChange(msg.sender, _id, oldWaitPeriod, entries[_id].waitPeriod);
+    }
+}
+Now that I have given you the necessary information, I want you to help me find new gas-wasting patterns from the above codes, based on what you learn from the list of patterns. Please be creative and think out of the box beyond the patterns listed above. Please put the new gas wasting patterns in bullet points (in the form of '1.', '2.', etc), and answer the following questions for each of the found patterns (in sub-bullet-points under each bullet point):
+
+1. How did you find this pattern? Could you explain the reasoning process, step by step, behind the discovery?
+
+2. What should I do, step by step, to fix the found gas-wasting patterns? Could you explain the reasoning process, step by step, behind the reason why such a fix works?
+
+3. On a score of 0 to 5, could you please tell me how would you rate this found new pattern, in terms of how much it is sacrificing readability, security, and maintainability in exchange for gas optimization (5 is the least impacted. For example, Security score of 5 means implementing the found gas-optimization pattern would have no effect on security, whereas 1 means it would reduce security)? Please format your answer as in "Readability: 5; Security: 4; Maintainability: 3". Please also provide explanations.
+
+Here are some additional requirements:
+1. If you think my prompt to you has any issues (e.g. ambiguity or lack of information), please tell me how I should improve it in the next time.
+2. please help me format your answer in the form of a Latex section (e.g. \section*{Analysis of Provided Solidity Code}), since I want to assert it to a Latex document.

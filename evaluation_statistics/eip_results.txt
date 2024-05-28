@@ -1,0 +1,13 @@
+Inefficient Use of Storage for Frequently Updated Values  &  4.1  &  1  &  
+Excessive Storage Access and Lack of Transient Storage Utilization  &  4.6  &  3  &  
+Redundant Re-loading of Entry Data  &  4.7  &  2  &  
+Frequent Use of Expensive Storage Operations  &  5.2  &  1  &  
+Inefficient Storage Use  &  5.8  &  3  &  
+Inefficient Use of Storage for Dynamic Values  &  5.9  &  3  &  
+Inefficient Storage Usage in Conditional Checks  &  6.3  &  2  &  
+Redundant State Reads for Conditional Checks  &  6.7  &  2  &  
+Inefficient Use of Transient Storage for Frequent Read/Write Operations**  &  6.10  &  1  &  
+Inefficient Use of Storage for Frequently Updated Variables  &  7.7  &  3  &  
+Redundant Storage Access in Functions  &  8.5  &  1  &  
+
+NOTE: only patterns specific to the introduction of the new EIP was considered and listed here.

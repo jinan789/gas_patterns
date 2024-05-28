@@ -24,7 +24,7 @@
 
 13. Placement of require statements{} <>
 
-14. Avoid no-op writes to state variables{} <Lodovica2020design>
+14. Avoid no-op writes to state variables{} <Lodovica2020design, kaur2022gasfee>
 
 15. Reordering conditional checks for short-circuiting{Lodovica2020design} <Kong2022characterizing, zhao2023gassaver>
 
@@ -46,8 +46,6 @@
 
 24. Loop invariant codes{Keerthi2021smart, Chen2017underoptimized, Nguyen2022gassaver, zhao2023gassaver} <>
 
-25. Avoid expensive operations inside loops{Chen2017underoptimized} <Keerthi2021smart, sorbo2022profiling, zhao2023gassaver>
+25. Avoid expensive operations inside loops{Chen2017underoptimized, kaur2022gasfee} <Keerthi2021smart, sorbo2022profiling, zhao2023gassaver>
 
-26. Struct refactoring by usage frequency{}<chen2022synthesispowered>
-
-27. Using bytes32 for string representation{zhao2023gassaver, sorbo2022profiling}<>
+26. Using bytes32 for string representation{zhao2023gassaver, sorbo2022profiling}<kaur2022gasfee>

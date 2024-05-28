@@ -1,0 +1,144 @@
+I want you to help me find new gas-wasting patterns for Vyper. Gas is a unique pricing mechanism in Vyper, which measures the amount of computational resources put into the execution of Vyper codes. Gas is paid in money, so saving gas is saving money. The goal of gas optimization is to find an equivalent code instruction sequence that produces the same output while consuming less gas. This may misalign from how people typically write codes, since the gas pricing mechanism is less intuitive and code writers do not often keep it in mind. For example, storage variables in Vyper are expensive in terms of gas, while memory is not, so unnecessary storage operations should be avoided when possible, but programmers from other languages might not be aware of this. 
+
+First, I will give you a list of known gas-wasting patterns as an example. The list is numbered, with each bullet point specifying one gas-wasting pattern and an explanation of why this pattern wastes gas. Please be creative and see if my provided codes contain any gas-wasting patterns beyond the provided ones. The list is as follows:
+
+1. Repeated computation of the same expression: including repetitive reads of the same expensive storage variable (e.g. Overuse of expensive storage variables). This could be solved by introducing an intermediate variable to hold the value
+2. Variable refactoring: by refactoring variable types and thus adjusting memory layout, we could save gas by saving the amount of storage space needed
+3. Redundant operations with same effects: redundant operations that overwrite the effect of the previous operation, making the previous useless
+4. Pre-computable operations on constants: performing comparisons (or other operations) to constants is useless and could be pre-computed
+5. Simplifiable conditional operations: expressions that involve logical operations that could be simplified to reduce the amount of computational workload.
+6. "Loop fusion." If two loops have the same starting and stopping conditions with the same increment steps, then we could consider combining them into one, if they have no dependencies. 
+7. "Repeated computations in a loop." If there are expressions that produce the same outcome in each iteration of a loop, we could move it out of the loop and execute only once, which saves computation.
+8. "Opaque predicate." If the outcome of a predicate could be inferred to be true/false without execution, then we could just replace it with the corresponding value to save the compuation during runtime.
+
+Next, I will give you a chunk of Vyper codes from which you will find gas-inefficient patterns:def _redeem(
+    sender: address, 
+    receiver: address, 
+    owner: address,
+    assets: uint256,
+    shares_to_burn: uint256, 
+    max_loss: uint256,
+    strategies: DynArray[address, MAX_QUEUE]
+) -> uint256:
+    """
+    This will attempt to free up the full amount of assets equivalent to
+    `shares_to_burn` and transfer them to the `receiver`. If the vault does
+    not have enough idle funds it will go through any strategies provided by
+    either the withdrawer or the queue_manager to free up enough funds to 
+    service the request.
+    The vault will attempt to account for any unrealized losses taken on from
+    strategies since their respective last reports.
+    Any losses realized during the withdraw from a strategy will be passed on
+    to the user that is redeeming their vault shares.
+    """
+    assert receiver != empty(address), "ZERO ADDRESS"
+    assert max_loss <= MAX_BPS, "max loss"
+    # If there is a withdraw limit module, check the max.
+    if self.withdraw_limit_module != empty(address):
+        assert assets <= self._max_withdraw(owner, max_loss, strategies), "exceed withdraw limit"
+    shares: uint256 = shares_to_burn
+    shares_balance: uint256 = self.balance_of[owner]
+    assert shares > 0, "no shares to redeem"
+    assert shares_balance >= shares, "insufficient shares to redeem"
+    if sender != owner:
+        self._spend_allowance(owner, sender, shares_to_burn)
+    # The amount of the underlying token to withdraw.
+    requested_assets: uint256 = assets
+    # load to memory to save gas
+    curr_total_idle: uint256 = self.total_idle
+    # If there are not enough assets in the Vault contract, we try to free
+    # funds from strategies.
+    if requested_assets > curr_total_idle:
+        # Cache the default queue.
+        _strategies: DynArray[address, MAX_QUEUE] = self.default_queue
+        # If a custom queue was passed, and we don't force the default queue.
+        if len(strategies) != 0 and not self.use_default_queue:
+            # Use the custom queue.
+            _strategies = strategies
+        # load to memory to save gas
+        curr_total_debt: uint256 = self.total_debt
+        # Withdraw from strategies only what idle doesn't cover.
+        # `assets_needed` is the total amount we need to fill the request.
+        assets_needed: uint256 = unsafe_sub(requested_assets, curr_total_idle)
+        # `assets_to_withdraw` is the amount to request from the current strategy.
+        assets_to_withdraw: uint256 = 0
+        # To compare against real withdrawals from strategies
+        previous_balance: uint256 = ASSET.balanceOf(self)
+        for strategy in _strategies:
+            # Make sure we have a valid strategy.
+            assert self.strategies[strategy].activation != 0, "inactive strategy"
+            # How much should the strategy have.
+            current_debt: uint256 = self.strategies[strategy].current_debt
+            # What is the max amount to withdraw from this strategy.
+            assets_to_withdraw = min(assets_needed, current_debt)
+            # Cache max_withdraw now for use if unrealized loss > 0
+            # Use maxRedeem and convert since we use redeem.
+            max_withdraw: uint256 = IStrategy(strategy).convertToAssets(
+                IStrategy(strategy).maxRedeem(self)
+            )
+            # CHECK FOR UNREALISED LOSSES
+            # If unrealised losses > 0, then the user will take the proportional share 
+            # and realize it (required to avoid users withdrawing from lossy strategies).
+            # NOTE: strategies need to manage the fact that realising part of the loss can 
+            # mean the realisation of 100% of the loss!! (i.e. if for withdrawing 10% of the
+            # strategy it needs to unwind the whole position, generated losses might be bigger)
+            unrealised_losses_share: uint256 = self._assess_share_of_unrealised_losses(strategy, assets_to_withdraw)
+            if unrealised_losses_share > 0:
+                # If max withdraw is limiting the amount to pull, we need to adjust the portion of 
+                # the unrealized loss the user should take.
+                if max_withdraw < assets_to_withdraw - unrealised_losses_share:
+                    # How much would we want to withdraw
+                    wanted: uint256 = assets_to_withdraw - unrealised_losses_share
+                    # Get the proportion of unrealised comparing what we want vs. what we can get
+                    unrealised_losses_share = unrealised_losses_share * max_withdraw / wanted
+                    # Adjust assets_to_withdraw so all future calculations work correctly
+                    assets_to_withdraw = max_withdraw + unrealised_losses_share
+                # User now "needs" less assets to be unlocked (as he took some as losses)
+                assets_to_withdraw -= unrealised_losses_share
+                requested_assets -= unrealised_losses_share
+                # NOTE: done here instead of waiting for regular update of these values 
+                # because it's a rare case (so we can save minor amounts of gas)
+                assets_needed -= unrealised_losses_share
+                curr_total_debt -= unrealised_losses_share
+                # If max withdraw is 0 and unrealised loss is still > 0 then the strategy likely
+                # realized a 100% loss and we will need to realize that loss before moving on.
+                if max_withdraw == 0 and unrealised_losses_share > 0:
+                    # Adjust the strategy debt accordingly.
+                    new_debt: uint256 = current_debt - unrealised_losses_share
+                    # Update strategies storage
+                    self.strategies[strategy].current_debt = new_debt
+                    # Log the debt update
+                    log DebtUpdated(strategy, current_debt, new_debt)
+            # Adjust based on the max withdraw of the strategy.
+            assets_to_withdraw = min(assets_to_withdraw, max_withdraw)
+            # Can't withdraw 0.
+            if assets_to_withdraw == 0:
+                continue
+            # WITHDRAW FROM STRATEGY
+            self._withdraw_from_strategy(strategy, assets_to_withdraw)
+            post_balance: uint256 = ASSET.balanceOf(self)
+            # Always check withdrawn against the real amounts.
+            withdrawn: uint256 = post_balance - previous_balance
+            loss: uint256 = 0
+            # Check if we redeemed too much.
+            if withdrawn > assets_to_withdraw:
+                # Make sure we don't underflow in debt updates.
+                if withdrawn > current_debt:
+                    # Can't withdraw more than our debt.
+                    assets_to_withdraw = current_debt
+                else:
+                    # Add the extra to how much we withdrew.
+                    assets_to_withdraw += (unsafe_sub(withdrawn, assets_to_withdraw))
+            # If we have not received what we expected, we consider the difference a loss.
+            elif withdrawn < assets_to_withdraw:
+                loss = unsafe_sub(assets_to_withdraw, withdrawn)
+
+Now I want you to help me find new gas-wasting patterns from the above codes and the list of example patterns. Please be creative and think outside the box beyond the patterns listed above. Please put the new gas-wasting patterns in bullet points, using Latex syntax. Also please answer the following questions for each of the found patterns:
+
+1. How did you find this pattern? Could you explain the reasoning process, step by step, behind the discovery?
+2. What should I do, step by step, to fix the found gas-wasting patterns? Could you explain the reasoning process, step by step, behind the reason why such a fix works?
+3. On a score of 0 to 5, please rate this new pattern in terms of how much it is sacrificing readability, security, and maintainability in exchange for gas optimization (5 is the least impacted. For example, "Readability: 5; Security: 4; Maintainability: 1" means no effect on security while maintainability is largely affected.)
+
+Here are some additional requirements:
+1. If you think my prompt to you has any issues (e.g. ambiguity or lack of information), please tell me how I should improve it the next time.
+2. Please reflect on your reasoning process and tell me how you could do better next time in terms of completing the given task. If you found any issues, please also make corresponding improvements to your output this time and tell me what you did and why such improvement is necessary, in a step-by-step manner.

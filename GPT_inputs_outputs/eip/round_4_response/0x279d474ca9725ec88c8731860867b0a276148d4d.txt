@@ -1,0 +1,37 @@
+### New Gas-Wasting Pattern Discovered
+
+#### Pattern: Unoptimized Usage of Transient Storage for Frequently Accessed Data
+
+1. **Discovery Process**:
+   - **Step 1**: Review the given Solidity code for frequently accessed data.
+   - **Step 2**: Identify any repetitive reads or writes to storage that could instead utilize transient storage for reduced gas costs.
+   - **Step 3**: In the provided code, `pair.getReserves()` is called multiple times across different functions (`calcMinToAmountForZapIn`, `calcMinToAmountForZapOut`). Each call to `getReserves()` potentially reads from permanent storage.
+   - **Step 4**: Consider the properties of transient storage introduced by EIP-1153 and EIP-7609, which offer lower gas costs for temporary data storage within a transaction.
+
+2. **Fix for the Pattern**:
+   - **Step 1**: At the beginning of a transaction where `getReserves()` will be used multiple times, read the reserves once and store them in transient storage.
+   - **Step 2**: Replace subsequent calls to `getReserves()` with reads from transient storage.
+   - **Step 3**: Implement a helper function that checks if the reserves are already available in transient storage and reads from it; otherwise, it fetches from permanent storage and stores it in transient storage.
+   - **Step 4**: Ensure all function calls within the same transaction that need reserve data access it from transient storage.
+
+3. **Impact Ratings**:
+   - **Readability**: 4; Minor complexity is added by the management of transient storage.
+   - **Security**: 5; No impact on security as data integrity is maintained.
+   - **Maintainability**: 4; Slightly more complex due to additional storage handling but manageable.
+
+### Reflections and Improvements
+
+1. **Clarity and Specifications**:
+   - Your prompt was clear but could benefit from specifying whether the scenario involves multiple calls to the same functions within a single transaction or across transactions. This affects whether transient storage is applicable.
+   - In future prompts, including specific transaction scenarios or expected function call patterns could help in more accurately identifying optimization opportunities.
+
+2. **Improvement in Reasoning Process**:
+   - **Initial Analysis**: Start with a broader overview of the contract's typical usage patterns to better understand where transient storage can be most effectively applied.
+   - **Focused Review**: After identifying common data access patterns, focus on optimizing these specific parts with transient storage.
+   - **Iterative Refinement**: Apply changes and measure gas impact iteratively to ensure that the modifications provide the expected benefits without introducing new issues.
+
+3. **Execution of Improvements**:
+   - For this analysis, I specifically looked at repeated data accesses within the same transaction scope to identify opportunities for using transient storage. If the scenario had involved multiple transactions, the approach would have been different.
+   - By focusing on specific function calls and their frequency within transaction boundaries, I could effectively pinpoint where transient storage would reduce costs and then propose a practical implementation strategy.
+
+This approach ensures a thorough analysis of the contract's performance and cost-efficiency, leading to targeted and effective gas optimization strategies.

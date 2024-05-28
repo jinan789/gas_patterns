@@ -1,0 +1,143 @@
+I want you to help me find new gas-wasting patterns for Vyper. Gas is a unique pricing mechanism in Vyper, which measures the amount of computational resources put into the execution of Vyper codes. Gas is paid in money, so saving gas is saving money. The goal of gas optimization is to find an equivalent code instruction sequence that produces the same output while consuming less gas. This may misalign from how people typically write codes, since the gas pricing mechanism is less intuitive and code writers do not often keep it in mind. For example, storage variables in Vyper are expensive in terms of gas, while memory is not, so unnecessary storage operations should be avoided when possible, but programmers from other languages might not be aware of this. 
+
+First, I will give you a list of known gas-wasting patterns as an example. The list is numbered, with each bullet point specifying one gas-wasting pattern and an explanation of why this pattern wastes gas. Please be creative and see if my provided codes contain any gas-wasting patterns beyond the provided ones. The list is as follows:
+
+1. Repeated computation of the same expression: including repetitive reads of the same expensive storage variable (e.g. Overuse of expensive storage variables). This could be solved by introducing an intermediate variable to hold the value
+2. Variable refactoring: by refactoring variable types and thus adjusting memory layout, we could save gas by saving the amount of storage space needed
+3. Redundant operations with same effects: redundant operations that overwrite the effect of the previous operation, making the previous useless
+4. Pre-computable operations on constants: performing comparisons (or other operations) to constants is useless and could be pre-computed
+5. Simplifiable conditional operations: expressions that involve logical operations that could be simplified to reduce the amount of computational workload.
+6. "Loop fusion." If two loops have the same starting and stopping conditions with the same increment steps, then we could consider combining them into one, if they have no dependencies. 
+7. "Repeated computations in a loop." If there are expressions that produce the same outcome in each iteration of a loop, we could move it out of the loop and execute only once, which saves computation.
+8. "Opaque predicate." If the outcome of a predicate could be inferred to be true/false without execution, then we could just replace it with the corresponding value to save the compuation during runtime.
+
+Next, I will give you a chunk of Vyper codes from which you will find gas-inefficient patterns:def send_reward(_amount: uint256):
+    self._paloma_check()
+    _decimals: uint256 = self.decimals
+    _epoch_add_cnt: uint256 = unsafe_div(_amount, unsafe_mul(1000, 10**_decimals))
+    assert _amount % (unsafe_mul(1000, 10**_decimals)) == 0, "Invalid Fund Amount"
+    assert _amount <= unsafe_mul(MAX_FUND, 10**_decimals), "Maximum Limit 5000"
+    # Transfer reward token to the contract
+    _reward_token: address = self.reward_token
+    assert ERC20(_reward_token).transferFrom(msg.sender, self, _amount, default_return_value=True), "Send Reward Failed"
+    _epoch_cnt: uint256 = self.epoch_cnt
+    _competition_start: uint256 = 0
+    _competition_end: uint256 = 0
+    for _i in range(5):
+        if _i < _epoch_add_cnt:
+            if _epoch_cnt > 0:
+                _last_epoch_info: EpochInfo = self.epoch_info[_epoch_cnt]
+                _last_competition_start: uint256 = _last_epoch_info.competition_start
+                _last_competition_end: uint256 = _last_epoch_info.competition_end
+                _epoch_cnt = unsafe_add(_epoch_cnt, 1)
+                if block.timestamp >= _last_competition_start:
+                    _competition_start = unsafe_add(unsafe_mul(unsafe_div(block.timestamp, DAY_IN_SEC), DAY_IN_SEC), DAY_IN_SEC)
+                    _competition_end = unsafe_add(_competition_start, DAY_IN_SEC)
+                elif block.timestamp < _last_competition_start:
+                    _competition_start = unsafe_add(_last_competition_start, DAY_IN_SEC)
+                    _competition_end = unsafe_add(_last_competition_end, DAY_IN_SEC)
+            else:
+                _epoch_cnt = unsafe_add(_epoch_cnt, 1)
+                self.active_epoch_num = unsafe_add(self.active_epoch_num, 1)
+                _competition_start = unsafe_add(unsafe_mul(unsafe_div(block.timestamp, DAY_IN_SEC), DAY_IN_SEC), DAY_IN_SEC)
+                _competition_end = unsafe_add(_competition_start, DAY_IN_SEC)
+            # Write
+            self.epoch_info[_epoch_cnt] = EpochInfo({
+                competition_start: _competition_start,
+                competition_end: _competition_end,
+                entry_cnt: 0
+            })
+            # Event Log
+            log RewardSent(_epoch_cnt, msg.sender, _reward_token, _amount, _competition_start, _competition_end)
+    self.epoch_cnt = _epoch_cnt
+@external
+def create_bot(swap_infos: DynArray[SwapInfo, MAX_SIZE], 
+        collateral: address, 
+        settlement: address, 
+        debt: uint256, 
+        N: uint256, 
+        callbacker: address, 
+        callback_args: DynArray[uint256, 5], 
+        leverage: uint256, 
+        deleverage_percentage: uint256, 
+        health_threshold: uint256, 
+        profit_taking: uint256, 
+        expire: uint256, 
+        number_trades: uint256, 
+        interval: uint256):
+    _claimable_amount: uint256 = self.claimable_amount[msg.sender]
+    assert _claimable_amount > 0, "No Claimable Amount"
+    ERC20(self.reward_token).approve(self, _claimable_amount)
+    CreateBotFactory(FACTORY).create_bot(
+        swap_infos, 
+        collateral, 
+        settlement, 
+        debt, 
+        N, 
+        callbacker, 
+        callback_args, 
+        leverage, 
+        deleverage_percentage, 
+        health_threshold,
+        profit_taking,
+        expire,
+        number_trades,
+        interval, 
+        msg.sender, 
+        value=msg.value)
+    log Claimed(msg.sender, _claimable_amount)
+    # init claimable amount 
+    self.claimable_amount[msg.sender] = 0
+@external
+@payable
+def set_winner_list(_winner_infos: DynArray[WinnerInfo, MAX_ENTRY]):
+    self._paloma_check()
+    _active_epoch_num: uint256 = self.active_epoch_num
+    assert _active_epoch_num <= self.epoch_cnt, "No Reward yet"
+    _i: uint256 = 0
+    for _winner_info in _winner_infos:  
+        self.winner_info[_active_epoch_num][_i] = _winner_infos[_i]
+        self.claimable_amount[_winner_info.winner] = unsafe_add(self.claimable_amount[_winner_info.winner], _winner_info.claimable_amount)
+        _i = unsafe_add(_i, 1)
+        log SetWinner(_active_epoch_num, _winner_info.winner, _winner_info.claimable_amount)
+    # increse activeEpochNum for activating the next Epoch
+    self.active_epoch_num = unsafe_add(_active_epoch_num, 1)
+@external
+@payable
+def __init__(_compass: address, _reward_token: address, _decimals: uint256, _factory: address):
+    self.compass = _compass
+    self.reward_token = _reward_token
+    self.decimals = _decimals
+    FACTORY = _factory
+    log UpdateCompass(empty(address), _compass)
+@internal
+def set_paloma():
+    assert msg.sender == self.compass and self.paloma == empty(bytes32) and len(msg.data) == 36, "Invalid"
+    _paloma: bytes32 = convert(slice(msg.data, 4, 32), bytes32)
+    self.paloma = _paloma
+    log SetPaloma(_paloma)
+@external
+def set_reward_token(_new_reward_token: address, _new_decimals: uint256):
+    self._paloma_check()
+    self.reward_token = _new_reward_token
+    self.decimals = _new_decimals
+    log UpdateRewardToken(_new_reward_token, _new_decimals)
+@external
+def _paloma_check():
+    assert msg.sender == self.compass, "Not compass"
+    assert self.paloma == convert(slice(msg.data, unsafe_sub(len(msg.data), 32), 32), bytes32), "Invalid paloma"
+@external
+def update_compass(_new_compass: address):
+    self._paloma_check()
+    self.compass = _new_compass
+    log UpdateCompass(msg.sender, _new_compass)
+@external
+Now I want you to help me find new gas-wasting patterns from the above codes and the list of example patterns. Please be creative and think outside the box beyond the patterns listed above. Please put the new gas-wasting patterns in bullet points, using Latex syntax. Also please answer the following questions for each of the found patterns:
+
+1. How did you find this pattern? Could you explain the reasoning process, step by step, behind the discovery?
+2. What should I do, step by step, to fix the found gas-wasting patterns? Could you explain the reasoning process, step by step, behind the reason why such a fix works?
+3. On a score of 0 to 5, please rate this new pattern in terms of how much it is sacrificing readability, security, and maintainability in exchange for gas optimization (5 is the least impacted. For example, "Readability: 5; Security: 4; Maintainability: 1" means no effect on security while maintainability is largely affected.)
+
+Here are some additional requirements:
+1. If you think my prompt to you has any issues (e.g. ambiguity or lack of information), please tell me how I should improve it the next time.
+2. Please reflect on your reasoning process and tell me how you could do better next time in terms of completing the given task. If you found any issues, please also make corresponding improvements to your output this time and tell me what you did and why such improvement is necessary, in a step-by-step manner.

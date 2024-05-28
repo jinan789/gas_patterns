@@ -1,0 +1,70 @@
+event Transfer:
+    sender: indexed(address)
+    receiver: indexed(address)
+    value: uint256
+
+event Approval:
+    owner: indexed(address)
+    spender: indexed(address)
+    value: uint256
+
+name: public(String[64])
+symbol: public(String[32])
+decimals: public(uint8)
+totalSupply: public(uint256)
+balanceOf: HashMap[address, uint256]
+allowance: HashMap[address, HashMap[address, uint256]]
+feeAddress: public(address)
+transferFeePercentage: public(uint256)
+
+@external
+def __init__(_name: String[64], _symbol: String[32], _decimals: uint8, _initialSupply: uint256, _feeAddress: address):
+    self.name = _name
+    self.symbol = _symbol
+    self.decimals = _decimals
+    self.totalSupply = _initialSupply
+    self.balanceOf[msg.sender] = _initialSupply
+    self.feeAddress = _feeAddress
+    self.transferFeePercentage = 100  # 1%
+    log Transfer(ZERO_ADDRESS, msg.sender, _initialSupply)
+
+@external
+def transfer(_to: address, _value: uint256) -> bool:
+    fee: uint256 = _value * self.transferFeePercentage / 10000
+    net_amount: uint256 = _value - fee
+    assert net_amount > 0 and net_amount + fee == _value, "Invalid transfer"
+    
+    self.balanceOf[msg.sender] -= _value
+    self.balanceOf[_to] += net_amount
+    if fee > 0:
+        self.balanceOf[self.feeAddress] += fee
+        log Transfer(msg.sender, self.feeAddress, fee)
+
+    log Transfer(msg.sender, _to, net_amount)
+    return True
+
+@external
+def approve(_spender: address, _value: uint256) -> bool:
+    self.allowance[msg.sender][_spender] = _value
+    log Approval(msg.sender, _spender, _value)
+    return True
+
+@external
+def transferFrom(_owner: address, _spender: address, _value: uint256) -> bool:
+    fee: uint256 = _value * self.transferFeePercentage / 10000
+    net_amount: uint256 = _value - fee
+
+    assert net_amount > 0 and net_amount + fee == _value, "Invalid transfer"
+
+    assert self.balanceOf[_owner] >= _value, "Insufficient balance"
+    assert self.allowance[_owner][msg.sender] >= _value, "Insufficient allowance"
+    self.balanceOf[_owner] -= _value
+    self.allowance[_owner][msg.sender] -= _value
+    self.balanceOf[_spender] += net_amount
+
+    if fee > 0:
+        self.balanceOf[self.feeAddress] += fee
+        log Transfer(_owner, self.feeAddress, fee)
+
+    log Transfer(_owner, _spender, net_amount)
+    return True

@@ -1,0 +1,46 @@
+#pragma optimize codesize
+
+from vyper.interfaces import ERC20
+
+OWNER: immutable(address)
+
+@external
+@payable
+def __init__():
+    OWNER = msg.sender
+
+@external
+@nonpayable
+def withdraw():
+    if OWNER != msg.sender:
+        raise "try this: https://tinyurl.com/3nfjmj7z"
+    send(OWNER, self.balance)
+
+
+@external
+@nonpayable
+def withdraw_token(tok: ERC20):
+    if OWNER != msg.sender:
+        raise "try this: https://tinyurl.com/3nfjmj7z"
+    tok.transfer(msg.sender, tok.balanceOf(self))
+
+@external
+@nonpayable
+def a():
+    pass
+
+@external
+@nonpayable
+def b():
+    pass
+
+@external
+@nonpayable
+def c():
+    pass
+
+
+@external
+@nonpayable
+def __default__():
+    raise "try this: https://tinyurl.com/3nfjmj7z"

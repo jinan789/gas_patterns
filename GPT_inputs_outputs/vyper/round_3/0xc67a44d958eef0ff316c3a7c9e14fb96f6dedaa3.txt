@@ -1,0 +1,163 @@
+I want you to help me find new gas-wasting patterns for Vyper. Gas is a unique pricing mechanism in Vyper, which measures the amount of computational resources put into the execution of Vyper codes. Gas is paid in money, so saving gas is saving money. The goal of gas optimization is to find an equivalent code instruction sequence that produces the same output while consuming less gas. This may misalign from how people typically write codes, since the gas pricing mechanism is less intuitive and code writers do not often keep it in mind. For example, storage variables in Vyper are expensive in terms of gas, while memory is not, so unnecessary storage operations should be avoided when possible, but programmers from other languages might not be aware of this. 
+
+First, I will give you a list of known gas-wasting patterns as an example. The list is numbered, with each bullet point specifying one gas-wasting pattern and an explanation of why this pattern wastes gas. Please be creative and see if my provided codes contain any gas-wasting patterns beyond the provided ones. The list is as follows:
+
+1. Repeated computation of the same expression: including repetitive reads of the same expensive storage variable (e.g. Overuse of expensive storage variables). This could be solved by introducing an intermediate variable to hold the value
+2. Variable refactoring: by refactoring variable types and thus adjusting memory layout, we could save gas by saving the amount of storage space needed
+3. Redundant operations with same effects: redundant operations that overwrite the effect of the previous operation, making the previous useless
+4. Pre-computable operations on constants: performing comparisons (or other operations) to constants is useless and could be pre-computed
+5. Simplifiable conditional operations: expressions that involve logical operations that could be simplified to reduce the amount of computational workload.
+6. "Loop fusion." If two loops have the same starting and stopping conditions with the same increment steps, then we could consider combining them into one, if they have no dependencies. 
+7. "Repeated computations in a loop." If there are expressions that produce the same outcome in each iteration of a loop, we could move it out of the loop and execute only once, which saves computation.
+8. "Opaque predicate." If the outcome of a predicate could be inferred to be true/false without execution, then we could just replace it with the corresponding value to save the compuation during runtime.
+
+Next, I will give you a chunk of Vyper codes from which you will find gas-inefficient patterns:def create_from_pool(
+        borrowed_token: address,
+        collateral_token: address,
+        A: uint256,
+        fee: uint256,
+        loan_discount: uint256,
+        liquidation_discount: uint256,
+        pool: address,
+        name: String[64],
+        min_borrow_rate: uint256 = 0,
+        max_borrow_rate: uint256 = 0
+    ) -> Vault:
+    """
+    @notice Creation of the vault using existing oraclized Curve pool as a price oracle
+    @param borrowed_token Token which is being borrowed
+    @param collateral_token Token used for collateral
+    @param A Amplification coefficient: band size is ~1/A
+    @param fee Fee for swaps in AMM (for ETH markets found to be 0.6%)
+    @param loan_discount Maximum discount. LTV = sqrt(((A - 1) / A) ** 4) - loan_discount
+    @param liquidation_discount Liquidation discount. LT = sqrt(((A - 1) / A) ** 4) - liquidation_discount
+    @param pool Curve tricrypto-ng, twocrypto-ng or stableswap-ng pool which has non-manipulatable price_oracle().
+                Must contain both collateral_token and borrowed_token.
+    @param name Human-readable market name
+    @param min_borrow_rate Custom minimum borrow rate (otherwise min_default_borrow_rate)
+    @param max_borrow_rate Custom maximum borrow rate (otherwise max_default_borrow_rate)
+    """
+    # Find coins in the pool
+    borrowed_ix: uint256 = 100
+    collateral_ix: uint256 = 100
+    N: uint256 = 0
+    for i in range(10):
+        success: bool = False
+        res: Bytes[32] = empty(Bytes[32])
+        success, res = raw_call(
+            pool,
+            _abi_encode(i, method_id=method_id("coins(uint256)")),
+            max_outsize=32, is_static_call=True, revert_on_failure=False)
+        coin: address = convert(res, address)
+        if not success or coin == empty(address):
+            break
+        N += 1
+        if coin == borrowed_token:
+            borrowed_ix = i
+        elif coin == collateral_token:
+            collateral_ix = i
+    if collateral_ix == 100 or borrowed_ix == 100:
+        raise "Tokens not in pool"
+    if N == 2:
+        assert Pool(pool).price_oracle() > 0, "Pool has no oracle"
+    else:
+        assert Pool(pool).price_oracle(0) > 0, "Pool has no oracle"
+    price_oracle: address = create_from_blueprint(
+        self.pool_price_oracle_impl, pool, N, borrowed_ix, collateral_ix, code_offset=3)
+    return self._create(borrowed_token, collateral_token, A, fee, loan_discount, liquidation_discount,
+                        price_oracle, name, min_borrow_rate, max_borrow_rate)
+@view
+@external
+def _create(
+        borrowed_token: address,
+        collateral_token: address,
+        A: uint256,
+        fee: uint256,
+        loan_discount: uint256,
+        liquidation_discount: uint256,
+        price_oracle: address,
+        name: String[64],
+        min_borrow_rate: uint256,
+        max_borrow_rate: uint256
+    ) -> Vault:
+    """
+    @notice Internal method for creation of the vault
+    """
+    assert borrowed_token != collateral_token, "Same token"
+    assert borrowed_token == STABLECOIN or collateral_token == STABLECOIN
+    vault: Vault = Vault(create_minimal_proxy_to(self.vault_impl))
+    min_rate: uint256 = self.min_default_borrow_rate
+    max_rate: uint256 = self.max_default_borrow_rate
+    if min_borrow_rate > 0:
+        min_rate = min_borrow_rate
+    if max_borrow_rate > 0:
+        max_rate = max_borrow_rate
+    assert min_rate >= MIN_RATE and max_rate <= MAX_RATE and min_rate <= max_rate, "Wrong rates"
+    monetary_policy: address = create_from_blueprint(
+        self.monetary_policy_impl, borrowed_token, min_rate, max_rate, code_offset=3)
+    controller: address = empty(address)
+    amm: address = empty(address)
+    controller, amm = vault.initialize(
+        self.amm_impl, self.controller_impl,
+        borrowed_token, collateral_token,
+        A, fee,
+        price_oracle,
+        monetary_policy,
+        loan_discount, liquidation_discount
+    )
+    market_count: uint256 = self.market_count
+    log NewVault(market_count, collateral_token, borrowed_token, vault.address, controller, amm, price_oracle, monetary_policy)
+    self.vaults[market_count] = vault
+    self.amms[market_count] = AMM(amm)
+    self._vaults_index[vault] = market_count + 2**128
+    self.names[market_count] = name
+    self.market_count = market_count + 1
+    token: address = borrowed_token
+    if borrowed_token == STABLECOIN:
+        token = collateral_token
+    market_count = self.token_market_count[token]
+    self.token_to_vaults[token][market_count] = vault
+    self.token_market_count[token] = market_count + 1
+    ERC20(borrowed_token).approve(amm, max_value(uint256))
+    ERC20(collateral_token).approve(amm, max_value(uint256))
+    return vault
+@external
+@nonreentrant('lock')
+def create(
+        borrowed_token: address,
+        collateral_token: address,
+        A: uint256,
+        fee: uint256,
+        loan_discount: uint256,
+        liquidation_discount: uint256,
+        price_oracle: address,
+        name: String[64],
+        min_borrow_rate: uint256 = 0,
+        max_borrow_rate: uint256 = 0
+    ) -> Vault:
+    """
+    @notice Creation of the vault using user-supplied price oracle contract
+    @param borrowed_token Token which is being borrowed
+    @param collateral_token Token used for collateral
+    @param A Amplification coefficient: band size is ~1/A
+    @param fee Fee for swaps in AMM (for ETH markets found to be 0.6%)
+    @param loan_discount Maximum discount. LTV = sqrt(((A - 1) / A) ** 4) - loan_discount
+    @param liquidation_discount Liquidation discount. LT = sqrt(((A - 1) / A) ** 4) - liquidation_discount
+    @param price_oracle Custom price oracle contract
+    @param name Human-readable market name
+    @param min_borrow_rate Custom minimum borrow rate (otherwise min_default_borrow_rate)
+    @param max_borrow_rate Custom maximum borrow rate (otherwise max_default_borrow_rate)
+    """
+    return self._create(borrowed_token, collateral_token, A, fee, loan_discount, liquidation_discount,
+                        price_oracle, name, min_borrow_rate, max_borrow_rate)
+@external
+@nonreentrant('lock')
+Now I want you to help me find new gas-wasting patterns from the above codes and the list of example patterns. Please be creative and think outside the box beyond the patterns listed above. Please put the new gas-wasting patterns in bullet points, using Latex syntax. Also please answer the following questions for each of the found patterns:
+
+1. How did you find this pattern? Could you explain the reasoning process, step by step, behind the discovery?
+2. What should I do, step by step, to fix the found gas-wasting patterns? Could you explain the reasoning process, step by step, behind the reason why such a fix works?
+3. On a score of 0 to 5, please rate this new pattern in terms of how much it is sacrificing readability, security, and maintainability in exchange for gas optimization (5 is the least impacted. For example, "Readability: 5; Security: 4; Maintainability: 1" means no effect on security while maintainability is largely affected.)
+
+Here are some additional requirements:
+1. If you think my prompt to you has any issues (e.g. ambiguity or lack of information), please tell me how I should improve it the next time.
+2. Please reflect on your reasoning process and tell me how you could do better next time in terms of completing the given task. If you found any issues, please also make corresponding improvements to your output this time and tell me what you did and why such improvement is necessary, in a step-by-step manner.

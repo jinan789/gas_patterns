@@ -1,0 +1,134 @@
+I want you to help me find new gas-wasting patterns for Vyper. Gas is a unique pricing mechanism in Vyper, which measures the amount of computational resources put into the execution of Vyper codes. Gas is paid in money, so saving gas is saving money. The goal of gas optimization is to find an equivalent code instruction sequence that produces the same output while consuming less gas. This may misalign from how people typically write codes, since the gas pricing mechanism is less intuitive and code writers do not often keep it in mind. For example, storage variables in Vyper are expensive in terms of gas, while memory is not, so unnecessary storage operations should be avoided when possible, but programmers from other languages might not be aware of this. 
+
+First, I will give you a list of known gas-wasting patterns as an example. The list is numbered, with each bullet point specifying one gas-wasting pattern and an explanation of why this pattern wastes gas. Please be creative and see if my provided codes contain any gas-wasting patterns beyond the provided ones. The list is as follows:
+
+1. Repeated computation of the same expression: including repetitive reads of the same expensive storage variable (e.g. Overuse of expensive storage variables). This could be solved by introducing an intermediate variable to hold the value
+2. Variable refactoring: by refactoring variable types and thus adjusting memory layout, we could save gas by saving the amount of storage space needed
+3. Redundant operations with same effects: redundant operations that overwrite the effect of the previous operation, making the previous useless
+4. Pre-computable operations on constants: performing comparisons (or other operations) to constants is useless and could be pre-computed
+5. Simplifiable conditional operations: expressions that involve logical operations that could be simplified to reduce the amount of computational workload.
+6. "Loop fusion." If two loops have the same starting and stopping conditions with the same increment steps, then we could consider combining them into one, if they have no dependencies. 
+7. "Repeated computations in a loop." If there are expressions that produce the same outcome in each iteration of a loop, we could move it out of the loop and execute only once, which saves computation.
+8. "Opaque predicate." If the outcome of a predicate could be inferred to be true/false without execution, then we could just replace it with the corresponding value to save the compuation during runtime.
+
+Next, I will give you a chunk of Vyper codes from which you will find gas-inefficient patterns:def calculate_rate(_for: address, _price: uint256, ro: bool) -> uint256:
+    sigma: int256 = self.sigma
+    target_debt_fraction: uint256 = self.target_debt_fraction
+    p: int256 = convert(_price, int256)
+    pk_debt: uint256 = 0
+    for pk in self.peg_keepers:
+        if pk.address == empty(address):
+            break
+        pk_debt += pk.debt()
+    total_debt: uint256 = 0
+    debt_for: uint256 = 0
+    total_debt, debt_for = self.read_debt(_for, ro)
+    power: int256 = (10**18 - p) * 10**18 / sigma  # high price -> negative pow -> low rate
+    if pk_debt > 0:
+        if total_debt == 0:
+            return 0
+        else:
+            power -= convert(pk_debt * 10**18 / total_debt * 10**18 / target_debt_fraction, int256)
+    # Rate accounting for crvUSD price and PegKeeper debt
+    rate: uint256 = self.rate0 * min(self.exp(power), MAX_EXP) / 10**18
+    # Account for individual debt ceiling to dynamically tune rate depending on filling the market
+    ceiling: uint256 = CONTROLLER_FACTORY.debt_ceiling(_for)
+    if ceiling > 0:
+        f: uint256 = min(debt_for * 10**18 / ceiling, 10**18 - TARGET_REMAINDER / 1000)
+        rate = min(rate * ((10**18 - TARGET_REMAINDER) + TARGET_REMAINDER * 10**18 / (10**18 - f)) / 10**18, MAX_RATE)
+    # Rate multiplication at different ceilings (target = 0.1):
+    # debt = 0:
+    #   new_rate = rate * ((1.0 - target) + target) = rate
+    #
+    # debt = ceiling:
+    #   f = 1.0 - 0.1 / 1000 = 0.9999  # instead of infinity to avoid /0
+    #   new_rate = min(rate * ((1.0 - target) + target / (1.0 - 0.9999)), max_rate) = max_rate
+    #
+    # debt = 0.9 * ceiling, target = 0.1
+    #   f = 0.9
+    #   new_rate = rate * ((1.0 - 0.1) + 0.1 / (1.0 - 0.9)) = rate * (1.0 + 1.0 - 0.1) = 1.9 * rate
+    return rate
+@view
+@external
+def exp(power: int256) -> uint256:
+    if power <= -41446531673892821376:
+        return 0
+    if power >= 135305999368893231589:
+        # Return MAX_EXP when we are in overflow mode
+        return MAX_EXP
+    x: int256 = unsafe_div(unsafe_mul(power, 2**96), 10**18)
+    k: int256 = unsafe_div(
+        unsafe_add(
+            unsafe_div(unsafe_mul(x, 2**96), 54916777467707473351141471128),
+            2**95),
+        2**96)
+    x = unsafe_sub(x, unsafe_mul(k, 54916777467707473351141471128))
+    y: int256 = unsafe_add(x, 1346386616545796478920950773328)
+    y = unsafe_add(unsafe_div(unsafe_mul(y, x), 2**96), 57155421227552351082224309758442)
+    p: int256 = unsafe_sub(unsafe_add(y, x), 94201549194550492254356042504812)
+    p = unsafe_add(unsafe_div(unsafe_mul(p, y), 2**96), 28719021644029726153956944680412240)
+    p = unsafe_add(unsafe_mul(p, x), (4385272521454847904659076985693276 * 2**96))
+    q: int256 = x - 2855989394907223263936484059900
+    q = unsafe_add(unsafe_div(unsafe_mul(q, x), 2**96), 50020603652535783019961831881945)
+    q = unsafe_sub(unsafe_div(unsafe_mul(q, x), 2**96), 533845033583426703283633433725380)
+    q = unsafe_add(unsafe_div(unsafe_mul(q, x), 2**96), 3604857256930695427073651918091429)
+    q = unsafe_sub(unsafe_div(unsafe_mul(q, x), 2**96), 14423608567350463180887372962807573)
+    q = unsafe_add(unsafe_div(unsafe_mul(q, x), 2**96), 26449188498355588339934803723976023)
+    return shift(
+        unsafe_mul(convert(unsafe_div(p, q), uint256), 3822833074963236453042738258902158003155416615667),
+        unsafe_sub(k, 195))
+@internal
+@view
+def read_debt(_for: address, ro: bool) -> (uint256, uint256):
+    debt_total: uint256 = self.read_candle(empty(address))
+    debt_for: uint256 = self.read_candle(_for)
+    fresh_total: uint256 = 0
+    fresh_for: uint256 = 0
+    if ro:
+        fresh_total, fresh_for = self.get_total_debt(_for)
+        if debt_total > 0:
+            debt_total = min(debt_total, fresh_total)
+        else:
+            debt_total = fresh_total
+        if debt_for > 0:
+            debt_for = min(debt_for, fresh_for)
+        else:
+            debt_for = fresh_for
+    else:
+        if debt_total == 0 or debt_for == 0:
+            fresh_total, fresh_for = self.get_total_debt(_for)
+            if debt_total == 0:
+                debt_total = fresh_total
+            if debt_for == 0:
+                debt_for = fresh_for
+    return debt_total, debt_for
+@internal
+@view
+def rate_write(_for: address = msg.sender) -> uint256:
+    # Update controller list
+    n_controllers: uint256 = self.n_controllers
+    n_factory_controllers: uint256 = CONTROLLER_FACTORY.n_collaterals()
+    if n_factory_controllers > n_controllers:
+        self.n_controllers = n_factory_controllers
+        for i in range(MAX_CONTROLLERS):
+            self.controllers[n_controllers] = CONTROLLER_FACTORY.controllers(n_controllers)
+            n_controllers += 1
+            if n_controllers >= n_factory_controllers:
+                break
+    # Update candles
+    total_debt: uint256 = 0
+    debt_for: uint256 = 0
+    total_debt, debt_for = self.get_total_debt(_for)
+    self.save_candle(empty(address), total_debt)
+    self.save_candle(_for, debt_for)
+    return self.calculate_rate(_for, PRICE_ORACLE.price_w(), False)
+
+Now I want you to help me find new gas-wasting patterns from the above codes and the list of example patterns. Please be creative and think outside the box beyond the patterns listed above. Please put the new gas-wasting patterns in bullet points, using Latex syntax. Also please answer the following questions for each of the found patterns:
+
+1. How did you find this pattern? Could you explain the reasoning process, step by step, behind the discovery?
+2. What should I do, step by step, to fix the found gas-wasting patterns? Could you explain the reasoning process, step by step, behind the reason why such a fix works?
+3. On a score of 0 to 5, please rate this new pattern in terms of how much it is sacrificing readability, security, and maintainability in exchange for gas optimization (5 is the least impacted. For example, "Readability: 5; Security: 4; Maintainability: 1" means no effect on security while maintainability is largely affected.)
+
+Here are some additional requirements:
+1. If you think my prompt to you has any issues (e.g. ambiguity or lack of information), please tell me how I should improve it the next time.
+2. Please reflect on your reasoning process and tell me how you could do better next time in terms of completing the given task. If you found any issues, please also make corresponding improvements to your output this time and tell me what you did and why such improvement is necessary, in a step-by-step manner.

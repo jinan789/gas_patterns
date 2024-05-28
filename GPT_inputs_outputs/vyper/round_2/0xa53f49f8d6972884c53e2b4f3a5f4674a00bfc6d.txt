@@ -1,0 +1,137 @@
+I want you to help me find new gas-wasting patterns for Vyper. Gas is a unique pricing mechanism in Vyper, which measures the amount of computational resources put into the execution of Vyper codes. Gas is paid in money, so saving gas is saving money. The goal of gas optimization is to find an equivalent code instruction sequence that produces the same output while consuming less gas. This may misalign from how people typically write codes, since the gas pricing mechanism is less intuitive and code writers do not often keep it in mind. For example, storage variables in Vyper are expensive in terms of gas, while memory is not, so unnecessary storage operations should be avoided when possible, but programmers from other languages might not be aware of this. 
+
+First, I will give you a list of known gas-wasting patterns as an example. The list is numbered, with each bullet point specifying one gas-wasting pattern and an explanation of why this pattern wastes gas. Please be creative and see if my provided codes contain any gas-wasting patterns beyond the provided ones. The list is as follows:
+
+1. Repeated computation of the same expression: including repetitive reads of the same expensive storage variable (e.g. Overuse of expensive storage variables). This could be solved by introducing an intermediate variable to hold the value
+2. Variable refactoring: by refactoring variable types and thus adjusting memory layout, we could save gas by saving the amount of storage space needed
+3. Redundant operations with same effects: redundant operations that overwrite the effect of the previous operation, making the previous useless
+4. Pre-computable operations on constants: performing comparisons (or other operations) to constants is useless and could be pre-computed
+5. Simplifiable conditional operations: expressions that involve logical operations that could be simplified to reduce the amount of computational workload.
+6. "Loop fusion." If two loops have the same starting and stopping conditions with the same increment steps, then we could consider combining them into one, if they have no dependencies. 
+7. "Repeated computations in a loop." If there are expressions that produce the same outcome in each iteration of a loop, we could move it out of the loop and execute only once, which saves computation.
+8. "Opaque predicate." If the outcome of a predicate could be inferred to be true/false without execution, then we could just replace it with the corresponding value to save the compuation during runtime.
+
+Next, I will give you a chunk of Vyper codes from which you will find gas-inefficient patterns:def safeTransferFrom(
+        owner: address,
+        receiver: address,
+        tokenId: uint256,
+        data: Bytes[1024]=b""
+    ):
+    """
+    @dev Transfers the ownership of an NFT from one address to another address.
+         Throws unless `msg.sender` is the current owner, an authorized operator, or the
+         approved address for this NFT.
+         Throws if `owner` is not the current owner.
+         Throws if `receiver` is the zero address.
+         Throws if `tokenId` is not a valid NFT.
+         If `receiver` is a smart contract, it calls `onERC721Received` on `receiver` and throws if
+         the return value is not `bytes4(keccak256("onERC721Received(address,address,uint256,bytes)"))`.
+         NOTE: bytes4 is represented by bytes32 with padding
+    @param owner The current owner of the NFT.
+    @param receiver The new owner.
+    @param tokenId The NFT to transfer.
+    @param data Additional data with no specified format, sent in call to `receiver`.
+    """
+    self._transferFrom(owner, receiver, tokenId, msg.sender)
+    if receiver.is_contract: # check if `receiver` is a contract address
+        returnValue: bytes4 = ERC721Receiver(receiver).onERC721Received(msg.sender, owner, tokenId, data)
+        # Throws if transfer destination is a contract which does not implement 'onERC721Received'
+        assert returnValue == method_id("onERC721Received(address,address,uint256,bytes)", output_type=bytes4)
+@external
+def _transferFrom(owner: address, receiver: address, tokenId: uint256, sender: address):
+    """
+    @dev Execute transfer of a NFT.
+         Throws unless `msg.sender` is the current owner, an authorized operator, or the approved
+         address for this NFT. (NOTE: `msg.sender` not allowed in private function so pass `_sender`.)
+         address for thisassert self.idToOwner[tokenId] == owner NFT. (NOTE: `msg.sender` not allowed in private function so pass `_sender`.)
+         Throws if `receiver` is the zero address.
+         Throws if `owner` is not the current owner.
+         Throws if `tokenId` is not a valid NFT.
+    """
+    # Check requirements
+    assert self._isApprovedOrOwner(sender, tokenId)
+    assert receiver != empty(address)
+    assert owner != empty(address)
+    assert self.idToOwner[tokenId] == owner
+    # Reset approvals, if any
+    if self.idToApprovals[tokenId] != empty(address):
+        self.idToApprovals[tokenId] = empty(address)
+    # Change the owner
+    self.idToOwner[tokenId] = receiver
+    _amt : uint256 = self.amt[tokenId]
+    # Change count tracking
+    self.balanceOf[owner] -= 1
+    self.brcBalanceOf[owner] -= _amt
+    # Add count of token to address
+    self.balanceOf[receiver] += 1
+    self.brcBalanceOf[owner] += _amt
+    # Log the transfer
+    log Transfer(owner, receiver, tokenId)
+@external
+def inscribe(receiver: address, _amt: uint256) -> bool:
+    """
+    @dev Create a new Owner NFT
+    @return bool confirming that the minting occurred 
+    """ 
+    assert receiver != empty(address)
+    assert self.limit >= _amt, "exceed limit of WBRC20"
+    assert self.WBCRSupply + _amt <= self.maxWBRC, "exceed max of WBRC20"
+    assert _amt % 50 == 0 and _amt > 0, "amt must be a positive integer multiple of 50"
+    assert self.brcBalanceOf[receiver] + _amt <= self.maxWBRCPerAddr, "exceed the upper boundd of a single address"
+    # Throws if `totalSupply` count NFTs tracked by this contract is owned by someone
+    assert self.idToOwner[self.totalSupply] == empty(address)
+    assert WBRC(self.wbtc).transferFrom(msg.sender,self,_amt) == True, "fail to transfer wbtc"
+    # Create new owner to allocate token
+    self.idToOwner[self.totalSupply] = receiver
+    log Transfer(empty(address), receiver, self.totalSupply)
+    # Change count tracking, `totalSupply` represents id for `tokenId`
+    self.amt[self.totalSupply] = _amt
+    self.totalSupply += 1
+    self.WBCRSupply += _amt
+    # Update balance of minter
+    self.balanceOf[receiver] += 1
+    self.brcBalanceOf[receiver] += _amt
+    log Mint(receiver,_amt)
+    return True
+@external
+def approve(operator: address, tokenId: uint256):
+    """
+    @dev Set or reaffirm the approved address for an NFT. The zero address indicates there is no approved address.
+         Throws unless `msg.sender` is the current NFT owner, or an authorized operator of the current owner.
+         Throws if `tokenId` is not a valid NFT. (NOTE: This is not written the EIP)
+         Throws if `operator` is the current owner. (NOTE: This is not written the EIP)
+    @param operator Address to be approved for the given NFT ID.
+    @param tokenId ID of the token to be approved.
+    """
+    # Throws if `tokenId` is not a valid NFT
+    owner: address = self.idToOwner[tokenId]
+    assert owner != empty(address)
+    # Throws if `operator` is the current owner
+    assert operator != owner
+    # Throws if `msg.sender` is not the current owner, or is approved for all actions
+    assert owner == msg.sender or (self.isApprovedForAll[owner])[msg.sender]
+    self.idToApprovals[tokenId] = operator
+    log Approval(owner, operator, tokenId)
+@external
+def royaltyInfo(_tokenId: uint256, _salePrice: uint256) -> (address, uint256):
+    """
+    /// @notice Called with the sale price to determine how much royalty
+    //          is owed and to whom. Important; Not all marketplaces respect this, e.g. OpenSea
+    /// @param _tokenId - the NFT asset queried for royalty information
+    /// @param _salePrice - the sale price of the NFT asset specified by _tokenId
+    /// @return receiver - address of who should be sent the royalty payment
+    /// @return royaltyAmount - the royalty payment amount for _salePrice
+    """
+    royalty: uint256 = convert(convert(_salePrice, decimal) * ROYALTY_TO_APPLY_TO_PRICE, uint256) # Percentage that accepts decimals
+    return self.owner, royalty
+@view
+@internal
+Now I want you to help me find new gas-wasting patterns from the above codes and the list of example patterns. Please be creative and think outside the box beyond the patterns listed above. Please put the new gas-wasting patterns in bullet points, using Latex syntax. Also please answer the following questions for each of the found patterns:
+
+1. How did you find this pattern? Could you explain the reasoning process, step by step, behind the discovery?
+2. What should I do, step by step, to fix the found gas-wasting patterns? Could you explain the reasoning process, step by step, behind the reason why such a fix works?
+3. On a score of 0 to 5, please rate this new pattern in terms of how much it is sacrificing readability, security, and maintainability in exchange for gas optimization (5 is the least impacted. For example, "Readability: 5; Security: 4; Maintainability: 1" means no effect on security while maintainability is largely affected.)
+
+Here are some additional requirements:
+1. If you think my prompt to you has any issues (e.g. ambiguity or lack of information), please tell me how I should improve it the next time.
+2. Please reflect on your reasoning process and tell me how you could do better next time in terms of completing the given task. If you found any issues, please also make corresponding improvements to your output this time and tell me what you did and why such improvement is necessary, in a step-by-step manner.

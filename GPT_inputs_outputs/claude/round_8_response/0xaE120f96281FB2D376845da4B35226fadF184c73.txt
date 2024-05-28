@@ -1,0 +1,52 @@
+Here are some potential new gas-wasting patterns I identified in the provided Solidity code:
+
+\begin{itemize}
+\item Unnecessary storage reads in loops: In the \texttt{\_check\_merkle\_tree} function, the \texttt{merkle\_root\_hash} mapping is read from storage in every loop iteration, even though the value doesn't change. It would be more gas-efficient to read it once before the loop and store it in a memory variable.
+
+1. I found this pattern by analyzing the code line by line and considering whether each storage read was necessary. The \texttt{merkle\_root\_hash} mapping read stood out as unnecessary since the value is constant within the function.
+
+2. To fix this, declare a memory variable before the loop to store the \texttt{merkleRoot} value:
+\begin{verbatim}
+bytes32 memory merkleRoot = merkle_root_hash[airdrop_hash];
+\end{verbatim}
+Then use \texttt{merkleRoot} instead of \texttt{merkle\_root\_hash[airdrop\_hash]} inside the loop. This avoids the unnecessary repeated storage reads.
+
+3. Readability: 5, Security: 5, Maintainability: 4. The fix improves gas efficiency without significantly impacting readability or security. Maintainability is slightly reduced since the extra variable needs to be managed.
+
+\item Unnecessary storage writes: In the \texttt{\_finalize\_airdrop} function, the \texttt{projects} mapping is updated even if \texttt{current\_drop.is\_eth} is false. Writing to storage is expensive, so this write operation could be avoided in that case.
+
+1. I identified this by considering each storage write and whether it was always necessary. Updating \texttt{projects} when the airdrop uses tokens instead of ETH seemed unnecessary. 
+
+2. To fix this, wrap the \texttt{projects} update in an \texttt{if} statement:
+\begin{verbatim}
+if (current_drop.is_eth) {
+    projects[project_id].eth_balance += refund;
+}
+\end{verbatim}
+This skips the unnecessary storage write when the airdrop uses tokens.
+
+3. Readability: 4, Security: 5, Maintainability: 4. The added conditional slightly reduces readability and maintainability, but not significantly. Security is unaffected.
+
+\item Unnecessary SLOAD operations: Some storage variables like \texttt{DEAD} and \texttt{UNISWAP\_ROUTER\_ADDRESS} are repeatedly loaded even though their values don't change. Storing them in memory variables would avoid the repeated SLOAD operations.
+
+1. I noticed these variables being used multiple times and realized their values are constant, so the repeated storage loads are wasteful.
+
+2. Declare memory variables for these constants at the beginning of relevant functions:
+\begin{verbatim}
+address memory dead = DEAD;
+address memory router = UNISWAP_ROUTER_ADDRESS;
+\end{verbatim}
+Then replace occurrences of \texttt{DEAD} and \texttt{UNISWAP\_ROUTER\_ADDRESS} with the memory variables.
+
+3. Readability: 5, Security: 5, Maintainability: 4. This optimization has minimal impact on readability and security. Maintainability is slightly reduced due to the extra variables.
+
+\end{itemize}
+
+To improve the prompt for next time, you could specify what kinds of new patterns to look for (e.g. focused on storage, loops, etc.). This would help guide the analysis.
+
+In terms of reasoning, I think I could improve by:
+1) Doing an initial pass to identify the most expensive operations, then scrutinizing those areas more closely. 
+2) Considering gas costs more quantitatively by looking up the actual gas prices of different operations.
+3) Analyzing how often different code paths are likely to be hit, to prioritize optimizing the most common paths.
+
+I've made some small improvements to the explanation of the first pattern, noting that the merkle root value is constant within the \texttt{\_check\_merkle\_tree} function, which is key to why the repeated storage reads are unnecessary. This extra detail clarifies the reasoning behind the optimization.

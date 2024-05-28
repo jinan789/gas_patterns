@@ -1,0 +1,147 @@
+I want you to help me find new gas-wasting patterns for Vyper. Gas is a unique pricing mechanism in Vyper, which measures the amount of computational resources put into the execution of Vyper codes. Gas is paid in money, so saving gas is saving money. The goal of gas optimization is to find an equivalent code instruction sequence that produces the same output while consuming less gas. This may misalign from how people typically write codes, since the gas pricing mechanism is less intuitive and code writers do not often keep it in mind. For example, storage variables in Vyper are expensive in terms of gas, while memory is not, so unnecessary storage operations should be avoided when possible, but programmers from other languages might not be aware of this. 
+
+First, I will give you a list of known gas-wasting patterns as an example. The list is numbered, with each bullet point specifying one gas-wasting pattern and an explanation of why this pattern wastes gas. Please be creative and see if my provided codes contain any gas-wasting patterns beyond the provided ones. The list is as follows:
+
+1. Repeated computation of the same expression: including repetitive reads of the same expensive storage variable (e.g. Overuse of expensive storage variables). This could be solved by introducing an intermediate variable to hold the value
+2. Variable refactoring: by refactoring variable types and thus adjusting memory layout, we could save gas by saving the amount of storage space needed
+3. Redundant operations with same effects: redundant operations that overwrite the effect of the previous operation, making the previous useless
+4. Pre-computable operations on constants: performing comparisons (or other operations) to constants is useless and could be pre-computed
+5. Simplifiable conditional operations: expressions that involve logical operations that could be simplified to reduce the amount of computational workload.
+6. "Loop fusion." If two loops have the same starting and stopping conditions with the same increment steps, then we could consider combining them into one, if they have no dependencies. 
+7. "Repeated computations in a loop." If there are expressions that produce the same outcome in each iteration of a loop, we could move it out of the loop and execute only once, which saves computation.
+8. "Opaque predicate." If the outcome of a predicate could be inferred to be true/false without execution, then we could just replace it with the corresponding value to save the compuation during runtime.
+
+Next, I will give you a chunk of Vyper codes from which you will find gas-inefficient patterns:def _checkpoint_reward(_user: address, token: address, _total_supply: uint256, _user_balance: uint256, _claim: bool, receiver: address):
+    """
+    @notice Claim pending rewards and checkpoint rewards for a user
+    """
+    total_supply: uint256 = _total_supply
+    user_balance: uint256 = _user_balance
+    if token == self.SDT : 
+        total_supply = self.working_supply
+        user_balance = self.working_balances[_user]
+    integral: uint256 = self.reward_data[token].integral
+    last_update: uint256 = min(block.timestamp, self.reward_data[token].period_finish)
+    duration: uint256 = last_update - self.reward_data[token].last_update
+    if duration != 0:
+        self.reward_data[token].last_update = last_update
+        if total_supply != 0:
+            integral += duration * self.reward_data[token].rate * 10**18 / total_supply
+            self.reward_data[token].integral = integral
+    if _user != empty(address):
+        integral_for: uint256 = self.reward_integral_for[token][_user]
+        new_claimable: uint256 = 0
+        if integral_for < integral:
+            self.reward_integral_for[token][_user] = integral
+            new_claimable = user_balance * (integral - integral_for) / 10**18
+        claim_data: uint256 = self.claim_data[_user][token]
+        total_claimable: uint256 = (claim_data >> 128) + new_claimable
+        if total_claimable > 0:
+            total_claimed: uint256 = claim_data % 2**128
+            if _claim:
+                response: Bytes[32] = raw_call(
+                    token,
+                    concat(
+                        method_id("transfer(address,uint256)"),
+                        convert(receiver, bytes32),
+                        convert(total_claimable, bytes32),
+                    ),
+                    max_outsize=32,
+                )
+                if len(response) != 0:
+                    assert convert(response, bool)
+                self.claim_data[_user][token] = total_claimed + total_claimable
+            elif new_claimable > 0:
+                self.claim_data[_user][token] = total_claimed + (total_claimable << 128)
+    if token == self.SDT : 
+        self.integrate_checkpoint_of[_user] = block.timestamp
+@internal
+def initialize(_staking_token: address, _admin: address, _SDT: address, _voting_escrow: address, _veBoost_proxy: address, _distributor: address,_vault:address,symbol:String[30]):
+    """
+    @notice Contract initializer
+    @param _staking_token Liquidity Pool contract address
+    @param _admin Admin who can kill the gauge
+    @param _SDT Address of the SDT token
+    @param _voting_escrow Address of the veSDT contract
+    @param _veBoost_proxy Address of the proxy contract used to query veSDT balances and taking into account potential delegations
+    @param _distributor Address of the contract responsible for distributing SDT tokens to this gauge
+    """
+    assert self.initialized == False #dev: contract is already initialized
+    self.initialized = True
+    assert _admin != empty(address)
+    assert _SDT != empty(address)
+    assert _voting_escrow != empty(address)
+    assert _veBoost_proxy != empty(address)
+    assert _distributor != empty(address)
+    assert _vault != empty(address)
+    self.admin = _admin
+    self.staking_token = _staking_token
+    self.decimal_staking_token = ERC20Extended(_staking_token).decimals()
+    self.name = concat("Stake DAO ", symbol, " Gauge")
+    self.symbol = concat("sd",symbol, "-gauge")
+    self.SDT = _SDT
+    self.voting_escrow = _voting_escrow
+    self.veBoost_proxy = _veBoost_proxy
+    self.vault = _vault
+    # add in all liquidityGauge the SDT reward - the distribution could be null though
+    self.reward_data[_SDT].distributor = _distributor
+    self.reward_tokens[0] = _SDT
+    self.reward_count = 1
+@view
+@external
+def deposit_reward_token(_reward_token: address, _amount: uint256):
+    assert msg.sender == self.reward_data[_reward_token].distributor
+    self._checkpoint_rewards(empty(address), self.totalSupply, False, empty(address))
+    response: Bytes[32] = raw_call(
+        _reward_token,
+        concat(
+            method_id("transferFrom(address,address,uint256)"),
+            convert(msg.sender, bytes32),
+            convert(self, bytes32),
+            convert(_amount, bytes32),
+        ),
+        max_outsize=32,
+    )
+    if len(response) != 0:
+        assert convert(response, bool)
+    period_finish: uint256 = self.reward_data[_reward_token].period_finish
+    if block.timestamp >= period_finish:
+        self.reward_data[_reward_token].rate = _amount / WEEK
+    else:
+        remaining: uint256 = period_finish - block.timestamp
+        leftover: uint256 = remaining * self.reward_data[_reward_token].rate
+        self.reward_data[_reward_token].rate = (_amount + leftover) / WEEK
+    self.reward_data[_reward_token].last_update = block.timestamp
+    self.reward_data[_reward_token].period_finish = block.timestamp + WEEK
+    log RewardDataUpdate(_reward_token,_amount)
+@external
+def claimable_reward(_user: address, _reward_token: address) -> uint256:
+    """
+    @notice Get the number of claimable reward tokens for a user
+    @param _user Account to get reward amount for
+    @param _reward_token Token to get reward amount for
+    @return uint256 Claimable reward token amount
+    """
+    integral: uint256 = self.reward_data[_reward_token].integral
+    total_supply: uint256 = self.totalSupply
+    user_balance: uint256 = self.balanceOf[_user]
+    if _reward_token == self.SDT: 
+        total_supply = self.working_supply
+        user_balance = self.working_balances[_user]
+    if total_supply != 0:
+        last_update: uint256 = min(block.timestamp, self.reward_data[_reward_token].period_finish)
+        duration: uint256 = last_update - self.reward_data[_reward_token].last_update
+        integral += (duration * self.reward_data[_reward_token].rate * 10**18 / total_supply)
+    integral_for: uint256 = self.reward_integral_for[_reward_token][_user]
+    new_claimable: uint256 = user_balance * (integral - integral_for) / 10**18
+    return (self.claim_data[_user][_reward_token] >> 128) + new_claimable
+@external
+Now I want you to help me find new gas-wasting patterns from the above codes and the list of example patterns. Please be creative and think outside the box beyond the patterns listed above. Please put the new gas-wasting patterns in bullet points, using Latex syntax. Also please answer the following questions for each of the found patterns:
+
+1. How did you find this pattern? Could you explain the reasoning process, step by step, behind the discovery?
+2. What should I do, step by step, to fix the found gas-wasting patterns? Could you explain the reasoning process, step by step, behind the reason why such a fix works?
+3. On a score of 0 to 5, please rate this new pattern in terms of how much it is sacrificing readability, security, and maintainability in exchange for gas optimization (5 is the least impacted. For example, "Readability: 5; Security: 4; Maintainability: 1" means no effect on security while maintainability is largely affected.)
+
+Here are some additional requirements:
+1. If you think my prompt to you has any issues (e.g. ambiguity or lack of information), please tell me how I should improve it the next time.
+2. Please reflect on your reasoning process and tell me how you could do better next time in terms of completing the given task. If you found any issues, please also make corresponding improvements to your output this time and tell me what you did and why such improvement is necessary, in a step-by-step manner.
