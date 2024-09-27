@@ -1,0 +1,3 @@
+Next, I will give you a chunk of Solidity codes from which you will find gas-inefficient patterns:
+
+... (the input codes to be analyzed are inserted here)
