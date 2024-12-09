@@ -10,4 +10,4 @@ The data is organized as follows:
 
 5. demo_codes: this folder contains all the codes that we used for demonstrating gas costs of patterns. The naming convention of the files under this folder is that the postfix indicates if the codes are optimized or not ("u" for unoptimized and "o" for optimized), and the number in the middle stands for the patten number.
 
-6. "pattern_report.pdf": this file is the 47-page report that we made to demonstrate patterns.
+6. "pattern_report.pdf": this file is the 54-page report that we made to demonstrate patterns. This report also presents some supplementary materials to our main paper, which discusses the impact of our identified code smells on code functionality and our future plan on further automating the proposed framework.
